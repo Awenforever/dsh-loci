@@ -1,6 +1,6 @@
 {
   "mode": "single",
-  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-single-home",
+  "home": "%TEMP%\\loci-single-home",
   "profile": "headless",
   "startedAt": "2026-11-13T10:07:52.956Z",
   "cases": [],

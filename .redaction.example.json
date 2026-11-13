@@ -1,0 +1,18 @@
+[
+  {
+    "comment": "Example only. A machine name used as sample data in fixtures and docs.",
+    "match": "\\bmy-private-host\\b",
+    "flags": "gi",
+    "replace": "prod-01"
+  },
+  {
+    "comment": "Example only. An absolute home path from your own host.",
+    "match": "C:\\\\\\\\Users\\\\\\\\your-user\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\",
+    "replace": "%TEMP%\\\\"
+  },
+  {
+    "comment": "Example only. A private model gateway name used by a local test profile.",
+    "match": "my-private-gateway",
+    "replace": "local-test"
+  }
+]

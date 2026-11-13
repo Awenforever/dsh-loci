@@ -1,6 +1,6 @@
 {
   "mode": "inject-cost",
-  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-cost-home",
+  "home": "%TEMP%\\loci-cost-home",
   "profile": "headless",
   "startedAt": "2026-11-13T08:51:35.167Z",
   "cases": [

@@ -92,7 +92,7 @@
         "vectors": 0,
         "parkedUntil": null
       },
-      "memoryRoot": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-note-home\\memory\\loci",
+      "memoryRoot": "%TEMP%\\loci-note-home\\memory\\loci",
       "pluginVersion": "1.2.0",
       "injections": [],
       "audit": [

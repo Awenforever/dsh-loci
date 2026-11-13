@@ -237,7 +237,7 @@ Two rules kept the list honest:
 
 ### 3.9 Data outside `$DSH_HOME`
 
-- mnemon wrote to `C:\Users\author\.mnemon` and ignored `DSH_HOME`
+- mnemon wrote to `C:\Users\<user>\.mnemon` and ignored `DSH_HOME`
   (`.agent-audit/memory-eval3/ACCEPTANCE.md:17`).
 - **Refused because**: a store outside the Harness home is outside its backups and
   every test that isolates `DSH_HOME`. Loci writes only under

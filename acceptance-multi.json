@@ -1,6 +1,6 @@
 {
   "profile": "headless",
-  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-recall-home",
+  "home": "%TEMP%\\loci-recall-home",
   "multi": [
     {
       "question": "删除前要做什么，回滚窗口多长？",

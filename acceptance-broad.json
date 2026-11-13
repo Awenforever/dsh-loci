@@ -1,6 +1,6 @@
 {
   "profile": "headless",
-  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-recall-home",
+  "home": "%TEMP%\\loci-recall-home",
   "exit": 0,
   "expected": 50,
   "listedExact": 50,
