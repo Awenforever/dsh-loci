@@ -529,7 +529,21 @@ window.__ModuleLoader__.load({
 
     function FeedTab({ t, onOpen }) {
       const { data, error, loading, reload } = useJson('/activity?limit=60', { intervalMs: 20_000 });
-      const items = (data?.items ?? []).slice();
+      // One row per entry, not per event: "added earlier, verified just now" is
+      // one story. Events for the same id collapse into a chain of tags and the
+      // row keeps the position of its newest event.
+      const rows = [];
+      const byId = new Map();
+      for (const item of data?.items ?? []) {
+        const seen = item.id === null ? undefined : byId.get(item.id);
+        if (seen !== undefined) {
+          if (!seen.chain.includes(item.action)) seen.chain.push(item.action);
+          continue;
+        }
+        const row = { ...item, chain: [item.action] };
+        rows.push(row);
+        if (item.id !== null) byId.set(item.id, row);
+      }
       return h(
         'div',
         null,
@@ -542,12 +556,23 @@ window.__ModuleLoader__.load({
         ),
         h(ErrorLine, { error, t }),
         loading && data === undefined ? h('div', { className: 'loci-muted' }, t('panel.loading')) : null,
-        data !== undefined && items.length === 0 ? h('div', { className: 'loci-muted' }, t('panel.empty')) : null,
-        items.map((item, index) =>
+        data !== undefined && rows.length === 0 ? h('div', { className: 'loci-muted' }, t('panel.empty')) : null,
+        rows.map((item, index) =>
           h(
             'div',
             { key: `${item.ts}-${item.id ?? 'x'}-${index}`, className: 'loci-row' },
-            h('span', { className: 'loci-tag is-' + item.action }, t(ACTION_KEY(item.action))),
+            h(
+              'span',
+              { className: 'loci-actions', style: { gap: '3px' } },
+              item.chain.map((action, step) =>
+                h(
+                  'span',
+                  { key: `${action}-${step}`, className: 'loci-tag is-' + action, style: { display: 'flex', gap: '3px' } },
+                  step > 0 ? h('span', { className: 'loci-muted' }, '→') : null,
+                  t(ACTION_KEY(action)),
+                ),
+              ),
+            ),
             h(
               'div',
               { className: 'loci-main' },
@@ -558,8 +583,6 @@ window.__ModuleLoader__.load({
                 h('span', null, fmtAgo(item.ts)),
                 item.kind ? h('span', null, item.kind) : null,
                 item.scope ? h('span', null, item.scope) : null,
-                item.revision ? h('span', null, `r${item.revision}`) : null,
-                item.redacted ? h('span', null, 'redacted') : null,
                 item.detail
                   ? h(
                       'span',

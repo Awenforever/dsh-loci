@@ -39,6 +39,7 @@ function writeKind(event) {
  * @returns `{items, digest, generatedAt}`.
  */
 export function buildActivity(store, options = {}) {
+  const maintenance = [];
   const limit = Math.max(1, Math.min(200, options.limit ?? 40));
   const window = Math.max(limit, Math.min(2000, options.auditWindow ?? 400));
   const since = Number.isFinite(options.since) ? options.since : 0;
@@ -66,13 +67,23 @@ export function buildActivity(store, options = {}) {
     const event = audit[index];
     if (!FEED_EVENTS.has(event.event)) continue;
     if (Number(event.ts) < since) continue;
+    // Maintenance is a footnote, not a headline. It is included only when the
+    // caller asks for it, or when there is nothing else to show — a pass that
+    // reindexed or expired rows should still be visible somewhere.
+    if (event.event === 'maintenance' && options.includeMaintenance !== true) {
+      maintenance.push(event);
+      continue;
+    }
     if (items.length >= limit) break;
     const row = typeof event.id === 'string' ? rows.get(event.id) : undefined;
     const title = typeof row?.title === 'string' ? row.title : undefined;
     items.push(normalize(event, row, title));
   }
+  if (items.length === 0) {
+    for (const event of maintenance.slice(0, limit)) items.push(normalize(event, undefined, undefined));
+  }
 
-  return { items, digest: summarize(items), generatedAt: Date.now() };
+  return { items, digest: summarize(audit, since), generatedAt: Date.now() };
 }
 
 /**
@@ -149,28 +160,34 @@ function normalize(event, row, title) {
 /**
  * Count the changes in a window, for the compact card.
  *
+ * The counters are computed over the whole audit window, not over the page of
+ * items that happens to be rendered: "3 today" must not depend on how many lines
+ * the card asked for.
+ *
  * The card shows a 24-hour and a 7-day number, which is what "did it learn
  * anything today" actually means to a user.
- * @param items - feed items, newest first.
+ * @param audit - the parsed audit tail.
+ * @param since - epoch ms lower bound.
  * @returns `{today, week, total, lastAt}`.
  */
-function summarize(items) {
+function summarize(audit, since) {
   const now = Date.now();
   const day = 86_400_000;
   let today = 0;
   let week = 0;
-  for (const item of items) {
-    if (item.action === 'maintained') continue;
-    const age = now - item.ts;
+  let total = 0;
+  let lastAt = null;
+  for (const event of audit) {
+    if (!FEED_EVENTS.has(event.event) || event.event === 'maintenance') continue;
+    const ts = Number(event.ts);
+    if (!Number.isFinite(ts) || ts < since) continue;
+    total += 1;
+    if (lastAt === null || ts > lastAt) lastAt = ts;
+    const age = now - ts;
     if (age <= day) today += 1;
     if (age <= 7 * day) week += 1;
   }
-  return {
-    today,
-    week,
-    total: items.filter((item) => item.action !== 'maintained').length,
-    lastAt: items.find((item) => item.action !== 'maintained')?.ts ?? null,
-  };
+  return { today, week, total, lastAt };
 }
 
 /**

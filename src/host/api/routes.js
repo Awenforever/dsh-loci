@@ -119,7 +119,9 @@ export function registerApiRoutes(ctx, deps) {
         store,
         scopeKeys,
         scopeLabel,
-        config: (key) => config(key),
+        // `config` here is the effective-config *object* (index.js), so the
+        // renderer gets a reader over it.
+        config: (key) => config[key],
         now: Date.now(),
       }),
       scopeKeys,

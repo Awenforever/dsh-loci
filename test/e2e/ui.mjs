@@ -89,10 +89,19 @@ check('panel renders the Index tab', /索引|Index/.test(panelText));
 check('panel renders the Search tab', /检索|Search/.test(panelText));
 check('panel renders the Review tab', /待审|Review/.test(panelText));
 check('panel renders the Stats tab', /统计|Stats/.test(panelText));
+check('the panel opens on the Feed tab', /动态|Feed/.test(panelText));
+
+// The Index tab is no longer the landing tab, so open it before looking for the
+// rendered section. It is the tab whose whole purpose is showing the bytes the
+// model actually receives.
+await trustedClick(api, '^(索引|Index)$');
+await wait(1200);
+const indexText = await evaluate('document.body.innerText');
+report.diagnostics.indexText = String(indexText).slice(0, 1500);
 check(
-  'panel shows the exact injected section',
-  String(panelText).includes('<loci-context'),
-  String(panelText).match(/(\d+)\s*(?:B\s*)?字节|\d+ B/)?.[0] ?? 'no byte counter found',
+  'the Index tab shows the exact injected section',
+  String(indexText).includes('<loci-context'),
+  String(indexText).match(/(\d+)\s*B/)?.[0] ?? 'no byte counter found',
 );
 
 // 3. Settings: the account menu, then the settings entry inside it.

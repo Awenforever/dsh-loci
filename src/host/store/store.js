@@ -1087,7 +1087,11 @@ export class Store {
       summary.optimized = false;
     }
     writeMeta(this.db, META_KEYS.lastMaintenance, String(now));
-    this.audit.append('maintenance', summary, { sync: true });
+    // A sweep that changed nothing is not news. Keeping it out of the audit is
+    // what stops the activity feed from being a wall of "nothing to do" and
+    // hiding the writes a user actually wants to see.
+    const changed = summary.expiredWorking > 0 || summary.closedCandidates > 0 || summary.reindexed;
+    if (changed) this.audit.append('maintenance', summary, { sync: true });
     return summary;
   }
 
