@@ -158,11 +158,21 @@ if (mode === 'inject-cost') {
   }
 }
 
-if (mode === 'recall') {
+if (mode === 'recall' || mode === 'single') {
   const { store } = openStore();
   const existing = store.stats().heads;
   if (existing < CORPUS.length) seedCorpus(store, 'recall');
   store.close();
+
+  // A broken model route would otherwise look like a recall failure. Ask once
+  // and stop with a diagnosis instead of reporting 0/50.
+  const smoke = await runTask('回答一个字：好');
+  if (/MISSING_CREDENTIAL|no credential|unauthor/i.test(`${smoke.err}\n${smoke.out}`) || smoke.out.trim().length === 0) {
+    console.error('environment is not usable: the model route did not answer');
+    console.error(`${smoke.err.slice(0, 400)}`);
+    console.error(`store at ${home} has ${openStore().store.stats().heads} entries`);
+    process.exit(4);
+  }
 
   const single = [];
   for (const entry of CORPUS) {
@@ -173,6 +183,28 @@ if (mode === 'recall') {
     if (single.length % 10 === 0) console.log(`single ${single.length}/${CORPUS.length} · hits ${single.filter((item) => item.hit).length}`);
   }
   const singleHits = single.filter((item) => item.hit).length;
+
+  // `single` stops here: the multi-fact and broad suites live in their own
+  // scripts, so one long run can no longer lose this file's evidence.
+  if (mode === 'single') {
+    report.single = {
+      total: single.length,
+      hits: singleHits,
+      rate: Number((singleHits / single.length).toFixed(3)),
+      threshold: 0.95,
+      pass: singleHits / single.length >= 0.95,
+      missing: single.filter((item) => !item.hit),
+      cases: single,
+    };
+    report.pass = report.single.pass;
+    console.log(`single ${singleHits}/${single.length} = ${report.single.rate}`);
+    if (!report.pass) process.exitCode = 1;
+    report.finishedAt = new Date().toISOString();
+    const text = JSON.stringify(report, null, 2);
+    if (jsonOut !== undefined) writeFileSync(jsonOut, `${text}\n`, 'utf8');
+    console.log(text.slice(0, 800));
+    process.exit(process.exitCode ?? 0);
+  }
 
   const multi = [];
   for (const [question] of MULTI) {

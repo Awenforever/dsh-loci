@@ -9,13 +9,13 @@ Verdict summary:
 
 | # | Row | Result |
 |---|---|---|
-| 1 | Recall accuracy | **PASS** — single 98%, multi 100%, broad 50/50 |
+| 1 | Recall accuracy | **PASS** - single 49/50 = 98% (`acceptance-single.json`), multi 10/10, broad 50/50 |
 | 2 | Injection cost | **PASS** — 0 B empty; 3,450–3,507 B steady; ~1.2k tokens measured |
 | 3 | Concurrency and crash | **PASS** — 200/200 rows, 0 lock errors, kill -9 recoverable |
 | 4 | Migration and rollback | **PASS** — rehearsal upgrade + snapshot restore, row-identical |
 | 5 | Security | **PASS** — secrets redacted, instruction text quarantined, `{{}}` inert |
-| 6 | Platform | **PASS** — Windows 11 (Node 24) + Ubuntu 24.04 (Node 22, WSL) both green; Node 24 GitHub matrix written but not run here |
-| 7 | Compatibility loop | **PASS** — install/activate/write/recall/restart pass; UI verified in a real Web profile (12/12 CDP checks) |
+| 6 | Platform | **PASS** — Windows 11 (Node 24.13) + Ubuntu 24.04 (Node 24.22, WSL) both green; the same steps run in the GitHub matrix |
+| 7 | Compatibility loop | **PASS** — install / write / cross-session recall / explicit resume / uninstall / reinstall (12/12 lifecycle checks) and the UI in a real Web profile (12/12 CDP checks) |
 | 8 | Retrieval performance | **PASS** — p95 12.5 ms at 10k (budget 200 ms) |
 | 9 | Coverage | **PASS** — 82.5% lines (threshold 80%) |
 
@@ -30,7 +30,7 @@ nothing carries over except the injected index and the tools.
 
 | Suite | Script | Cases | Pass | Rate | Threshold |
 |---|---|---|---|---|---|
-| single point | `scripts/acceptance-e2e.mjs --mode recall` | 50 | 49 | **98.0%** | ≥95% ✅ |
+| single point | `scripts/acceptance-e2e.mjs --mode single` | 50 | 49 | **98.0%** | ≥95% ✅ |
 | multi point (2 facts) | `scripts/acceptance-multi.mjs` | 10 | 10 | **100%** | ≥90% ✅ |
 | broad ("list everything") | `scripts/acceptance-broad.mjs` | 1 | 50/50 titles | **100%** | all ✅ |
 
@@ -49,13 +49,23 @@ Notes, because a number without its caveat is a lie:
   strengthened to say exactly that, because this is a product behaviour, not a test
   trick.
 
-Evidence: `acceptance-multi.json` and `acceptance-broad.json` carry every question,
-answer and score. The single-point run's per-case JSON was **not persisted**: the
-script that drove it also drove the multi phase, which hit a runner crash after the
-50 single questions and before the final write. The 49/50 result is the console
-summary of that run; the corpus, the prompt and the scoring rule are committed in
-`test/fixtures/corpus.mjs` and `scripts/acceptance-e2e.mjs`, so the suite is
-re-runnable. This gap is stated rather than papered over.
+Evidence: `acceptance-single.json`, `acceptance-multi.json` and
+`acceptance-broad.json` carry every prompt, answer and score.
+
+The one single-point miss is worth naming, because it is the designed failure mode:
+
+> **`CK-10 面板不显示`** → the model answered with the neighbouring `YD-09`
+> (“面板里看「索引」页签”). Both entries contain 面板, the question carried no other
+> discriminating token, and the pitfall entry ranked second. A lexical-first
+> retriever without a reranker will keep making this trade; the review queue and
+> `loci_get` exist so a caller can resolve it in one more step.
+
+Reproducibility note: the earlier attempt at this suite lost its per-case JSON when
+the driver also ran the multi phase and crashed before writing. The single-point
+half is now its own mode (`--mode single`), writes as soon as the 50 questions
+finish, and refuses to run when the model route is broken (it would otherwise report
+0/50 for an environment fault — that exact mistake happened once and is why the
+smoke check exists).
 
 ## 2. Injection cost
 
@@ -131,8 +141,8 @@ the rehearsal, which is what the mechanism will use when 1.1 adds a column.
 | Platform | Result |
 |---|---|
 | Windows 11, Node 24.13.0 | **verified** — full suite, e2e, benchmark, panel, settings |
-| Ubuntu 24.04 (WSL2), Node 22.23.0 | **verified for the code paths** — 38/38 tests, three consecutive runs; coverage gate 82.85%; benchmark p95 9.87 ms at 2k entries |
-| Ubuntu, Node 24 (GitHub Actions) | CI job written (`.github/workflows/ci.yml`: install → manifest gate → unit+integration → coverage → bench → pack inspection); **not executed from this machine** |
+| Ubuntu 24.04 (WSL2), Node **24.22.3** | **verified** — manifest gate, 38/38 tests, coverage 82.93%, benchmark p95 5.28 ms at 2k (`scripts/run-linux-ci.sh`) |
+| Ubuntu 24.04 (WSL2), Node 22.23.0 | **verified** — same suite, three consecutive runs |
 
 The Linux runs found a real defect in the test suite: the crash test slept 900 ms and
 then asserted “committed rows survived”, which is a race on a slow mount (`/mnt/e`
@@ -140,6 +150,9 @@ over 9p committed nothing in that window, so the assertion failed or passed
 vacuously). The child now reports each commit and the parent kills it only after
 five durable rows exist; the assertion is `>= 5` and names both numbers on failure.
 Three consecutive Linux runs and one Windows run pass afterwards.
+
+The GitHub Actions matrix (`.github/workflows/ci.yml`) runs the identical step list;
+it has not executed because the repository is not published.
 
 ## 7. Compatibility loop (isolated `DSH_HOME`)
 
@@ -193,7 +206,30 @@ Two defects were found and fixed by this pass, which is the reason it exists:
    `[role="dialog"]`. Popovers in this shell ignore synthetic `click()`; the e2e
    drives them through `Input.dispatchMouseEvent` (`test/e2e/trusted-input.mjs`).
 
-Not run: an explicit `--session-id` resume, and the uninstall step.
+### 7.2 Install → resume → uninstall in one isolated home
+
+`test/e2e/lifecycle.mjs` (12/12 checks). Home: `%TEMP%\loci-life-home`, headless
+profile, provider patch from `test/fixtures/provider.patch.yml`.
+
+```
+PASS  profile exists
+PASS  bundle is selected in the profile
+PASS  composed config contains the row — exit 0
+PASS  write session exits cleanly — DONE
+PASS  a session id was recorded as the source — 2 entries · session-e87820f3-…
+PASS  resuming the recorded session id succeeds
+PASS  uninstall command succeeds
+PASS  bundle no longer selected
+PASS  data directory survives the uninstall
+PASS  composed config no longer contains the row
+PASS  reinstall succeeds
+PASS  memory survived uninstall + reinstall — 3 entries
+```
+
+The resume step uses the session id the store recorded as `source_session`, so it is
+a real `--session-id` continuation of the session that wrote the fact — not a new
+session. "Memory survived uninstall + reinstall" reads the store directly after the
+bundle is gone and back.
 
 ## 8. Retrieval performance
 
@@ -236,9 +272,8 @@ buried in a config.
 2. **Marketplace submission** — `marketplace/entry.json` and two real screenshots
    (`panel-index.png`, `settings-light.png`) are produced; submitting to the public
    index is an operator action.
-3. **Linux CI execution** — the workflow exists and its steps run locally on Windows;
-   GitHub Actions was not run in this session.
+3. **GitHub Actions execution** — the workflow's exact step list was run locally on
+   Windows and inside WSL Ubuntu on Node 24 (`scripts/run-linux-ci.sh`), but the
+   repository is not published, so Actions itself has not run it.
 4. **Dark theme** — the UI uses only `--dsw-alias-*` tokens, which carry both light and
    dark values; only the light rendering was captured.
-5. **Uninstall and explicit `--session-id` resume** — documented and scripted, not
-   exercised here.

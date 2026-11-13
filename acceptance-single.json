@@ -1,0 +1,377 @@
+{
+  "mode": "single",
+  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-single-home",
+  "profile": "headless",
+  "startedAt": "2026-11-13T10:07:52.956Z",
+  "cases": [],
+  "single": {
+    "total": 50,
+    "hits": 49,
+    "rate": 0.98,
+    "threshold": 0.95,
+    "pass": true,
+    "missing": [
+      {
+        "title": "面板不显示",
+        "keyword": "CK-10",
+        "hit": false,
+        "answer": "面板不显示这条约定的具体内容是：在面板里查看「索引」页签，即可确认模型实际看到的记忆段（关键词 YD-09）。",
+        "exit": 0
+      }
+    ],
+    "cases": [
+      {
+        "title": "删除前路径断言",
+        "keyword": "ZH-01",
+        "hit": true,
+        "answer": "删除前路径断言（ZH-01）这条约定要求：删除任何目录前，必须先做路径断言，确认目标既是绝对路径，又位于白名单根内。",
+        "exit": 0
+      },
+      {
+        "title": "禁止 rm -rf",
+        "keyword": "ZH-02",
+        "hit": true,
+        "answer": "编号 ZH-02 的“禁止 rm -rf”约定是：清理临时目录必须走受控清理脚本并先 dry-run，禁止直接使用 rm -rf。",
+        "exit": 0
+      },
+      {
+        "title": "密钥不入日志",
+        "keyword": "ZH-03",
+        "hit": true,
+        "answer": "密钥不入日志（m_01M7A5PHQGCSC7VQ5V50，关键词 ZH-03）规定：任何 API key 都不得出现在日志或提交中，排查时只打印该密钥的前四位。",
+        "exit": 0
+      },
+      {
+        "title": "生产机不跑迁移",
+        "keyword": "ZH-04",
+        "hit": true,
+        "answer": "生产机不跑迁移这一条（m_01M7A5PHQGNJ0TZPWAKK，关键词 ZH-04）的内容是：禁止在生产机 prod-01 上直接执行迁移脚本，必须先在本项目 staging 演练。",
+        "exit": 0
+      },
+      {
+        "title": "迁移前备份",
+        "keyword": "ZH-05",
+        "hit": true,
+        "answer": "“迁移前备份”（关键词 ZH-05）要求：数据库迁移前必须用 pg_dump 做全量备份，并把备份路径写入发布记录。",
+        "exit": 0
+      },
+      {
+        "title": "回滚窗口 30 分钟",
+        "keyword": "ZH-06",
+        "hit": true,
+        "answer": "“回滚窗口 30 分钟”这条约定的编号关键词是 **ZH-06**，其内容为：回滚窗口是 30 分钟，超过就必须走人工决策。",
+        "exit": 0
+      },
+      {
+        "title": "发布顺序固定",
+        "keyword": "ZH-07",
+        "hit": true,
+        "answer": "发布顺序固定：staging → canary 10% → 全量；任何一步失败立即停止（关键词 ZH-07）。",
+        "exit": 0
+      },
+      {
+        "title": "改动必附测试",
+        "keyword": "ZH-08",
+        "hit": true,
+        "answer": "任何行为改动都必须附带一个在改动前会失败的测试，否则不予合并（关键词 ZH-08）。",
+        "exit": 0
+      },
+      {
+        "title": "不碰生产容器",
+        "keyword": "ZH-09",
+        "hit": true,
+        "answer": "“不碰生产容器”（**ZH-09**）：不碰 Hermes/NAS 生产容器，只读免授权，改动需当窗授权。",
+        "exit": 0
+      },
+      {
+        "title": "删除先入隔离区",
+        "keyword": "ZH-10",
+        "hit": true,
+        "answer": "删除时先进入隔离区，dry-run 检查得到的条目数与预期不符就停止；这条约定对应的关键词是 ZH-10。",
+        "exit": 0
+      },
+      {
+        "title": "提交规范",
+        "keyword": "ZH-11",
+        "hit": true,
+        "answer": "“提交规范”（编号关键词：ZH-11）：提交信息必须符合 Conventional Commits，并且一行摘要不超过 72 字符。",
+        "exit": 0
+      },
+      {
+        "title": "依赖不自动升级",
+        "keyword": "ZH-12",
+        "hit": true,
+        "answer": "生产环境用的 profile 不会自动升级依赖，升级需要单独开一个 PR，并记录回滚版本，关键词 ZH-12。",
+        "exit": 0
+      },
+      {
+        "title": "隐私默认本地",
+        "keyword": "ZH-13",
+        "hit": true,
+        "answer": "「隐私默认本地」约定的具体内容是：记忆与日志默认只写入本机，任何出网能力都必须显式开启；该条目编号为 ZH-13，记忆 ID 是 m_01M7A5PHQGD17AP22T8B。",
+        "exit": 0
+      },
+      {
+        "title": "时间用 UTC 存",
+        "keyword": "ZH-14",
+        "hit": true,
+        "answer": "“时间用 UTC 存”（m_01M7A5PHQGSZGNKA5S7K）规定：数据库时间一律存 UTC 毫秒，展示时再转本地时区；关键词为 ZH-14。",
+        "exit": 0
+      },
+      {
+        "title": "空库零注入",
+        "keyword": "ZH-15",
+        "hit": true,
+        "answer": "空库零注入这条约定的内容是：记忆层在空库时必须注入 0 字节，不得输出任何说明文字，其编号关键词是 ZH-15。",
+        "exit": 0
+      },
+      {
+        "title": "禁止静默截断",
+        "keyword": "ZH-16",
+        "hit": true,
+        "answer": "根据长期记忆，禁止静默截断这条约定的内容是：召回必须返回总数与游标，禁止静默截断结果集（关键词 ZH-16）。",
+        "exit": 0
+      },
+      {
+        "title": "部署前检查清单",
+        "keyword": "YD-01",
+        "hit": true,
+        "answer": "「部署前检查清单」（YD-01）要求按序执行五步：备份 → 迁移演练 → 冒烟 → 发布 → 观察 10 分钟。",
+        "exit": 0
+      },
+      {
+        "title": "本地起服务",
+        "keyword": "YD-02",
+        "hit": true,
+        "answer": "条目“本地起服务”（YD-02）约定：本地起服务用 pnpm dev:web，端口冲突时改 56938。",
+        "exit": 0
+      },
+      {
+        "title": "插件安装路径",
+        "keyword": "YD-03",
+        "hit": true,
+        "answer": "插件安装路径约定（YD-03）：插件通过 plugin_manager 的 install_bundle 安装，不要手动修改 profile 的 package.json。",
+        "exit": 0
+      },
+      {
+        "title": "排障顺序",
+        "keyword": "YD-04",
+        "hit": true,
+        "answer": "排障顺序（YD-04）：先查日志，再复现，再隔离，最后才改代码。",
+        "exit": 0
+      },
+      {
+        "title": "会话续接",
+        "keyword": "YD-05",
+        "hit": true,
+        "answer": "会话续接约定（关键词 YD-05）：续接会话时应先用 session_search，再阅读代码，不要凭印象修改。",
+        "exit": 0
+      },
+      {
+        "title": "发版流程",
+        "keyword": "YD-06",
+        "hit": true,
+        "answer": "发版流程（YD-06）是：先打 tag，然后执行 npm publish --provenance，接着更新市场条目，最后进行安装验证。",
+        "exit": 0
+      },
+      {
+        "title": "回滚步骤",
+        "keyword": "YD-07",
+        "hit": true,
+        "answer": "回滚步骤的约定是：停服 → 还原快照 → 校验完整性 → 固定版本重装，关键词为 **YD-07**。",
+        "exit": 0
+      },
+      {
+        "title": "记忆写入",
+        "keyword": "YD-08",
+        "hit": true,
+        "answer": "记忆写入（m_01M7A5PHQGHSYY0RV16C）：写记忆时带上逐字引文作为证据，没有引文就先存为候选（关键词 YD-08）。",
+        "exit": 0
+      },
+      {
+        "title": "面板查看",
+        "keyword": "YD-09",
+        "hit": true,
+        "answer": "「面板查看」约定的内容是：在面板里打开「索引」页签，即可确认模型实际看到的记忆段，条目编号关键词为 YD-09。",
+        "exit": 0
+      },
+      {
+        "title": "清理测试残留",
+        "keyword": "YD-10",
+        "hit": true,
+        "answer": "清理测试残留：测试残留清理必须走 Assert-DelPath 断言，禁止直接使用 Remove-Item（关键词 YD-10）。",
+        "exit": 0
+      },
+      {
+        "title": "CI 矩阵",
+        "keyword": "YD-11",
+        "hit": true,
+        "answer": "CI 矩阵（YD-11）要求 CI 必须覆盖 Windows 与 Ubuntu 两个平台，且 Node 版本固定为 24。",
+        "exit": 0
+      },
+      {
+        "title": "大文件处理",
+        "keyword": "YD-12",
+        "hit": true,
+        "answer": "大文件处理这条约定规定：超过 10MB 的日志先用 Select-String 定位，再分段读取，关键词是 YD-12。",
+        "exit": 0
+      },
+      {
+        "title": "并发验证",
+        "keyword": "YD-13",
+        "hit": true,
+        "answer": "这条并发验证约定（编号关键词 YD-13）是：用 4 个进程各写 50 条，断言零丢失零锁错误。",
+        "exit": 0
+      },
+      {
+        "title": "迁移演练",
+        "keyword": "YD-14",
+        "hit": true,
+        "answer": "迁移演练（关键词 YD-14）：迁移先在 fixture 上演练一遍，确认行数不变后，再上生产。",
+        "exit": 0
+      },
+      {
+        "title": "性能基准",
+        "keyword": "YD-15",
+        "hit": true,
+        "answer": "性能基准这条约定（关键词 YD-15）要求：检索性能基准在 1 万条数据上运行 200 次查询，并查看 p95。",
+        "exit": 0
+      },
+      {
+        "title": "Token 预算",
+        "keyword": "YD-16",
+        "hit": true,
+        "answer": "Token 预算约定（编号 YD-16）：注入预算先按字节控制，再用真实用量校准 token 上限。",
+        "exit": 0
+      },
+      {
+        "title": "错误上报",
+        "keyword": "YD-17",
+        "hit": true,
+        "answer": "错误上报只带错误码与上下文字段，不带用户原文（关键词 YD-17）。",
+        "exit": 0
+      },
+      {
+        "title": "上周的 429 事故",
+        "keyword": "CK-01",
+        "hit": true,
+        "answer": "上周 429 事故的根因是并发请求超过了窗口限制，缓解办法是退避重试；编号关键词是 CK-01。",
+        "exit": 0
+      },
+      {
+        "title": "误删事故",
+        "keyword": "CK-02",
+        "hit": true,
+        "answer": "误删事故（关键词 CK-02）的约定是：误删的根因是路径变量未加引号，修复办法是改用 `-LiteralPath`。",
+        "exit": 0
+      },
+      {
+        "title": "SQLite 锁",
+        "keyword": "CK-03",
+        "hit": true,
+        "answer": "SQLite 锁这条约定的内容是：根因是没开 WAL 与 busy_timeout，修复后并发正常；关键词 CK-03。",
+        "exit": 0
+      },
+      {
+        "title": "中文召回失败",
+        "keyword": "CK-04",
+        "hit": true,
+        "answer": "中文召回失败（m_01M7A5PHQGSCEV01XYS6）：根因是 unicode61 分词方式；关键词是 CK-04，改用 bigram 分词后召回恢复。",
+        "exit": 0
+      },
+      {
+        "title": "模板击穿",
+        "keyword": "CK-05",
+        "hit": true,
+        "answer": "模板击穿（m_01M7A5PHQGX2NH2SMX94，关键词 CK-05）：提示词被 `{{}}` 击穿的根因是没关插值，修复方法是设置 `interpolate:false`。",
+        "exit": 0
+      },
+      {
+        "title": "空转回合噪音",
+        "keyword": "CK-06",
+        "hit": true,
+        "answer": "空转回合噪音（关键词 CK-06）：空转回合强制写台账会产生噪音，因此已改为按需写入。",
+        "exit": 0
+      },
+      {
+        "title": "索引膨胀",
+        "keyword": "CK-07",
+        "hit": true,
+        "answer": "索引膨胀这条记忆的编号是 m_01M7A5PHQG2TJK0SPJCW，关键词为 CK-07；其内容是：索引膨胀到 27KB/轮后，模型明显变慢，因此改为固定预算。",
+        "exit": 0
+      },
+      {
+        "title": "跨项目串味",
+        "keyword": "CK-08",
+        "hit": true,
+        "answer": "跨项目串味（关键词 CK-08）这条记录记录的是：根因是默认作用域为 global，现已改为默认 workspace。",
+        "exit": 0
+      },
+      {
+        "title": "兼容闸门",
+        "keyword": "CK-09",
+        "hit": true,
+        "answer": "兼容闸门 CK-09 约定：插件不加载的根因是 peer 范围写死，应改为用 engines.dsh 声明。",
+        "exit": 0
+      },
+      {
+        "title": "面板不显示",
+        "keyword": "CK-10",
+        "hit": false,
+        "answer": "面板不显示这条约定的具体内容是：在面板里查看「索引」页签，即可确认模型实际看到的记忆段（关键词 YD-09）。",
+        "exit": 0
+      },
+      {
+        "title": "工具死掉",
+        "keyword": "CK-11",
+        "hit": true,
+        "answer": "工具死掉这条约定（m_01M7A5PHQGG2N9F1N96C，关键词 CK-11）的内容是：可选后端缺失导致 10 个工具失效，改为自动降级。",
+        "exit": 0
+      },
+      {
+        "title": "写入变慢",
+        "keyword": "CK-12",
+        "hit": true,
+        "answer": "写入变慢的约定是：根因是 FTS 前缀查询，去掉 `*` 后恢复，关键词 CK-12（条目 m_01M7A5PHQG15FZQ53B4F）。",
+        "exit": 0
+      },
+      {
+        "title": "排序错乱",
+        "keyword": "CK-13",
+        "hit": true,
+        "answer": "排序错乱这条约定是：排序错乱的根因是每写重建索引，改为只追加（关键词 CK-13）。",
+        "exit": 0
+      },
+      {
+        "title": "迁移丢数据",
+        "keyword": "CK-14",
+        "hit": true,
+        "answer": "迁移时丢数据的根本原因，是先删列再建表；因此约定改为采用加列迁移（关键词 CK-14，m_01M7A5PHQGVDJFYZEBMJ）。",
+        "exit": 0
+      },
+      {
+        "title": "误报重复",
+        "keyword": "CK-15",
+        "hit": true,
+        "answer": "误报重复这条约定的内容是：重复检测误报的根因是用高频词做锚点，应改为稀有词；关键词 CK-15（条目 m_01M7A5PHQGX7YYAXRQ44）。",
+        "exit": 0
+      },
+      {
+        "title": "读取超时",
+        "keyword": "CK-16",
+        "hit": true,
+        "answer": "读取超时的根因是 bm25 全量打分，应改为进程内打分（CK-16）。",
+        "exit": 0
+      },
+      {
+        "title": "审计缺失",
+        "keyword": "CK-17",
+        "hit": true,
+        "answer": "审计缺失这条约定（编号 CK-17）的根因是只记录了模型输出，因此改为逐请求记录字节。",
+        "exit": 0
+      }
+    ]
+  },
+  "pass": true,
+  "finishedAt": "2026-11-13T10:19:07.241Z"
+}

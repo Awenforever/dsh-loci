@@ -4,17 +4,20 @@
 
 | DSH | Node | OS | Result | Evidence |
 |---|---|---|---|---|
-| 0.2.2-rc.1 | 24.13.0 | Windows 11 | **verified** — install, activate, write, cross-session recall, restart, panel + settings via CDP | `docs/ACCEPTANCE.md` §7 |
-| 0.2.2-rc.1 (host) | 22.23.0 | Ubuntu 24.04 (WSL2) | **verified for the store and the suite** — 38/38 tests × 3 consecutive runs, coverage gate 82.85%, benchmark p95 9.87 ms at 2k | this round: `node --test` + `scripts/check-coverage.mjs` |
-| 0.2.2-rc.1 | 24 | Ubuntu (GitHub Actions) | matrix job written, not executed from this machine | `.github/workflows/ci.yml` |
+| 0.2.2-rc.1 | 24.13.0 | Windows 11 | **verified** — install, activate, write, cross-session recall, resume, uninstall/reinstall, panel + settings via CDP | `docs/ACCEPTANCE.md` §7 |
+| 0.2.2-rc.1 (host) | **24.22.3** | Ubuntu 24.04 (WSL2) | **verified** — manifest gate, 38/38 tests, coverage 82.93%, benchmark p95 5.28 ms at 2k | `scripts/run-linux-ci.sh` (fetches Node 24, runs the same commands as CI) |
+| 0.2.2-rc.1 (host) | 22.23.0 | Ubuntu 24.04 (WSL2) | **verified** — same suite × 3 consecutive runs | recorded in `docs/ACCEPTANCE.md` §6 |
+| 0.2.2-rc.1 | 24 | Ubuntu (GitHub Actions) | the identical step list runs in `.github/workflows/ci.yml`; the host is not published, so Actions has not run it | `.github/workflows/ci.yml` |
 | other 0.2.x | — | — | not verified | — |
 
-The Linux run used the Ubuntu 24.04 WSL distribution's Node 22.23.0, which is below
-the declared `engines.node` floor (`>=24.9.0`). It proves the store, retrieval,
-concurrency, migration and security paths are portable — no Windows-only assumption
-in the code — but it is **not** a substitute for the Node 24 CI job, which is why
-both rows are listed. The Node floor comes from the Harness, not from a feature Loci
-needs beyond `node:sqlite`.
+`scripts/run-linux-ci.sh` exists so the Linux claim is reproducible on any machine
+with WSL: it downloads the newest Node 24 tarball to `/tmp` (nothing is installed
+system-wide), then runs `check-manifest`, the unit+integration suite, the coverage
+gate and the benchmark — the same four commands the CI job runs.
+
+Both Node 22 and Node 24 pass on Linux, which is the point: the floor in
+`engines.node` comes from the Harness, not from a feature Loci needs beyond
+`node:sqlite`.
 
 `package.json` declares the range the loader honours:
 
