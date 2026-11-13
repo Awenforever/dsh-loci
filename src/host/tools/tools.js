@@ -221,11 +221,16 @@ export function createTools(deps) {
       'Find saved memory by meaning and keywords. Hybrid: CJK bigram full-text, entity match, optional vectors, fused and ranked. ' +
       'Returns `total` and a `cursor`: page with the cursor when `hasMore` is true — never assume the first page is everything. ' +
       'To list everything, set limit:50 and keep calling with the returned cursor until hasMore is false. ' +
+      'Omit `query` entirely to list the newest entries — that is how you answer "what do you remember?". ' +
       'Use this before asking the user to repeat a convention, and after `loci_get` to see related facts.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'What to look for. Chinese and English are both fine; short Chinese queries match substrings.' },
+        query: {
+          type: 'string',
+          description:
+            'What to look for. Chinese and English are both fine; short Chinese queries match substrings. Omit to list the newest entries.',
+        },
         scope: { type: 'string', enum: SCOPES, description: 'Restrict to one scope. Omit to search session+workspace+project(+global).' },
         kinds: { type: 'array', items: { type: 'string', enum: KINDS } },
         tags: { type: 'array', items: { type: 'string' }, description: 'Require every listed tag.' },
@@ -236,7 +241,7 @@ export function createTools(deps) {
         detail: { type: 'string', enum: ['snippet', 'overview', 'full'], description: 'Body detail: snippet (default), overview, full.' },
         includeGlobal: { type: 'boolean', description: 'Include global-scope memories (default true).' },
       },
-      required: ['query'],
+      required: [],
       additionalProperties: false,
     },
     output: {
@@ -247,7 +252,7 @@ export function createTools(deps) {
     isConcurrencySafe: () => true,
     execute: async (args, exec) => {
       const context = execContext(exec);
-      const query = str(args, 'query', { required: true, maxChars: 500 });
+      const query = str(args, 'query', { fallback: '', maxChars: 500 });
       const scopeKind = oneOf(args, 'scope', SCOPES, undefined);
       const includeGlobal = bool(args, 'includeGlobal', config('includeGlobal'));
       const status = oneOf(args, 'status', ['verified', 'any'], 'verified');
@@ -429,7 +434,11 @@ function renderSearch(value) {
     `total=${value.total} returned=${value.returned} hasMore=${value.hasMore}${value.cursor ? ` cursor=${value.cursor}` : ''}`,
   ];
   if (value.hits.length === 0) {
-    lines.push('No relevant memory found for this query.');
+    lines.push(
+      value.total > 0
+        ? `No rows on this page, but ${value.total} entries match — continue with the cursor.`
+        : 'No relevant memory found for this query.',
+    );
     return lines.join('\n');
   }
   value.hits.forEach((hit, index) => {

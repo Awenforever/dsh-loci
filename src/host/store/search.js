@@ -262,6 +262,10 @@ export function lexicalDetail(row, plan) {
 /**
  * Run one search.
  *
+ * An empty query is not an error: it means "list what you have", which is the
+ * question users actually ask. That path pages through the newest entries with
+ * the same `total`/`cursor` contract, so a caller does not need a second tool.
+ *
  * @param store - open store.
  * @param request - `query`, `scopeKeys`, `statuses`, `kinds`, `tags`, `asOf`,
  *   `limit`, `cursor`, `detail`, `sessionId`, `scopeKey`, `channel`.
@@ -272,22 +276,12 @@ export async function search(store, request) {
   const limit = Math.max(1, Math.min(request.limit ?? 10, 50));
   const detail = DETAIL_CHARS[request.detail] === undefined ? 'snippet' : request.detail;
   const query = String(request.query ?? '').trim();
-  const empty = {
-    total: 0,
-    matchedTotal: 0,
-    partial: false,
-    returned: 0,
-    limit,
-    hasMore: false,
-    cursor: null,
-    channels: [],
-    tookMs: 0,
-    hits: [],
-  };
-  if (query.length === 0) return empty;
+  if (query.length === 0) return listRecent(store, request, { limit, detail, started });
 
   const plan = buildQueryPlan(query, { hub: store.hubPredicate?.() });
-  if (plan.match.length === 0 && plan.fallbackChars.length === 0) return empty;
+  if (plan.match.length === 0 && plan.fallbackChars.length === 0) {
+    return { total: 0, matchedTotal: 0, partial: false, returned: 0, limit, hasMore: false, cursor: null, channels: [], tookMs: 0, hits: [] };
+  }
   const base = {
     query,
     scopeKeys: request.scopeKeys,
@@ -300,8 +294,9 @@ export async function search(store, request) {
   };
   const hash = queryHash({ ...base, tags: request.tags });
   const cursor = decodeCursor(request.cursor);
-  if (request.cursor !== undefined && cursor === undefined) return { ...empty, error: 'cursor-invalid' };
-  if (cursor !== undefined && cursor.hash !== hash) return { ...empty, error: 'cursor-mismatch' };
+  const emptyPage = { total: 0, matchedTotal: 0, partial: false, returned: 0, limit, hasMore: false, cursor: null, channels: [], tookMs: 0, hits: [] };
+  if (request.cursor !== undefined && cursor === undefined) return { ...emptyPage, error: 'cursor-invalid' };
+  if (cursor !== undefined && cursor.hash !== hash) return { ...emptyPage, error: 'cursor-mismatch' };
   const offset = cursor?.offset ?? 0;
 
   // Candidate generation. Three bounded sources; any one of them may be empty.
@@ -436,4 +431,89 @@ function tagAllowedIds(store, base, tags) {
     .prepare(`SELECT m.id FROM memory m WHERE ${filter.sql} AND ${clauses}`)
     .all(...filter.params, ...tags);
   return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Page the newest entries, for a search with no query.
+ *
+ * This is what "what do you remember?" actually needs: no fabricated query
+ * string, the same `total`/`cursor` contract as a real search, and the same
+ * detail levels. Order is by insertion (`ord`), which is also the id order, so
+ * a cursor is stable even while rows are being written.
+ *
+ * @param store - open store.
+ * @param request - the search request.
+ * @param options - `limit`, `detail`, `started`.
+ * @returns a search-shaped page.
+ */
+function listRecent(store, request, options) {
+  const { limit, detail, started } = options;
+  const filter = filterSql({
+    scopeKeys: request.scopeKeys,
+    statuses: request.statuses ?? ['verified'],
+    kinds: request.kinds,
+    now: request.now ?? Date.now(),
+    asOf: Number.isFinite(request.asOf) ? request.asOf : undefined,
+  });
+  const tagClauses =
+    Array.isArray(request.tags) && request.tags.length > 0
+      ? ` AND ${request.tags.map(() => 'EXISTS (SELECT 1 FROM json_each(m.tags) WHERE value = ?)').join(' AND ')}`
+      : '';
+  const tagParams = Array.isArray(request.tags) ? request.tags : [];
+  const total = Number(
+    store.db
+      .prepare(`SELECT COUNT(*) AS n FROM memory m WHERE ${filter.sql}${tagClauses}`)
+      .get(...filter.params, ...tagParams)?.n ?? 0,
+  );
+  const cursor = request.cursor === undefined ? undefined : decodeCursor(request.cursor);
+  if (request.cursor !== undefined && cursor === undefined) {
+    return { total: 0, matchedTotal: 0, partial: false, returned: 0, limit, hasMore: false, cursor: null, channels: [], tookMs: 0, hits: [], error: 'cursor-invalid' };
+  }
+  const offset = cursor?.offset ?? 0;
+  const rows = store.db
+    .prepare(
+      `SELECT ${ROW_COLUMNS} FROM memory m WHERE ${filter.sql}${tagClauses}
+       ORDER BY m.ord DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...filter.params, ...tagParams, limit, offset);
+  const hits = rows.map((row) => hydrateOne({ row, score: 0, channels: ['recent'] }, detail));
+  const hasMore = offset + hits.length < total;
+  const result = {
+    total,
+    matchedTotal: total,
+    partial: false,
+    returned: hits.length,
+    limit,
+    hasMore,
+    cursor: hasMore ? encodeCursor({ offset: offset + hits.length, hash: hashForListing({ ...request, kinds: request.kinds }) }) : null,
+    channels: ['recent'],
+    tookMs: Date.now() - started,
+    hits,
+  };
+  store.recordRecall?.({
+    sessionId: request.sessionId,
+    scopeKey: request.scopeKey,
+    query: '',
+    total,
+    returned: hits.length,
+    tookMs: result.tookMs,
+    channels: ['recent'],
+  });
+  return result;
+}
+
+/**
+ * Cursor hash for a listing (same query-shape guard as a search).
+ * @param request - the listing request.
+ * @returns a short digest.
+ */
+function hashForListing(request) {
+  return queryHash({
+    query: '',
+    scopeKeys: request.scopeKeys,
+    statuses: request.statuses ?? ['verified'],
+    kinds: request.kinds,
+    tags: request.tags,
+    asOf: Number.isFinite(request.asOf) ? request.asOf : undefined,
+  });
 }
