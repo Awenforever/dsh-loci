@@ -28,6 +28,10 @@ let written = 0;
 
 try {
   if (loop) {
+    // Progress lines let the crash test kill us only after the durable state it
+    // asserts on actually exists. On a slow filesystem (/mnt/e over 9p) a fixed
+    // sleep is not enough, and killing before the first commit would make the
+    // parent's assertion vacuous.
     for (let i = 0; ; i += 1) {
       store.write({
         scope: 'workspace',
@@ -35,11 +39,11 @@ try {
         scopeLabel: scopes.labels.workspace,
         kind: 'semantic',
         trustSource: 'user',
-        title: `worker ${worker} fact ${i}`,
-        body: `第 ${i} 条并发写入，来自 worker ${worker}。`,
+        title: `worker ${worker} crash fact ${i}`,
+        body: `第 ${i} 条崩溃测试写入，来自 worker ${worker}。`,
       });
       written += 1;
-      if (i > 4 && i % 7 === 0) process.stdout.write('');
+      process.stdout.write(`committed ${written}\n`);
     }
   }
   for (let i = 0; i < count; i += 1) {

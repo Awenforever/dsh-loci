@@ -4,9 +4,17 @@
 
 | DSH | Node | OS | Result | Evidence |
 |---|---|---|---|---|
-| 0.2.2-rc.1 | 24.13.0 | Windows 11 | **verified** — install, activate, write, cross-session recall, restart | `docs/ACCEPTANCE.md` §7 |
-| 0.2.2-rc.1 | 24.9+ | Linux | expected compatible; CI runs unit + integration + bench on `ubuntu-latest` | `.github/workflows/ci.yml` |
+| 0.2.2-rc.1 | 24.13.0 | Windows 11 | **verified** — install, activate, write, cross-session recall, restart, panel + settings via CDP | `docs/ACCEPTANCE.md` §7 |
+| 0.2.2-rc.1 (host) | 22.23.0 | Ubuntu 24.04 (WSL2) | **verified for the store and the suite** — 38/38 tests × 3 consecutive runs, coverage gate 82.85%, benchmark p95 9.87 ms at 2k | this round: `node --test` + `scripts/check-coverage.mjs` |
+| 0.2.2-rc.1 | 24 | Ubuntu (GitHub Actions) | matrix job written, not executed from this machine | `.github/workflows/ci.yml` |
 | other 0.2.x | — | — | not verified | — |
+
+The Linux run used the Ubuntu 24.04 WSL distribution's Node 22.23.0, which is below
+the declared `engines.node` floor (`>=24.9.0`). It proves the store, retrieval,
+concurrency, migration and security paths are portable — no Windows-only assumption
+in the code — but it is **not** a substitute for the Node 24 CI job, which is why
+both rows are listed. The Node floor comes from the Harness, not from a feature Loci
+needs beyond `node:sqlite`.
 
 `package.json` declares the range the loader honours:
 

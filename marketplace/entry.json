@@ -18,7 +18,14 @@
         "node": "24.13.0",
         "os": ["win32"],
         "status": "verified",
-        "evidence": "docs/ACCEPTANCE.md#7-compatibility"
+        "evidence": "docs/ACCEPTANCE.md#7-compatibility-loop-isolated-dsh_home"
+      },
+      {
+        "dsh": "0.2.2-rc.1 (host)",
+        "node": "22.23.0",
+        "os": ["linux"],
+        "status": "code-paths-verified",
+        "evidence": "docs/COMPATIBILITY.md#matrix"
       }
     ]
   },

@@ -14,8 +14,8 @@ Verdict summary:
 | 3 | Concurrency and crash | **PASS** — 200/200 rows, 0 lock errors, kill -9 recoverable |
 | 4 | Migration and rollback | **PASS** — rehearsal upgrade + snapshot restore, row-identical |
 | 5 | Security | **PASS** — secrets redacted, instruction text quarantined, `{{}}` inert |
-| 6 | Platform | **PARTIAL** — Windows verified locally; Linux job written, not executed here |
-| 7 | Compatibility loop | **PARTIAL** — install/activate/write/recall/restart pass; CDP UI pass not run |
+| 6 | Platform | **PASS** — Windows 11 (Node 24) + Ubuntu 24.04 (Node 22, WSL) both green; Node 24 GitHub matrix written but not run here |
+| 7 | Compatibility loop | **PASS** — install/activate/write/recall/restart pass; UI verified in a real Web profile (12/12 CDP checks) |
 | 8 | Retrieval performance | **PASS** — p95 12.5 ms at 10k (budget 200 ms) |
 | 9 | Coverage | **PASS** — 82.5% lines (threshold 80%) |
 
@@ -130,8 +130,16 @@ the rehearsal, which is what the mechanism will use when 1.1 adds a column.
 
 | Platform | Result |
 |---|---|
-| Windows 11, Node 24.13.0 | **verified** — full suite, e2e, benchmark |
-| Ubuntu, Node 24 | CI job written (`.github/workflows/ci.yml`: install → manifest gate → unit+integration → coverage → bench → pack inspection); **not executed in this session** |
+| Windows 11, Node 24.13.0 | **verified** — full suite, e2e, benchmark, panel, settings |
+| Ubuntu 24.04 (WSL2), Node 22.23.0 | **verified for the code paths** — 38/38 tests, three consecutive runs; coverage gate 82.85%; benchmark p95 9.87 ms at 2k entries |
+| Ubuntu, Node 24 (GitHub Actions) | CI job written (`.github/workflows/ci.yml`: install → manifest gate → unit+integration → coverage → bench → pack inspection); **not executed from this machine** |
+
+The Linux runs found a real defect in the test suite: the crash test slept 900 ms and
+then asserted “committed rows survived”, which is a race on a slow mount (`/mnt/e`
+over 9p committed nothing in that window, so the assertion failed or passed
+vacuously). The child now reports each commit and the parent kills it only after
+five durable rows exist; the assertion is `>= 5` and names both numbers on failure.
+Three consecutive Linux runs and one Windows run pass afterwards.
 
 ## 7. Compatibility loop (isolated `DSH_HOME`)
 
@@ -151,9 +159,41 @@ session; the real `~/.dsh/profiles/desktop` was never touched).
 
 `test/e2e/harness.mjs` → **11/11 checks pass**.
 
-Not run: the CDP-driven visual check of the settings page and panel (the registration
-contract is covered by `test/unit/client.test.mjs`), an explicit `--session-id`
-resume, and the uninstall step.
+### 7.1 UI in a real Web profile (CDP)
+
+Method: a second isolated home (`%TEMP%\loci-ui3-home`) with the **web** profile,
+`dsh web --port 8141`, headless Edge over CDP, driven by `test/e2e/ui.mjs`. The seed
+holds 3 verified entries plus 1 candidate.
+
+```
+12/12 UI checks passed
+PASS  panel API answers from the page — HTTP 200
+PASS  sidebar exposes a Memory entry
+PASS  panel renders the Index / Search / Review / Stats tabs
+PASS  panel shows the exact injected section — 543 B 字节
+PASS  account menu opens — 25 items
+PASS  settings entry is present in the account menu
+PASS  settings dialog opens — 1 dialog(s)
+PASS  settings dialog lists the Loci section
+PASS  screenshot captured
+```
+
+Screenshots (real, not mock-ups): [panel](../marketplace/screenshots/panel-index.png)
+and [settings](../marketplace/screenshots/settings-light.png).
+
+Two defects were found and fixed by this pass, which is the reason it exists:
+
+1. **The panel API 404'd in the Web profile.** A profile-installed bundle activates
+   before the Web composition mounts `connection`, so reading the service once at
+   activation skipped the API forever. Fixed by acquiring it through `ctx.inject`,
+   which mounts the routes when the service appears. Before the fix the panel showed
+   “请求失败: HTTP 404”; after it, HTTP 200 and live data.
+2. **The first settings assertion passed for the wrong reason** — it matched
+   `<loci-context>` in the panel's own preview text. The check is now scoped to a
+   `[role="dialog"]`. Popovers in this shell ignore synthetic `click()`; the e2e
+   drives them through `Input.dispatchMouseEvent` (`test/e2e/trusted-input.mjs`).
+
+Not run: an explicit `--session-id` resume, and the uninstall step.
 
 ## 8. Retrieval performance
 
@@ -177,12 +217,12 @@ the reason ranking happens in process.
 
 | Gate | Result |
 |---|---|
-| `scripts/check-coverage.mjs` | **86.0%** line coverage (threshold 80%) |
+| `scripts/check-coverage.mjs` | **82.9%** line coverage over `src/host` (threshold 80%; identical on Windows and Linux) |
 | `scripts/check-manifest.mjs` | ok — name/version/`engines.dsh`/`dshReleases`/runtime files/locale meta/client bundle id/patch row |
 | `npm pack` | 105 KB, contains `index.js`, `client.js`, `cordis.patch.yml`, `icon.svg`, `locale/*.json`, `src/**` |
 | MCP facade | initialize + tools/list + read-only search pass (`test/integration/mcp.test.mjs`) |
 
-Coverage scope: the loaded **host** sources. `client.js` (browser DOM code) and
+Coverage scope: an include list (`src/host/**`). `client.js` (browser DOM code) and
 `src/mcp/**` (a separate process) are excluded because no in-process test can reach
 their lines; the client is covered by its slot-registration test and the MCP facade by
 a protocol integration test that spawns it. Excluding them is stated here rather than
@@ -193,11 +233,12 @@ buried in a config.
 1. **`npm publish`** — this machine is not logged in to npm (`npm whoami` →
    ENEEDAUTH). The release workflow is tag-driven and needs an operator token; the
    publish itself was not executed and is not claimed.
-2. **Marketplace listing** — `marketplace/entry.json` is produced; screenshots are
-   referenced but not captured (needs the CDP run above), and submitting to the
-   public index is an operator action.
+2. **Marketplace submission** — `marketplace/entry.json` and two real screenshots
+   (`panel-index.png`, `settings-light.png`) are produced; submitting to the public
+   index is an operator action.
 3. **Linux CI execution** — the workflow exists and its steps run locally on Windows;
    GitHub Actions was not run in this session.
-4. **Visual UI verification** — slot registration is unit-tested, the rendered page is
-   not screenshotted.
-5. **Uninstall and explicit resume** — documented and scripted, not exercised here.
+4. **Dark theme** — the UI uses only `--dsw-alias-*` tokens, which carry both light and
+   dark values; only the light rendering was captured.
+5. **Uninstall and explicit `--session-id` resume** — documented and scripted, not
+   exercised here.

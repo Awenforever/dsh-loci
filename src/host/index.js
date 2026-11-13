@@ -135,8 +135,21 @@ export function apply(ctx, rawConfig = {}) {
   disposers.push(ctx.effect(() => ctx.systemPrompt.section(indexSection), 'loci: index section'));
   disposers.push(ctx.effect(() => registerTools(ctx, { store, config: read, log, capture }), 'loci: tools'));
   disposers.push(ctx.effect(() => capture.attach(ctx), 'loci: capture'));
-  disposers.push(ctx.effect(() => registerApiRoutes(ctx, { store, paths, config, log }), 'loci: panel api'));
-  disposers.push(ctx.effect(() => registerCommands(ctx, { store, paths, config, log }), 'loci: commands'));
+  // Optional collaborators come and go with the composition: acquire them
+  // through `ctx.inject` so the panel API and `/loci` mount whenever the
+  // service appears, instead of being skipped forever because it was not yet
+  // there at activation time (measured: the Web profile mounts `connection`
+  // after a profile-installed bundle activates).
+  disposers.push(
+    ctx.inject(['connection'], (child) =>
+      child.effect(() => registerApiRoutes(child, { store, paths, config, log }), 'loci: panel api'),
+    ),
+  );
+  disposers.push(
+    ctx.inject(['commands'], (child) =>
+      child.effect(() => registerCommands(child, { store, paths, config, log }), 'loci: commands'),
+    ),
+  );
 
   // Optional, bounded, once-per-session recall assist.
   const assisted = new Set();

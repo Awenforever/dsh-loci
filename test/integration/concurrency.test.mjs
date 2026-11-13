@@ -80,8 +80,28 @@ test('a process killed mid-write leaves a recoverable database', async (t) => {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  // Let it commit a few transactions, then terminate without cleanup.
-  await new Promise((resolve) => setTimeout(resolve, 900));
+  // Kill only after the child has durably committed rows: a fixed sleep races
+  // the filesystem on slow mounts (/mnt/e over 9p) and can leave the assertion
+  // below vacuous or flaky.
+  const COMMITTED_BEFORE_KILL = 5;
+  let committed = 0;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`child committed only ${committed} rows in 20s`)), 20_000);
+    child.stdout.on('data', (chunk) => {
+      for (const line of chunk.toString('utf8').split('\n')) {
+        const match = /^committed (\d+)$/.exec(line.trim());
+        if (match !== null) committed = Number(match[1]);
+      }
+      if (committed >= COMMITTED_BEFORE_KILL) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
   child.kill('SIGKILL');
   await new Promise((resolve) => child.on('close', resolve));
 
@@ -95,7 +115,10 @@ test('a process killed mid-write leaves a recoverable database', async (t) => {
   try {
     const health = store.health();
     assert.equal(health.integrity, 'ok', `integrity after kill: ${health.integrity}`);
-    assert.ok(health.counts.memory_head > 0, 'committed rows must still be there');
+    assert.ok(
+      health.counts.memory_head >= COMMITTED_BEFORE_KILL,
+      `every committed row must survive: ${health.counts.memory_head} of ${committed} committed`,
+    );
     assert.equal(store.indexCoverage().missing, 0, 'no half-written index rows may remain');
     const first = store.list({ scopeKeys: store.allScopeKeys(), statuses: ['verified'], limit: 5, offset: 0 });
     assert.ok(first.items.length > 0);
