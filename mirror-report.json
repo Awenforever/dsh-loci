@@ -1,56 +1,58 @@
 {
-  "appUrl": "http://127.0.0.1:8150/?token=ZdzQ-AL6ZSp-pw0Dhtsapb2bJ1Rzs4YuwzGeYs304mU",
+  "appUrl": "http://127.0.0.1:8152/?token=DnneYoPt-UaVz67aSknqOkQCDnCb2PqcmwLr8eELcnc",
   "checks": [
     {
       "name": "activity endpoint answers",
-      "pass": false,
-      "detail": "HTTP 404"
+      "pass": true,
+      "detail": "HTTP 200"
     },
     {
       "name": "update endpoint answers",
-      "pass": false,
-      "detail": "HTTP 404"
+      "pass": true,
+      "detail": "HTTP 200"
     },
     {
       "name": "activity carries a digest",
-      "pass": false,
-      "detail": "today=undefined week=undefined"
+      "pass": true,
+      "detail": "today=4 week=4"
     },
     {
       "name": "activity lists what changed",
-      "pass": false,
-      "detail": "0 items"
+      "pass": true,
+      "detail": "5 items"
     },
     {
       "name": "the feed distinguishes added from revised",
-      "pass": false,
-      "detail": ""
+      "pass": true,
+      "detail": "maintained,verified,added"
     },
     {
       "name": "the mirror card renders in the sidebar",
-      "pass": false
+      "pass": true,
+      "detail": "记忆v1.1.0无法检查版本 4今日47 天 核实删除前必须做路径断言4m 新增回滚窗口 30 分钟4m 新增生产机是 prod-014m"
     },
     {
       "name": "the card shows a version in small text",
-      "pass": false,
-      "detail": "none"
+      "pass": true,
+      "detail": "v1.1.0"
     },
     {
       "name": "the card is in the left column",
-      "pass": false,
-      "detail": "x=undefined"
+      "pass": true,
+      "detail": "x=8"
     },
     {
       "name": "the card shows a recent change line",
-      "pass": false
+      "pass": true,
+      "detail": "记忆v1.1.0无法检查版本 4今日47 天 核实删除前必须做路径断言4m 新增回滚窗口 30 分钟4m 新增生产机是 prod-014m"
     },
     {
       "name": "the card opens the memory panel",
-      "pass": false
+      "pass": true
     },
     {
       "name": "the feed tab lists a change with its action tag",
-      "pass": false
+      "pass": true
     },
     {
       "name": "screenshot captured",
@@ -59,11 +61,94 @@
     }
   ],
   "diagnostics": {
-    "activityStatus": 404,
-    "updateStatus": 404,
-    "card": {
-      "found": false
+    "activityStatus": 200,
+    "updateStatus": 200,
+    "activity": {
+      "items": [
+        {
+          "ts": 1794569695419,
+          "id": null,
+          "title": null,
+          "kind": null,
+          "scope": null,
+          "status": null,
+          "bytes": null,
+          "action": "maintained",
+          "detail": {
+            "expiredWorking": 0,
+            "closedCandidates": 0,
+            "reindexed": false
+          }
+        },
+        {
+          "ts": 1794569611950,
+          "id": "m_01M7AAYAMHX17N2RQDKB",
+          "title": "删除前必须做路径断言",
+          "kind": "rule",
+          "scope": "dsh-loci",
+          "status": "verified",
+          "bytes": null,
+          "action": "verified",
+          "to": "verified",
+          "actor": "panel"
+        },
+        {
+          "ts": 1794569611946,
+          "id": "m_01M7AAYAN86T8C5WYMK2",
+          "title": "回滚窗口 30 分钟",
+          "kind": "semantic",
+          "scope": "dsh-loci",
+          "status": "verified",
+          "bytes": 59,
+          "action": "added",
+          "revision": 1,
+          "redacted": false,
+          "flagged": false
+        },
+        {
+          "ts": 1794569611943,
+          "id": "m_01M7AAYAN4TFHVQ8W545",
+          "title": "生产机是 prod-01",
+          "kind": "semantic",
+          "scope": "dsh-loci",
+          "status": "verified",
+          "bytes": 66,
+          "action": "added",
+          "revision": 1,
+          "redacted": false,
+          "flagged": false
+        },
+        {
+          "ts": 1794569611933,
+          "id": "m_01M7AAYAMHX17N2RQDKB",
+          "title": "删除前必须做路径断言",
+          "kind": "rule",
+          "scope": "dsh-loci",
+          "status": "verified",
+          "bytes": 93,
+          "action": "added",
+          "revision": 1,
+          "redacted": false,
+          "flagged": false
+        }
+      ],
+      "digest": {
+        "today": 4,
+        "week": 4,
+        "total": 4,
+        "lastAt": 1794569611950
+      },
+      "generatedAt": 1794569881528
     },
-    "panelText": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n记忆\n更多\n工作区\n默认工作区\n新会话\n击空明兮溯流光\n探索未至之境\n预览版\n默认工作区\n标准模式\n描述你想要构建的内容, / 调用指令, @ 文件或对话\n工作区内修改\ndeepseek-flash\nOff"
+    "card": {
+      "found": true,
+      "text": "记忆v1.1.0无法检查版本 4今日47 天 核实删除前必须做路径断言4m 新增回滚窗口 30 分钟4m 新增生产机是 prod-014m",
+      "x": 8,
+      "y": 743,
+      "w": 189,
+      "h": 99,
+      "version": "v1.1.0"
+    },
+    "panelText": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n记忆\n更多\n工作区\n默认工作区\n新会话\n记忆\nv1.1.0\n无法检查版本\n4\n今日\n4\n7 天\n核实\n删除前必须做路径断言\n4m\n新增\n回滚窗口 30 分钟\n4m\n新增\n生产机是 prod-01\n4m\n击空明兮溯流光\n记忆\n动态\n索引\n检索\n待审\n统计\n记住了什么、更正了什么、核实或删除了什么。最新的在前。\n刷新\n维护\n维护\n3m\n0 closed\n核实\n删除前必须做路径断言\n4m\nrule\ndsh-loci\n→\n新增\n回滚窗口 30 分钟\n4m\nsemantic\ndsh-loci\nr1\n→\n新增\n生产机是 prod-01\n4m\nsemantic\ndsh-loci\nr1\n→\n新增\n删除前必须做路径断言\n4m\nrule\ndsh-loci\nr1\n→"
   }
 }

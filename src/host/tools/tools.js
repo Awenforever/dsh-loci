@@ -413,24 +413,45 @@ function renderWrite(value) {
   return lines.join('\n');
 }
 
+/**
+ * Render a search result.
+ *
+ * The three-way contract matters more than the formatting: a caller must be able
+ * to tell **found**, **nothing matched**, and **the search failed** apart without
+ * guessing. Reporting an empty result as a failure teaches the model to retry
+ * forever; reporting a failure as "nothing found" teaches it to invent.
+ */
 function renderSearch(value) {
-  if (value?.error !== undefined) return `search failed: ${value.error}`;
+  if (value?.error !== undefined) {
+    return `search failed: ${value.error}\nNothing was returned, so do not conclude the memory is empty.`;
+  }
   const lines = [
     `total=${value.total} returned=${value.returned} hasMore=${value.hasMore}${value.cursor ? ` cursor=${value.cursor}` : ''}`,
   ];
-  if (value.hits.length === 0) lines.push('no match');
+  if (value.hits.length === 0) {
+    lines.push('No relevant memory found for this query.');
+    return lines.join('\n');
+  }
   value.hits.forEach((hit, index) => {
     lines.push(`${index + 1}. ${renderEntryLine(hit)} [${hit.channels.join(',')}]`);
     const snippet = String(hit.snippet ?? '').trim();
     if (snippet.length > 0) lines.push(`   ${renderSafe(snippet.replace(/\s+/g, ' ')).slice(0, 400)}`);
   });
   if (value.hasMore) lines.push('next page: call loci_search again with the cursor above');
+  // Never let a bounded window look like a complete answer.
+  if (value.partial === true) {
+    lines.push(
+      `note: more than ${value.returned} entries match; the ranking covers a bounded window, so narrow the query (or add tags/kinds) to see the rest reliably`,
+    );
+  }
   return lines.join('\n');
 }
 
 function renderGet(value) {
   const entry = value?.entry;
-  if (entry === undefined) return 'not found';
+  if (entry === undefined) {
+    return 'No memory with that id. It may have been purged, or the id was mistyped — use loci_search to find it.';
+  }
   const lines = [
     `${entry.id}@${entry.revision} · ${entry.kind} · ${entry.status} · ${entry.scope}:${entry.scopeLabel}`,
     `title: ${renderSafe(entry.title)}`,

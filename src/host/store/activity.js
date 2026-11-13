@@ -125,6 +125,16 @@ function normalize(event, row, title) {
       return {
         ...base,
         action: 'maintained',
+        // The panel renders the tag as the action name, so the title has to say
+        // something different: what the pass actually did.
+        title:
+          [
+            Number(event.expiredWorking) > 0 ? `${Number(event.expiredWorking)} expired` : null,
+            Number(event.closedCandidates) > 0 ? `${Number(event.closedCandidates)} closed` : null,
+            event.reindexed === true ? 'index rebuilt' : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || 'nothing to do',
         detail: {
           expiredWorking: Number(event.expiredWorking) || 0,
           closedCandidates: Number(event.closedCandidates) || 0,

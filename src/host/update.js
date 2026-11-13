@@ -67,6 +67,7 @@ export class UpdateChecker {
     this.cachedAt = 0;
     this.inFlight = null;
     this.lastError = null;
+    this.unpublished = false;
   }
 
   /** The installed version, with no I/O. */
@@ -91,7 +92,7 @@ export class UpdateChecker {
           latestVersion,
           updateAvailable,
           checkedAt: this.now(),
-          status: latestVersion === null ? 'unavailable' : 'ok',
+          status: latestVersion === null ? (this.unpublished === true ? 'unpublished' : 'unavailable') : 'ok',
           ...(this.lastError === null ? {} : { error: this.lastError }),
         };
         this.cachedAt = this.now();
@@ -120,6 +121,7 @@ export class UpdateChecker {
       }
       const payload = await response.json();
       const version = typeof payload?.version === 'string' ? payload.version : null;
+      this.unpublished = false;
       if (version === null) {
         this.lastError = 'registry answer has no version';
         return null;

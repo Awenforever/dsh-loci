@@ -37,7 +37,7 @@ window.__ModuleLoader__.load({
       'card.empty': 'Nothing learned yet',
       'card.emptyHint': 'Facts you confirm appear here',
       'card.today': 'today',
-      'card.week': '7d',
+      'card.week': 'this week',
       'card.pending': 'to review',
       'card.open': 'Open memory',
       'card.check': 'Check for updates',
@@ -45,6 +45,7 @@ window.__ModuleLoader__.load({
       'card.updateTo': 'Update available',
       'card.checking': 'Checking…',
       'card.unknown': 'Version check unavailable',
+      'card.unpublished': 'Not on npm yet',
 
       'action.added': 'added',
       'action.revised': 'revised',
@@ -127,7 +128,7 @@ window.__ModuleLoader__.load({
       'card.empty': '还没有学到东西',
       'card.emptyHint': '确认过的事实会出现在这里',
       'card.today': '今日',
-      'card.week': '7 天',
+      'card.week': '本周',
       'card.pending': '待审',
       'card.open': '打开记忆',
       'card.check': '检查更新',
@@ -135,6 +136,7 @@ window.__ModuleLoader__.load({
       'card.updateTo': '有新版本',
       'card.checking': '检查中…',
       'card.unknown': '无法检查版本',
+      'card.unpublished': '尚未发布',
 
       'action.added': '新增',
       'action.revised': '更正',
@@ -441,7 +443,18 @@ window.__ModuleLoader__.load({
 
       const data = activity.data;
       const digest = data?.digest;
-      const shown = (data?.items ?? []).filter((item) => item.action !== 'maintained').slice(0, 3);
+      // One line per entry: a fact that was added and then verified in the same
+      // minute is one piece of news, not two.
+      const seen = new Set();
+      const shown = (data?.items ?? [])
+        .filter((item) => item.action !== 'maintained')
+        .filter((item) => {
+          const key = item.id ?? `${item.action}-${item.ts}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 3);
       const pending = props?.pending ?? undefined;
 
       if (!wide) {
