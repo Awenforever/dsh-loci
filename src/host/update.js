@@ -16,11 +16,18 @@
 /** How long one registry answer is trusted. */
 const CACHE_MS = 6 * 60 * 60 * 1000;
 
-/** A registry call must not hang the panel. */
-const TIMEOUT_MS = 4000;
+/**
+ * A registry call must not hang the panel. Eight seconds is long enough for a
+ * slow international route and short enough that the card never looks stuck.
+ */
+const TIMEOUT_MS = 8000;
 
-/** Only these registries are contacted; the URL is never user-controlled. */
-const REGISTRY = 'https://registry.npmjs.org';
+/**
+ * The registry is a setting, not a constant: users behind a slow or blocked route
+ * point it at a mirror (for example https://registry.npmmirror.com). The value
+ * comes from the plugin's own config row, never from a project file.
+ */
+export const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
 
 /**
  * Compare two semver strings well enough for an update hint.
@@ -59,10 +66,14 @@ export class UpdateChecker {
    */
   constructor(options) {
     this.currentVersion = options.currentVersion ?? '0.0.0';
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    // `null` means "never touch the network" and must not fall back to the global.
+    this.fetchImpl = options.fetchImpl === null ? null : (options.fetchImpl ?? globalThis.fetch);
     this.log = options.log;
     this.now = options.now ?? (() => Date.now());
-    this.registry = options.registry ?? REGISTRY;
+    this.registry =
+      typeof options.registry === 'string' && options.registry.length > 0
+        ? options.registry.replace(/\/+$/, '')
+        : DEFAULT_REGISTRY;
     this.cached = null;
     this.cachedAt = 0;
     this.inFlight = null;
@@ -115,6 +126,12 @@ export class UpdateChecker {
         headers: { accept: 'application/json' },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
+      if (response.status === 404) {
+        // Not on the registry (yet): a fact to show, not a network failure.
+        this.unpublished = true;
+        this.lastError = 'not published';
+        return null;
+      }
       if (!response.ok) {
         this.lastError = `registry HTTP ${response.status}`;
         return null;

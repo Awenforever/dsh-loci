@@ -30,6 +30,7 @@ test('the update checker caches, never throws, and reports unknown offline', asy
   await checker.check();
   assert.equal(calls, 1, 'the second call inside the cache window must not touch the network');
 
+  // A thrown fetch is "unknown"; a 404 for our own package is "not published".
   const offline = new UpdateChecker({
     currentVersion: '1.0.0',
     fetchImpl: async () => {
@@ -41,7 +42,14 @@ test('the update checker caches, never throws, and reports unknown offline', asy
   assert.equal(answer.updateAvailable, false);
   assert.equal(answer.status, 'unavailable', 'offline is "unknown", not an error the UI must surface');
 
-  const noFetch = new UpdateChecker({ currentVersion: '1.0.0', fetchImpl: undefined });
+  const unpublished = new UpdateChecker({
+    currentVersion: '1.0.0',
+    fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }),
+  });
+  const missing = await unpublished.check();
+  assert.equal(missing.status, 'unpublished', 'a 404 for our own package is a fact, not a broken network');
+
+  const noFetch = new UpdateChecker({ currentVersion: '1.0.0', fetchImpl: null });
   const idle = await noFetch.check();
   assert.equal(idle.status, 'unavailable');
 });

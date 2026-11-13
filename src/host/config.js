@@ -90,6 +90,10 @@ export const DEFAULTS = Object.freeze({
   workingTtlDays: 7,
   /** Allow `op:'purge'` to physically delete revisions. */
   allowHardDelete: false,
+  /** Ask the registry for a newer version when the card is opened. */
+  updateCheck: true,
+  /** Registry used by that check; point it at a mirror when npmjs.org is slow. */
+  updateRegistry: 'https://registry.npmjs.org',
   /** 'error' | 'info' | 'debug'. */
   logLevel: 'info',
 });
@@ -140,6 +144,8 @@ function buildSchema() {
     candidateTtlDays: z.number().step(1).min(0).max(3650).default(DEFAULTS.candidateTtlDays).volatile(),
     workingTtlDays: z.number().step(1).min(0).max(3650).default(DEFAULTS.workingTtlDays).volatile(),
     allowHardDelete: z.boolean().default(DEFAULTS.allowHardDelete),
+    updateCheck: z.boolean().default(DEFAULTS.updateCheck).volatile(),
+    updateRegistry: z.string().default(DEFAULTS.updateRegistry).volatile(),
     logLevel: z.union(ENUMS.logLevel).default(DEFAULTS.logLevel).volatile(),
   });
 }

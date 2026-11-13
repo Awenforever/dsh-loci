@@ -130,7 +130,7 @@ export function registerApiRoutes(ctx, deps) {
   route('/api/loci/update', ['GET'], async (request) => {
     const url = new URL(request.url);
     const refresh = url.searchParams.get('refresh') === '1';
-    if (deps.updates === undefined) return json(installedOnly(deps.version));
+    if (deps.updates === undefined || config.updateCheck === false) return json(installedOnly(deps.version));
     return json(await deps.updates.check({ force: refresh }));
   });
 

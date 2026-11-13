@@ -107,7 +107,11 @@ export function apply(ctx, rawConfig = {}) {
     quoteVerifier: (quote, options) => capture?.verifyQuote(quote, options) ?? false,
   });
 
-  const updates = new UpdateChecker({ currentVersion: VERSION, log });
+  const updates = new UpdateChecker({
+    currentVersion: VERSION,
+    registry: read('updateRegistry'),
+    log,
+  });
 
   capture = new Capture({
     store,
