@@ -1,0 +1,10 @@
+# dsh-loci bundle layer.
+#
+# One Host row. The Client half is declared in package.json (`dsh.client`).
+# No config here on purpose: every field has a default in `src/host/config.js`,
+# so the shipped row stays valid across upgrades and the user's own
+# `cordis.patch.yml` can override any subset.
+- insert:
+    - id: dsh-loci
+      name: dsh-loci
+      config: {}

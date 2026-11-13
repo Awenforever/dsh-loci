@@ -1,0 +1,37 @@
+name: release
+
+# Publishing is deliberately a manual, tag-driven action: the repository owner
+# configures an npm automation token (or npm trusted publishing) as
+# `NODE_AUTH_TOKEN`, then pushes a `vX.Y.Z` tag. Nothing here publishes on a
+# branch push.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install --no-audit --no-fund
+      - run: node scripts/check-manifest.mjs
+      - run: node --disable-warning=ExperimentalWarning --test "test/unit/*.test.mjs" "test/integration/*.test.mjs"
+      - name: tag must match package.json version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          test "$version" = "$tag" || { echo "tag $tag does not match package version $version"; exit 1; }
+      - name: publish with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}

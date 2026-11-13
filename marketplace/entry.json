@@ -1,0 +1,54 @@
+{
+  "name": "dsh-loci",
+  "title": "Loci memory palace",
+  "titleZh": "Loci 记忆宫殿",
+  "version": "1.0.0",
+  "description": "Long-term memory for DeepSeek Harness where the prompt holds only a stable index: full text is one lookup away, facts are bi-temporal, and only verified entries are injected.",
+  "descriptionZh": "给 DSH 的长期记忆：提示词里只放稳定索引，全文按需取回；事实双时间可查，只有已核实的条目才会被注入。",
+  "license": "MIT",
+  "repository": "https://github.com/Awenforever/dsh-loci",
+  "npm": "dsh-loci",
+  "categories": ["memory", "tools", "productivity"],
+  "compatibility": {
+    "dsh": ">=0.2.2-rc.1 <0.3.0-0",
+    "node": ">=24.9.0",
+    "verified": [
+      {
+        "dsh": "0.2.2-rc.1",
+        "node": "24.13.0",
+        "os": ["win32"],
+        "status": "verified",
+        "evidence": "docs/ACCEPTANCE.md#7-compatibility"
+      }
+    ]
+  },
+  "highlights": [
+    "0 bytes injected on an empty store; a hard 3,584-byte budget afterwards",
+    "the index never reorders on write, so the prompt prefix survives",
+    "loci_search returns total + cursor: a broad question can list everything",
+    "CJK bigram retrieval — 路径断言 and 迁移 both match",
+    "bi-temporal history: edits close a revision instead of deleting it",
+    "only verified facts are injected; instruction-shaped text is quarantined",
+    "no model call, no network, no native module in the default path"
+  ],
+  "screenshots": [
+    "screenshots/settings-light.png",
+    "screenshots/panel-index.png"
+  ],
+  "limits": [
+    "no LLM consolidation in 1.0 (see docs/DESIGN.md §9)",
+    "deterministic capture records only explicit durable statements",
+    "vector search is brute-force cosine and off by default",
+    "memory is plaintext at rest; rely on disk encryption"
+  ],
+  "install": "dsh plugin --profile <profile> add dsh-loci",
+  "docs": {
+    "design": "docs/DESIGN.md",
+    "operations": "docs/OPERATIONS.md",
+    "security": "docs/SECURITY.md",
+    "privacy": "docs/PRIVACY.md",
+    "compatibility": "docs/COMPATIBILITY.md",
+    "acceptance": "docs/ACCEPTANCE.md",
+    "research": "docs/RESEARCH.md"
+  }
+}

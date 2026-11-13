@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Loci 记忆宫殿",
+    "description": "分层长期记忆：提示词里只放稳定索引，全文按需一次取回；只有已核实的记忆才会被注入。"
+  },
+  "panel": {
+    "title": "记忆"
+  },
+  "settings": {
+    "title": "Loci"
+  }
+}

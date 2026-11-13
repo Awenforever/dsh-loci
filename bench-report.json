@@ -1,0 +1,27 @@
+{
+  "entries": 10000,
+  "queries": 200,
+  "seedMs": 12291.8,
+  "retrievalMs": {
+    "p50": 7.32,
+    "p90": 11.1,
+    "p95": 12.47,
+    "p99": 19.69,
+    "max": 23.9
+  },
+  "injectionRenderMs": {
+    "p50": 46.95,
+    "p95": 67.03
+  },
+  "averageTotal": 266,
+  "indexCoverage": {
+    "memory": 10000,
+    "fts": 10000,
+    "missing": 0
+  },
+  "dbBytes": 17420288,
+  "threshold": {
+    "p95Ms": 200,
+    "pass": true
+  }
+}

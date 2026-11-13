@@ -1,0 +1,129 @@
+{
+  "mode": "inject-cost",
+  "home": "C:\\Users\\author\\AppData\\Local\\Temp\\loci-cost-home",
+  "profile": "headless",
+  "startedAt": "2026-11-13T08:51:35.167Z",
+  "cases": [
+    {
+      "entriesRequested": 0,
+      "entriesPresent": 0,
+      "exit": 0,
+      "lastInjection": {
+        "ts": 1794559900484,
+        "sessionId": "session-7c8becd6-8ef0-40bb-bb71-a330f409f173",
+        "scopeKey": "workspace:4abe20ec32572955",
+        "bytes": 0,
+        "listed": 0,
+        "hidden": 0
+      },
+      "injections": [
+        {
+          "ts": 1794559900484,
+          "sessionId": "session-7c8becd6-8ef0-40bb-bb71-a330f409f173",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 0,
+          "listed": 0,
+          "hidden": 0
+        }
+      ],
+      "answerHead": "好"
+    },
+    {
+      "entriesRequested": 20,
+      "entriesPresent": 51,
+      "exit": 0,
+      "lastInjection": {
+        "ts": 1794559911639,
+        "sessionId": "session-bf180482-66e7-48ab-9fbf-f290f9e79e40",
+        "scopeKey": "workspace:4abe20ec32572955",
+        "bytes": 3460,
+        "listed": 41,
+        "hidden": 9
+      },
+      "injections": [
+        {
+          "ts": 1794559911639,
+          "sessionId": "session-bf180482-66e7-48ab-9fbf-f290f9e79e40",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 3460,
+          "listed": 41,
+          "hidden": 9
+        },
+        {
+          "ts": 1794559900484,
+          "sessionId": "session-7c8becd6-8ef0-40bb-bb71-a330f409f173",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 0,
+          "listed": 0,
+          "hidden": 0
+        }
+      ],
+      "answerHead": "好"
+    },
+    {
+      "entriesRequested": 50,
+      "entriesPresent": 101,
+      "exit": 0,
+      "lastInjection": {
+        "ts": 1794559923484,
+        "sessionId": "session-8d060513-f2af-4bf8-bea5-18c604dcd3af",
+        "scopeKey": "workspace:4abe20ec32572955",
+        "bytes": 3450,
+        "listed": 41,
+        "hidden": 59
+      },
+      "injections": [
+        {
+          "ts": 1794559923484,
+          "sessionId": "session-8d060513-f2af-4bf8-bea5-18c604dcd3af",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 3450,
+          "listed": 41,
+          "hidden": 59
+        },
+        {
+          "ts": 1794559911639,
+          "sessionId": "session-bf180482-66e7-48ab-9fbf-f290f9e79e40",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 3460,
+          "listed": 41,
+          "hidden": 9
+        }
+      ],
+      "answerHead": "好。"
+    },
+    {
+      "entriesRequested": 100,
+      "entriesPresent": 152,
+      "exit": 0,
+      "lastInjection": {
+        "ts": 1794559931075,
+        "sessionId": "session-3062f01f-67d2-4272-a77b-dc2875acc282",
+        "scopeKey": "workspace:4abe20ec32572955",
+        "bytes": 3507,
+        "listed": 42,
+        "hidden": 108
+      },
+      "injections": [
+        {
+          "ts": 1794559931075,
+          "sessionId": "session-3062f01f-67d2-4272-a77b-dc2875acc282",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 3507,
+          "listed": 42,
+          "hidden": 108
+        },
+        {
+          "ts": 1794559923484,
+          "sessionId": "session-8d060513-f2af-4bf8-bea5-18c604dcd3af",
+          "scopeKey": "workspace:4abe20ec32572955",
+          "sectionBytes": 3450,
+          "listed": 41,
+          "hidden": 59
+        }
+      ],
+      "answerHead": "好"
+    }
+  ],
+  "finishedAt": "2026-11-13T08:52:12.317Z"
+}

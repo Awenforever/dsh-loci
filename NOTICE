@@ -1,0 +1,31 @@
+dsh-loci
+Copyright (c) 2026 Awenforever
+SPDX-License-Identifier: MIT
+
+Third-party material
+--------------------
+
+No third-party source code is vendored in this package. The design cites the
+following work for specific mechanisms; see docs/RESEARCH.md for the exact
+section and URL behind each claim.
+
+- Graphiti / Zep — bi-temporal edge model and edge invalidation
+  (arXiv 2501.13956). Mechanism reimplemented from the published description.
+- Mem0 — multi-signal retrieval with BM25 as a boost signal, and write-time
+  temporal metadata (arXiv 2504.19413; docs.mem0.ai). Mechanism reimplemented.
+- Cognee — current / superseded / conflicting fact marks and an all-local
+  default storage stack (docs.cognee.ai). Mechanism reimplemented.
+- MemOS — layered memory vocabulary and the local RRF/MMR plugin as an
+  existence proof (arXiv 2505.22101, arXiv 2507.03724). Vocabulary only.
+- OpenViking — L0/L1 context layer sizes and session-start budget discipline
+  (docs.openviking.ai). Budgets reimplemented.
+- ReMe — guidance-only injection into DSH and read-only on-demand retrieval
+  (agentscope-ai/ReMe, reme.agentscope.io). Product-level pattern, no code.
+- memsearch — Markdown-as-truth with a rebuildable shadow index, and the
+  low-risk-only project configuration rule (zilliztech/memsearch). Pattern only.
+- Letta / MemGPT — core vs archival memory vocabulary (docs.letta.com).
+- Claude Code, Cursor, ChatGPT — product documentation reviewed for what to
+  adopt and what not to copy.
+
+Runtime dependencies: `@deepseek-ai/schemastery` (Apache-2.0), used for the
+plugin configuration schema. It is not modified.

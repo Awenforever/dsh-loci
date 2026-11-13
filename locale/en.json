@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Loci memory palace",
+    "description": "Layered long-term memory: the prompt holds a stable index, full text is one lookup away, and only verified facts are injected."
+  },
+  "panel": {
+    "title": "Memory"
+  },
+  "settings": {
+    "title": "Loci"
+  }
+}

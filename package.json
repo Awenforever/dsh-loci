@@ -1,0 +1,85 @@
+{
+  "name": "dsh-loci",
+  "version": "1.0.0",
+  "description": "Layered long-term memory for DeepSeek Harness: the prompt sees only a stable index, full text is one lookup away. Bi-temporal facts, strict scope isolation, verified-only injection.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Awenforever",
+  "homepage": "https://github.com/Awenforever/dsh-loci#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Awenforever/dsh-loci.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Awenforever/dsh-loci/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis-plugin",
+    "memory",
+    "long-term-memory",
+    "sqlite",
+    "fts5",
+    "bi-temporal"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./mcp": "./src/mcp/server.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-loci": "./scripts/cli.mjs"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "src/**/*.js",
+    "scripts/cli.mjs",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE",
+    "docs/*.md"
+  ],
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1 <0.3.0-0"
+  },
+  "dshReleases": [
+    {
+      "dsh": "0.2.2-rc.1",
+      "node": ">=24.9.0",
+      "os": ["win32", "linux"],
+      "status": "verified",
+      "evidence": "docs/COMPATIBILITY.md#022-rc1"
+    }
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.19.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/unit test/integration",
+    "test:unit": "node --disable-warning=ExperimentalWarning --test test/unit",
+    "bench": "node --disable-warning=ExperimentalWarning scripts/bench.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "doctor": "node --disable-warning=ExperimentalWarning scripts/cli.mjs doctor"
+  }
+}

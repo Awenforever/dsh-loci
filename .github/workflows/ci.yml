@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: install
+        run: npm install --no-audit --no-fund
+      - name: manifest and syntax gate
+        run: node scripts/check-manifest.mjs
+      - name: unit and integration tests
+        run: node --disable-warning=ExperimentalWarning --test "test/unit/*.test.mjs" "test/integration/*.test.mjs"
+      - name: coverage threshold
+        run: node --disable-warning=ExperimentalWarning scripts/check-coverage.mjs
+      - name: retrieval benchmark (short)
+        run: node --disable-warning=ExperimentalWarning scripts/bench.mjs --entries 2000 --queries 100
+
+  package:
+    name: pack and inspect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: pack
+        run: npm pack
+      - name: the tarball must carry the client, the schema, the locale and the icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf dsh-loci-*.tgz > files.txt
+          for required in package/index.js package/client.js package/cordis.patch.yml package/icon.svg package/locale/en.json package/src/host/store/store.js; do
+            grep -qx "$required" files.txt || { echo "missing $required"; exit 1; }
+          done
+          echo "pack contents ok ($(wc -l < files.txt) entries)"
