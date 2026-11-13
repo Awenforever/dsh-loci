@@ -104,6 +104,7 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 |---|---|---|---|
 | 29 | first run has no "it worked" moment; empty store is correct but invisible | C | **fixed** — the sidebar card states "nothing learned yet · facts you confirm appear here", and the panel opens on a Feed that explains itself |
 | 30 | the review queue is a dead end (≤50, no reject, no bulk, no evidence) | C | **open** — the panel now shows counts and one-click verify; reject and paging are next |
+| 30b | `export` then `import` imports nothing: entries go to `<root>/markdown/<scope>/<kind>/<id>.md` but `importMarkdown` defaults to `<root>/exports`, which holds only a one-line header file | D | **open** — verified: `export.js:119` writes to `paths.markdown`, `export.js:142` reads `paths.exports`. The importer also drops ids, status, evidence and the original scope. A real `snapshot` command (VACUUM INTO) plus a tested round trip is the fix. |
 | 31 | the panel's Index tab said "exactly what the model sees" but rendered every scope | C | **partly fixed** — the label now states which scopes were rendered; `?cwd=`/`?session=` let a caller ask for one conversation's view |
 | 32 | README said 5,120 B where the default is 3,584 | C, D | **fixed** (both READMEs) |
 | 33 | docs describe a CLI that is not on PATH; `/loci` commands undocumented | C | **open** — `scripts/cli.mjs` works via `node <profile>/node_modules/dsh-loci/scripts/cli.mjs`; `OPERATIONS.md` needs that exact line |
