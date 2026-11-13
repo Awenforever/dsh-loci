@@ -12,6 +12,7 @@ import { readScopeKeys, resolveScopes } from '../scope.js';
 import { search } from '../store/search.js';
 import { exportMarkdown, importMarkdown } from '../store/export.js';
 import { renderIndexBody } from '../inject/index-section.js';
+import { buildActivity } from '../store/activity.js';
 
 /** Refuse request bodies above this size. */
 export const MAX_BODY_BYTES = 256 * 1024;
@@ -64,7 +65,7 @@ function panelScopes(body) {
 /**
  * Register every route on the Host connection service.
  * @param ctx - plugin context that owns the registrations.
- * @param deps - `store`, `paths`, `config`, `log`.
+ * @param deps - `store`, `paths`, `config`, `log`, `updates`.
  * @returns disposer.
  */
 export function registerApiRoutes(ctx, deps) {
@@ -96,6 +97,7 @@ export function registerApiRoutes(ctx, deps) {
     const scopeKeys = store.allScopeKeys();
     return json({
       ...store.stats({ scopeKeys }),
+      pluginVersion: deps.version ?? '0.0.0',
       injections: store.recentInjections(50),
       audit: store.auditTail(50),
     });
@@ -113,6 +115,26 @@ export function registerApiRoutes(ctx, deps) {
       }),
     );
   });
+
+  // The sidebar mirror reads this: what changed, newest first, plus the two
+  // counters the compact card shows. It carries ids and titles, never bodies.
+  route('/api/loci/activity', ['GET'], async (request) => {
+    const url = new URL(request.url);
+    const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') ?? 40)));
+    const since = Number(url.searchParams.get('since') ?? '');
+    return json(buildActivity(store, { limit, since: Number.isFinite(since) ? since : undefined }));
+  });
+
+  // Version badge + update hint. `?refresh=1` bypasses the six-hour cache, and
+  // only an explicit press reaches the registry.
+  route('/api/loci/update', ['GET'], async (request) => {
+    const url = new URL(request.url);
+    const refresh = url.searchParams.get('refresh') === '1';
+    if (deps.updates === undefined) return json(installedOnly(deps.version));
+    return json(await deps.updates.check({ force: refresh }));
+  });
+
+  route('/api/loci/version', ['GET'], async () => json({ version: deps.version ?? '0.0.0' }));
 
   route('/api/loci/list', ['GET'], async (request) => {
     const url = new URL(request.url);
@@ -224,6 +246,17 @@ export function registerApiRoutes(ctx, deps) {
 
   return () => {
     for (const dispose of disposers) dispose();
+  };
+}
+
+/** The answer when no checker is wired: the installed version, nothing else. */
+function installedOnly(version) {
+  return {
+    version: version ?? '0.0.0',
+    latestVersion: null,
+    updateAvailable: false,
+    checkedAt: null,
+    status: 'idle',
   };
 }
 

@@ -1,0 +1,69 @@
+{
+  "appUrl": "http://127.0.0.1:8150/?token=ZdzQ-AL6ZSp-pw0Dhtsapb2bJ1Rzs4YuwzGeYs304mU",
+  "checks": [
+    {
+      "name": "activity endpoint answers",
+      "pass": false,
+      "detail": "HTTP 404"
+    },
+    {
+      "name": "update endpoint answers",
+      "pass": false,
+      "detail": "HTTP 404"
+    },
+    {
+      "name": "activity carries a digest",
+      "pass": false,
+      "detail": "today=undefined week=undefined"
+    },
+    {
+      "name": "activity lists what changed",
+      "pass": false,
+      "detail": "0 items"
+    },
+    {
+      "name": "the feed distinguishes added from revised",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "name": "the mirror card renders in the sidebar",
+      "pass": false
+    },
+    {
+      "name": "the card shows a version in small text",
+      "pass": false,
+      "detail": "none"
+    },
+    {
+      "name": "the card is in the left column",
+      "pass": false,
+      "detail": "x=undefined"
+    },
+    {
+      "name": "the card shows a recent change line",
+      "pass": false
+    },
+    {
+      "name": "the card opens the memory panel",
+      "pass": false
+    },
+    {
+      "name": "the feed tab lists a change with its action tag",
+      "pass": false
+    },
+    {
+      "name": "screenshot captured",
+      "pass": true,
+      "detail": "mirror-report.png"
+    }
+  ],
+  "diagnostics": {
+    "activityStatus": 404,
+    "updateStatus": 404,
+    "card": {
+      "found": false
+    },
+    "panelText": "新会话\nCtrl\n+\nAlt\n+\nN\n插件\n自动化任务\n记忆\n更多\n工作区\n默认工作区\n新会话\n击空明兮溯流光\n探索未至之境\n预览版\n默认工作区\n标准模式\n描述你想要构建的内容, / 调用指令, @ 文件或对话\n工作区内修改\ndeepseek-flash\nOff"
+  }
+}

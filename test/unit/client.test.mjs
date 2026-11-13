@@ -23,8 +23,7 @@ async function loadClientFactory() {
     useCallback: (fn) => fn,
     useRef: () => ({ current: undefined }),
   };
-  const module = await import('../../client.js');
-  void module;
+  await import('../../client.js');
   assert.equal(typeof factory, 'function', 'client.js must register a factory');
   return factory((specifier) => {
     assert.equal(specifier, 'react', 'only react comes from the shell module table');
@@ -32,11 +31,8 @@ async function loadClientFactory() {
   });
 }
 
-test('the client half registers a settings page and a sidebar panel', async () => {
-  const plugin = await loadClientFactory();
-  assert.deepEqual(plugin.inject, ['slots', 'locale']);
-  assert.equal(typeof plugin.apply, 'function');
-
+/** Run `apply` against a minimal client context and collect registrations. */
+function mount(plugin) {
   const registrations = [];
   const localeCalls = [];
   const effects = [];
@@ -66,32 +62,50 @@ test('the client half registers a settings page and a sidebar panel', async () =
         return () => {};
       },
     },
+    layout: { selectPanel: () => {} },
     get: () => undefined,
   };
-
   plugin.apply(ctx);
+  return { registrations, localeCalls, effects, ctx };
+}
+
+test('the client half registers the sidebar mirror, the panel, and the settings page', async () => {
+  const plugin = await loadClientFactory();
+  assert.deepEqual(plugin.inject, ['slots', 'locale', 'layout']);
+  assert.equal(typeof plugin.apply, 'function');
+
+  const { registrations, localeCalls, effects } = mount(plugin);
 
   assert.equal(localeCalls.length, 1);
   assert.equal(localeCalls[0].ns, 'loci');
-  assert.ok(localeCalls[0].dict.zh['panel.title']);
-  assert.ok(localeCalls[0].dict.en['panel.title']);
+  for (const key of ['card.title', 'panel.feed', 'settings.budget', 'action.added']) {
+    assert.ok(localeCalls[0].dict.zh[key], `zh dictionary is missing ${key}`);
+    assert.ok(localeCalls[0].dict.en[key], `en dictionary is missing ${key}`);
+  }
 
   // Every registration ran inside an effect, so unload removes it.
   for (const factory of effects) factory();
 
-  const slots = registrations.map((entry) => entry.slot);
-  assert.deepEqual(slots, ['settings.section', 'settings.section.icon', 'sidebar.panellist', 'main']);
+  assert.deepEqual(
+    registrations.map((entry) => entry.slot),
+    ['sidebar.footer.action', 'settings.section', 'settings.section.icon', 'sidebar.panellist', 'main'],
+  );
 
-  const settings = registrations[0].options;
-  assert.equal(settings.name, 'settings.section');
+  // The "mirror" card sits beside Settings, as requested.
+  const card = registrations[0].options;
+  assert.equal(card.name, 'sidebar.footer.action');
+  assert.equal(card.id, 'loci-card');
+  assert.equal(typeof card.order, 'number');
+  assert.equal(typeof card.label, 'function');
+  assert.equal(typeof registrations[0].component, 'function');
+
+  const settings = registrations[1].options;
   assert.equal(settings.id, 'loci');
-  assert.equal(typeof settings.order, 'number');
-  assert.equal(typeof settings.label, 'function');
 
-  const panel = registrations[2].options;
-  assert.equal(panel.id, 'loci', 'the sidebar id must address the main panel');
+  const panelIcon = registrations[3].options;
+  assert.equal(panelIcon.id, 'loci', 'the sidebar id must address the main panel');
 
-  const main = registrations[3].options;
+  const main = registrations[4].options;
   assert.equal(main.key, 'loci', 'the main slot is keyed by the sidebar id');
 
   for (const entry of registrations) {

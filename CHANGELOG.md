@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.1.0] — unreleased
+
+### Added
+
+- **Sidebar mirror** (`sidebar.footer.action`): a flat card beside Settings that
+  shows what memory changed today and in the last seven days, the last three
+  changes as one-line entries, pending-review count, the installed version in small
+  text, and an explicit "check for updates" that is the only path that touches the
+  network.
+- **Feed tab** in the panel: every add, revision, verification, pin, deletion,
+  restore, import and maintenance pass, newest first, with the entry it touched.
+- **`/api/loci/activity`**, **`/api/loci/update`**, **`/api/loci/version`** — the
+  owner-only endpoints behind those two surfaces; the activity feed carries ids,
+  titles and counts, never bodies.
+- **Update checker** (`src/host/update.js`): six-hour cache, 4-second timeout, and
+  "unavailable" on any failure instead of an error state. It never installs
+  anything; upgrading stays a decision made in the plugin manager.
+
+### Changed
+
+- The panel opens on the **Feed** tab (was Index), because "what changed" is the
+  question a user actually arrives with.
+- Version text follows the ecosystem convention: `v1.1.0` at 10px in the card,
+  and a quiet version line in the Stats tab.
+- Removed the `build:client` script: the client half is hand-authored
+  module-loader JavaScript, so there was nothing to build and the entry was broken.
+
+### Fixed
+
+- (pending) findings from the four independent production-readiness audits.
+
 ## [1.0.0] — 2026-11-13
 
 First release.

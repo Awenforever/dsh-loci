@@ -16,11 +16,12 @@ import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
 import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
+import { UpdateChecker } from './update.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -106,6 +107,8 @@ export function apply(ctx, rawConfig = {}) {
     quoteVerifier: (quote, options) => capture?.verifyQuote(quote, options) ?? false,
   });
 
+  const updates = new UpdateChecker({ currentVersion: VERSION, log });
+
   capture = new Capture({
     store,
     config: read,
@@ -142,7 +145,7 @@ export function apply(ctx, rawConfig = {}) {
   // after a profile-installed bundle activates).
   disposers.push(
     ctx.inject(['connection'], (child) =>
-      child.effect(() => registerApiRoutes(child, { store, paths, config, log }), 'loci: panel api'),
+      child.effect(() => registerApiRoutes(child, { store, paths, config, log, updates, version: VERSION }), 'loci: panel api'),
     ),
   );
   disposers.push(
