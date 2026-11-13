@@ -4,7 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
-## [1.2.0] — unreleased
+## [1.4.0] — 2026-11-14
+
+### Fixed
+
+- **`export` then `import` imported nothing.** The exporter wrote entries under
+  `<root>/markdown/<scope>/<kind>/` and a one-line summary under
+  `<root>/exports/`; the importer read `exports`. The default is now the tree that
+  holds the documents, and the original scope and scope key are restored from the
+  front matter instead of forcing every import into `workspace:imported`.
+- The CLI granted itself `allowHardDelete`; it now honours the config, with
+  `--allow-hard-delete` as the explicit opt-in for one invocation.
+- `cli.mjs` read the version from four hardcoded strings; it now reads
+  `package.json`.
+
+### Added
+
+- `store.forgetAll()`: soft (or hard, with `allowHardDelete`) deletion of one scope
+  or the whole store, gated by an echoed confirmation phrase, one audit line per
+  entry. `POST /api/loci/forget-all` exposes it, and **Settings → Delete
+  everything** asks for the phrase before running.
+- `test/unit/export.test.mjs` (round trip, scope restore, path guard) and
+  `test/unit/forget-all.test.mjs` (confirmation, hard-delete gate, scope limit).
+
+## [1.3.0] — 2026-11-14
+
+### Changed
+
+- **A captured statement verifies itself.** With capture on by default, every
+  durable-sounding sentence the user said landed in the review queue and was never
+  injected — while the same words, written by the model with a quote, went straight
+  through. A captured statement now passes the same quote gate as a model-supplied
+  quote: if its sentence is still in the session buffer it is verified, otherwise it
+  stays a candidate. Imports and session summaries never verify themselves.
+- `autoVerifyCaptured` (default `true`) keeps the old behaviour for a cautious user.
+- The review queue lists only the kinds that could be injected, so past-session
+  summaries stop pretending to be pending decisions.
+
+### Added
+
+- Reject, verify-all, and a visible error line in the review queue; a failed click
+  now says so instead of disappearing into `console.warn`.
+
+## [1.2.0] — 2026-11-14
 
 ### Changed
 
