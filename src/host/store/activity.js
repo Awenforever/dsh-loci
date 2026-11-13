@@ -22,6 +22,9 @@ const FEED_EVENTS = new Set(['write', 'verify', 'delete', 'import', 'maintenance
 /** Titles are clipped here, not in the UI, so every surface agrees. */
 const TITLE_CLIP = 96;
 
+/** One clause of a note: long enough to say something, short enough for a narrow card. */
+const GIST_CHARS = 52;
+
 /**
  * The change a `write` audit line represents.
  * @param event - parsed audit line.
@@ -29,6 +32,91 @@ const TITLE_CLIP = 96;
  */
 function writeKind(event) {
   return Number(event.rev) > 1 ? 'revised' : 'added';
+}
+
+/**
+ * "What it knows", for the sidebar card.
+ *
+ * This is deliberately not a change log and not a set of counters. The card is a
+ * page of notes: three or four statements that are currently true, each labelled
+ * with what kind of understanding it is (a consensus, a lesson, a fact), plus the
+ * freshness — which is what tells a reader "yes, it understood that just now".
+ *
+ * Order is by when the understanding became trustworthy (`verified_at`), falling
+ * back to the last edit, so a row that was corrected today rises to the top even
+ * though it was first written months ago.
+ *
+ * @param store - open store.
+ * @param options - `limit`, `scopeKeys`.
+ * @returns `{items, pending, generatedAt}`.
+ */
+export function buildKnowledge(store, options = {}) {
+  const limit = Math.max(1, Math.min(20, options.limit ?? 4));
+  const scopeKeys = Array.isArray(options.scopeKeys) ? options.scopeKeys : store.allScopeKeys();
+  const empty = { items: [], pending: 0, generatedAt: Date.now() };
+  if (scopeKeys.length === 0) return empty;
+
+  const marks = scopeKeys.map(() => '?').join(', ');
+  const rows = store.db
+    .prepare(
+      `SELECT id, kind, title, body, scope_label, status, pinned,
+              COALESCE(verified_at, updated_at) AS at
+       FROM memory
+       WHERE scope_key IN (${marks})
+         AND status = 'verified'
+         AND valid_to IS NULL
+       ORDER BY pinned DESC, at DESC
+       LIMIT ?`,
+    )
+    .all(...scopeKeys, limit);
+
+  const pending = Number(
+    store.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM memory
+         WHERE scope_key IN (${marks}) AND status = 'candidate' AND valid_to IS NULL`,
+      )
+      .get(...scopeKeys)?.n ?? 0,
+  );
+
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      title: clip(row.title),
+      // The first sentence of the body, so the card can write a summary that says
+      // something rather than repeating the headline.
+      gist: gistOf(row.body, row.title),
+      scope: row.scope_label,
+      pinned: row.pinned === 1 || row.pinned === true,
+      at: Number(row.at) || null,
+    })),
+    pending,
+    generatedAt: Date.now(),
+  };
+}
+
+/**
+ * The one sentence from a body worth putting in a note.
+ *
+ * Bodies are written as "the fact, plus why it matters" — the first sentence is
+ * the fact, and it is usually better prose than the title. It is skipped when it
+ * merely restates the title, because "发布顺序。发布顺序是 staging…" reads worse
+ * than the title alone.
+ * @param body - stored body.
+ * @param title - the entry title.
+ * @returns a clipped first sentence, or null.
+ */
+function gistOf(body, title) {
+  if (typeof body !== 'string') return null;
+  const flat = body.replace(/\s+/g, ' ').trim();
+  if (flat.length === 0) return null;
+  const first = flat.split(/(?<=[。！？；.!?;])/)[0] ?? flat;
+  const sentence = first.replace(/[。！？；.!?;]\s*$/, '').trim();
+  if (sentence.length < 6) return null;
+  const normalizedTitle = String(title ?? '').replace(/\s+/g, '').trim();
+  if (normalizedTitle.length > 0 && sentence.replace(/\s+/g, '').startsWith(normalizedTitle)) return null;
+  return sentence.length <= GIST_CHARS ? sentence : `${sentence.slice(0, GIST_CHARS - 1)}…`;
 }
 
 /**

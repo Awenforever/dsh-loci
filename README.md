@@ -29,7 +29,7 @@ Loci is built around one rule: **the prompt holds an index, not a memory.**
 
 ## What it remembers
 
-![The sidebar mirror and the memory panel](marketplace/screenshots/sidebar-mirror.png)
+![The sidebar note and the memory panel](marketplace/screenshots/sidebar-note.png)
 
 | Layer | Kind | Injected? | Example |
 |---|---|---|---|
@@ -74,11 +74,13 @@ one of them.
 
 ## Where you see it
 
-- **Sidebar mirror** — a flat card beside Settings, like the quota and advisor
-  cards: today's and this week's change counts, the last three changes as
-  one-liners, how many entries wait for review, the installed version in small
-  text, and an explicit "check for updates" that is the only path that touches
-  the network.
+- **Sidebar note** — a small card beside Settings, like the quota and advisor
+  cards, that reads like a page of notes rather than a dashboard: `更新于 <time>`
+  over one short paragraph of what the agent currently understands in this
+  project (a consensus, a lesson, a fact), plus one quiet line if something is
+  waiting for your review. It answers "did it take that in?" — no counters.
+  The version sits in small text with an explicit "check for updates", the only
+  path that touches the network.
 - **Memory panel** — the full view, opening on a **Feed** of every add, revision,
   verification, pin, deletion and import, newest first.
 - **Settings → Loci** — the budget, capture mode, default scope, secret policy

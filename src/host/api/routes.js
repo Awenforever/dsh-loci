@@ -12,7 +12,7 @@ import { readScopeKeys, resolveScopes } from '../scope.js';
 import { search } from '../store/search.js';
 import { exportMarkdown, importMarkdown } from '../store/export.js';
 import { renderIndexBody } from '../inject/index-section.js';
-import { buildActivity } from '../store/activity.js';
+import { buildActivity, buildKnowledge } from '../store/activity.js';
 
 /** Refuse request bodies above this size. */
 export const MAX_BODY_BYTES = 256 * 1024;
@@ -111,7 +111,7 @@ export function registerApiRoutes(ctx, deps) {
     const cwd = url.searchParams.get('cwd') ?? undefined;
     const sessionId = url.searchParams.get('session') ?? undefined;
     const scoped = cwd !== undefined || sessionId !== undefined;
-    const resolved = scoped ? resolveScopes({ cwd, sessionId, home: paths.home }) : undefined;
+    const resolved = scoped ? resolveScopes({ cwd, sessionId }) : undefined;
     const scopeKeys = scoped ? resolved.readKeys : store.allScopeKeys();
     const scopeLabel = scoped ? resolved.label : `all ${scopeKeys.length} stored scope(s)`;
     return json({
@@ -136,6 +136,21 @@ export function registerApiRoutes(ctx, deps) {
     const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') ?? 40)));
     const since = Number(url.searchParams.get('since') ?? '');
     return json(buildActivity(store, { limit, since: Number.isFinite(since) ? since : undefined }));
+  });
+
+  // What the sidebar card shows: the few things currently understood, as notes.
+  // Scoped to the conversation's read set when the caller says which one, so the
+  // card answers "what does *this* project's agent know", not "what exists".
+  route('/api/loci/knowledge', ['GET'], async (request) => {
+    const url = new URL(request.url);
+    const cwd = url.searchParams.get('cwd') ?? undefined;
+    const sessionId = url.searchParams.get('session') ?? undefined;
+    const limit = Math.max(1, Math.min(20, Number(url.searchParams.get('limit') ?? 4)));
+    const scopeKeys =
+      cwd === undefined && sessionId === undefined
+        ? store.allScopeKeys()
+        : resolveScopes({ cwd, sessionId }).readKeys;
+    return json(buildKnowledge(store, { limit, scopeKeys }));
   });
 
   // Version badge + update hint. The default answer is **cache only**: opening

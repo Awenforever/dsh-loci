@@ -4,7 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
-## [1.1.0] — unreleased
+## [1.2.0] — unreleased
+
+### Changed
+
+- **The sidebar card is a page of notes, not a dashboard.** Counters ("4 today",
+  "4 this week") are gone. The card now shows `更新于 <time>` over one short
+  paragraph made of the few things the agent currently understands in this
+  project — a consensus, a lesson, a fact — so reading it answers "did it
+  actually take that in?" instead of "did the number go up?".
+  Ordering is by when an entry last *became* trustworthy (`verified_at`, falling
+  back to the last edit), so confirming an old entry today puts it at the top.
+- The card is scoped to the current project's read set, not to every scope in the
+  store: it answers "what does this conversation's agent know".
+- Pending entries are mentioned as one line of text ("still need your review"),
+  never as a badge count.
+
+### Added
+
+- `buildKnowledge` + `GET /api/loci/knowledge`: verified entries as notes, with a
+  first-sentence `gist` that is withheld when it merely restates the title.
+- `test/unit/knowledge.test.mjs`: notes exclude candidates, respect scope, carry
+  the moment they became true, and re-order on a fresh confirmation.
+
+## [1.1.0] — 2026-11-13
 
 ### Added
 

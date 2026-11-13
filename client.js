@@ -34,11 +34,11 @@ window.__ModuleLoader__.load({
         'Layered long-term memory: the prompt holds a stable index, full text is one lookup away, and only verified facts are injected.',
 
       'card.title': 'Memory',
-      'card.empty': 'Nothing learned yet',
-      'card.emptyHint': 'Facts you confirm appear here',
-      'card.today': 'today',
-      'card.week': 'this week',
-      'card.pending': 'to review',
+      'card.empty': 'Nothing understood yet',
+      'card.emptyHint': 'Confirm a fact and it appears here',
+      'card.updated': 'updated',
+      'card.pending': '{n} still need your review',
+      'card.pinned': 'pinned',
       'card.open': 'Open memory',
       'card.check': 'Check for updates',
       'card.upToDate': 'Up to date',
@@ -46,6 +46,21 @@ window.__ModuleLoader__.load({
       'card.checking': 'Checking…',
       'card.unknown': 'Version check unavailable',
       'card.unpublished': 'Not on npm yet',
+
+      'prose.agreed': 'we agreed ',
+      'prose.lesson': 'lesson — ',
+
+      'kind.rule': 'agreed',
+      'kind.procedural': 'lesson',
+      'kind.semantic': 'fact',
+      'kind.episodic': 'event',
+      'kind.working': 'draft',
+
+      'since.now': 'just now',
+      'since.minutes': '{n}m ago',
+      'since.hours': '{n}h ago',
+      'since.yesterday': 'yesterday',
+      'since.days': '{n}d ago',
 
       'action.added': 'added',
       'action.revised': 'revised',
@@ -125,11 +140,11 @@ window.__ModuleLoader__.load({
         '分层长期记忆：提示词里只放稳定索引，全文按需一次取回；只有已核实的记忆才会被注入。',
 
       'card.title': '记忆',
-      'card.empty': '还没有学到东西',
-      'card.emptyHint': '确认过的事实会出现在这里',
-      'card.today': '今日',
-      'card.week': '本周',
-      'card.pending': '待审',
+      'card.empty': '还没有真正记下的东西',
+      'card.emptyHint': '你确认过的事实会出现在这里',
+      'card.updated': '更新于',
+      'card.pending': '另有 {n} 条我拿不准，等你看一眼',
+      'card.pinned': '置顶',
       'card.open': '打开记忆',
       'card.check': '检查更新',
       'card.upToDate': '已是最新',
@@ -137,6 +152,21 @@ window.__ModuleLoader__.load({
       'card.checking': '检查中…',
       'card.unknown': '无法检查版本',
       'card.unpublished': '尚未发布',
+
+      'prose.agreed': '已定：',
+      'prose.lesson': '经验：',
+
+      'kind.rule': '共识',
+      'kind.procedural': '经验',
+      'kind.semantic': '事实',
+      'kind.episodic': '事件',
+      'kind.working': '草稿',
+
+      'since.now': '刚才',
+      'since.minutes': '{n} 分钟前',
+      'since.hours': '{n} 小时前',
+      'since.yesterday': '昨天',
+      'since.days': '{n} 天前',
 
       'action.added': '新增',
       'action.revised': '更正',
@@ -219,15 +249,13 @@ window.__ModuleLoader__.load({
 .loci-card-title { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
 .loci-card-grow { flex: 1 1 auto; }
 .loci-card-ver { font-size: 10px; color: var(--dsw-alias-label-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.loci-card-counts { display: flex; gap: 12px; }
-.loci-count { display: flex; align-items: baseline; gap: 4px; }
-.loci-count b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.loci-count span { font-size: 10px; color: var(--dsw-alias-label-secondary); }
-.loci-card-feed { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
-.loci-card-line { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--dsw-alias-label-secondary); min-width: 0; }
-.loci-card-line em { font-style: normal; flex: 0 0 auto; font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
-.loci-card-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loci-card-mark { display: flex; align-items: center; color: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
+.loci-card-note { display: flex; flex-direction: column; gap: 5px; }
+.loci-card-stamp { font-size: 10.5px; color: var(--dsw-alias-label-secondary); letter-spacing: .01em; }
+.loci-card-prose { margin: 0; font-size: 12px; line-height: 1.62; color: var(--dsw-alias-label-primary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.loci-card-hint { font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin-top: 1px; }
 .loci-card-empty { font-size: 11px; color: var(--dsw-alias-label-secondary); }
+.loci-card-line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
@@ -341,15 +369,59 @@ window.__ModuleLoader__.load({
     const fmtDate = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : '—');
     const fmtBytes = (n) => `${Math.round(Number(n) || 0)} B`;
 
-    /** "3m", "2h", "5d" — short enough for a card line. */
-    function fmtAgo(ms, now = Date.now()) {
+    /**
+     * Turn the few things currently understood into one paragraph.
+     *
+     * The card is a page of notes, so this reads as prose rather than a list: one
+     * clause per entry, joined with 。or ， and cut when it stops fitting. Consensus
+     * items lead with 已定 and a fact leads with its own subject, because "we
+     * agreed" and "it happens to be true" are different kinds of knowing.
+     */
+    function proseOf(notes, t) {
+      const clauses = [];
+      for (const note of notes) {
+        const title = String(note.title ?? '').trim().replace(/[。.]$/, '');
+        if (title.length === 0) continue;
+        const gist = typeof note.gist === 'string' && note.gist !== title ? note.gist : null;
+        const body = gist === null ? title : `${title}，${gist}`;
+        if (note.kind === 'rule') clauses.push(`${t('prose.agreed')}${body}`);
+        else if (note.kind === 'procedural') clauses.push(`${t('prose.lesson')}${body}`);
+        else clauses.push(body);
+        // The card is narrow; three clauses already fill it. A fourth only shows
+        // up when the first ones are unusually short.
+        if (clauses.join('；').length > 90) break;
+      }
+      return `${clauses.join('；')}。`;
+    }
+
+    /** `2026-11-13 21:11`, matching the note style of the other sidebars. */
+    function stampOf(ms) {
+      if (!Number.isFinite(ms)) return '';
+      const date = new Date(ms);
+      const pad = (value) => String(value).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+
+    /**
+     * How long ago something was understood, in words rather than numbers.
+     *
+     * "昨天" and "刚才" are the whole point of the card: they are what makes a
+     * reader believe the memory is alive. A bare timestamp makes them do the
+     * arithmetic instead.
+     */
+    function fmtSince(ms, t, now = Date.now()) {
       if (!Number.isFinite(ms)) return '';
       const delta = Math.max(0, now - ms);
       const minute = 60_000;
-      if (delta < minute) return 'now';
-      if (delta < 60 * minute) return `${Math.floor(delta / minute)}m`;
-      if (delta < 24 * 60 * minute) return `${Math.floor(delta / (60 * minute))}h`;
-      return `${Math.floor(delta / (24 * 60 * minute))}d`;
+      if (delta < minute) return t('since.now');
+      if (delta < 60 * minute) return t('since.minutes').replace('{n}', String(Math.floor(delta / minute)));
+      if (delta < 24 * 60 * minute) return t('since.hours').replace('{n}', String(Math.floor(delta / (60 * minute))));
+      if (delta < 48 * 60 * minute) return t('since.yesterday');
+      if (delta < 30 * 24 * 60 * minute) {
+        return t('since.days').replace('{n}', String(Math.floor(delta / (24 * 60 * minute))));
+      }
+      return new Date(ms).toISOString().slice(0, 10);
     }
 
     const ACTION_KEY = (action) => `action.${action}`;
@@ -424,7 +496,10 @@ window.__ModuleLoader__.load({
       const t = props?.t ?? ((key) => key);
       const wide = props?.wide !== false;
       const open = props?.openPanel;
-      const activity = useJson('/activity?limit=12', { intervalMs: 30_000 });
+      // The card asks "what does it know", not "what happened": a page of notes,
+      // not a dashboard. No counters — a number tells you something changed, a
+      // sentence tells you what was understood.
+      const knowledge = useJson('/knowledge?limit=4', { intervalMs: 30_000 });
       const update = useJson('/update');
       const [checking, setChecking] = useState(false);
       const [fresh, setFresh] = useState(undefined);
@@ -441,21 +516,9 @@ window.__ModuleLoader__.load({
         }
       }, []);
 
-      const data = activity.data;
-      const digest = data?.digest;
-      // One line per entry: a fact that was added and then verified in the same
-      // minute is one piece of news, not two.
-      const seen = new Set();
-      const shown = (data?.items ?? [])
-        .filter((item) => item.action !== 'maintained')
-        .filter((item) => {
-          const key = item.id ?? `${item.action}-${item.ts}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .slice(0, 3);
-      const pending = props?.pending ?? undefined;
+      const data = knowledge.data;
+      const notes = data?.items ?? [];
+      const pending = Number(data?.pending ?? 0);
 
       if (!wide) {
         return h(
@@ -488,40 +551,45 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'loci-card-head' },
+          h(
+            'span',
+            { className: 'loci-card-mark', 'aria-hidden': true },
+            h('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none' },
+              h('path', {
+                d: 'M20 4c0 9-6.5 15-16 16 0 0 .5-7 4.5-11S20 4 20 4Z',
+                stroke: 'currentColor',
+                strokeWidth: 1.6,
+                strokeLinejoin: 'round',
+              }),
+              h('path', { d: 'M5 20 14 10', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
+            ),
+          ),
           h('span', { className: 'loci-card-title' }, t('card.title')),
           h('span', { className: 'loci-card-grow' }),
           h(VersionLine, { t, update: fresh ?? update.data, onCheck: check, checking }),
         ),
-        digest === undefined
-          ? h('div', { className: 'loci-card-empty' }, activity.error ?? t('panel.loading'))
-          : h(
-              'div',
-              null,
-              h(
+        data === undefined
+          ? h('div', { className: 'loci-card-empty' }, knowledge.error ?? t('panel.loading'))
+          : notes.length === 0
+            ? h(
                 'div',
-                { className: 'loci-card-counts' },
-                h('span', { className: 'loci-count' }, h('b', null, digest.today), h('span', null, t('card.today'))),
-                h('span', { className: 'loci-count' }, h('b', null, digest.week), h('span', null, t('card.week'))),
-                Number.isFinite(pending) && pending > 0
-                  ? h('span', { className: 'loci-count' }, h('b', null, pending), h('span', null, t('card.pending')))
+                null,
+                h('div', { className: 'loci-card-empty' }, t('card.empty')),
+                h('div', { className: 'loci-card-hint' }, t('card.emptyHint')),
+              )
+            : h(
+                'div',
+                { className: 'loci-card-note' },
+                h(
+                  'div',
+                  { className: 'loci-card-stamp' },
+                  `${t('card.updated')} ${stampOf(notes[0]?.at ?? data.generatedAt)}`,
+                ),
+                h('p', { className: 'loci-card-prose' }, proseOf(notes, t)),
+                pending > 0
+                  ? h('div', { className: 'loci-card-hint' }, t('card.pending').replace('{n}', String(pending)))
                   : null,
               ),
-              shown.length === 0
-                ? h('div', { className: 'loci-card-empty' }, t('card.empty'))
-                : h(
-                    'div',
-                    { className: 'loci-card-feed' },
-                    shown.map((item) =>
-                      h(
-                        'div',
-                        { key: `${item.ts}-${item.id ?? item.action}`, className: 'loci-card-line' },
-                        h('em', null, t(ACTION_KEY(item.action))),
-                        h('span', { title: item.title ?? '' }, item.title ?? '—'),
-                        h('span', { style: { marginLeft: 'auto', flex: '0 0 auto' } }, fmtAgo(item.ts)),
-                      ),
-                    ),
-                  ),
-            ),
       );
     }
 
@@ -580,8 +648,8 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'loci-meta' },
-                h('span', null, fmtAgo(item.ts)),
-                item.kind ? h('span', null, item.kind) : null,
+                h('span', null, fmtSince(item.ts, t)),
+                item.kind ? h('span', null, t(`kind.${item.kind}`)) : null,
                 item.scope ? h('span', null, item.scope) : null,
                 item.detail
                   ? h(
@@ -616,7 +684,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'loci-meta' },
-            h('span', null, item.kind),
+            h('span', null, t(`kind.${item.kind}`)),
             h('span', null, item.scope),
             h('span', null, fmtDate(item.validFrom)),
             item.pinned ? h('span', null, '★') : null,

@@ -37,7 +37,7 @@
     ]
   },
   "highlights": [
-    "a sidebar mirror and a memory panel: what was remembered, revised and removed, as it happens",
+    "a sidebar note that reads like a journal: what it understood, and when",
     "0 bytes injected on an empty store; a hard 3,584-byte budget afterwards",
     "the index never reorders on write, so the prompt prefix survives",
     "loci_search returns total + cursor: a broad question can list everything",
@@ -47,7 +47,7 @@
     "no model call and no network in the default path"
   ],
   "screenshots": [
-    "screenshots/sidebar-mirror.png",
+    "screenshots/sidebar-note.png",
     "screenshots/settings-light.png",
     "screenshots/panel-index.png"
   ],
