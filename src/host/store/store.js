@@ -1193,7 +1193,14 @@ export class Store {
     if (input.kind === 'working') return 'candidate';
     if (['candidate', 'verified', 'disputed'].includes(input.status)) return input.status;
     if (prepared.instructionLike) return 'disputed';
-    if (trustSource === 'import' || trustSource === 'summary' || trustSource === 'rule') return 'candidate';
+    // An import or a session summary is not testimony: neither is something the
+    // user just said, so neither can be verified by a quote.
+    if (trustSource === 'import' || trustSource === 'summary') return 'candidate';
+    // A rule the capture layer lifted out of the user's own message **is**
+    // testimony — it carries the sentence verbatim. It goes through the same
+    // quote gate as a model-supplied quote instead of being parked in the review
+    // queue forever, which is what "everything needs a click" used to mean.
+    if (trustSource === 'rule' && this.live('autoVerifyCaptured') === false) return 'candidate';
     if (trustSource === 'user') return 'verified';
     return this.#quoteVerifies(evidence, input) ? 'verified' : 'candidate';
   }

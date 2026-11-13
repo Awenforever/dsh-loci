@@ -126,6 +126,10 @@ window.__ModuleLoader__.load({
       'panel.candidates': 'Candidates',
       'panel.disputed': 'Disputed',
       'panel.noCandidates': 'Nothing waiting for review.',
+      'panel.reviewHint': 'Only entries that could be injected are listed. A summary of a past session is history, not a claim.',
+      'panel.reject': 'Reject',
+      'panel.verifyAll': 'Verify all {n}',
+      'panel.actionFailed': 'Action failed',
       'panel.injections': 'Recent injections',
       'panel.store': 'Store',
       'panel.confirmDelete': 'Soft-delete this entry?',
@@ -232,6 +236,10 @@ window.__ModuleLoader__.load({
       'panel.candidates': '候选',
       'panel.disputed': '争议',
       'panel.noCandidates': '没有待审条目。',
+      'panel.reviewHint': '这里只列可能被注入的条目；过去会话的摘要属于历史，不是主张。',
+      'panel.reject': '驳回',
+      'panel.verifyAll': '全部核实（{n}）',
+      'panel.actionFailed': '操作失败',
       'panel.injections': '最近注入',
       'panel.store': '存储',
       'panel.confirmDelete': '软删除这条记忆？',
@@ -884,41 +892,120 @@ window.__ModuleLoader__.load({
     }
 
     function ReviewTab({ t, onOpen, onChanged }) {
-      const candidates = useJson('/list?status=candidate&limit=50');
-      const disputed = useJson('/list?status=disputed&limit=50');
-      const act = async (path, body) => {
+      // Only the kinds that could actually reach the prompt are reviewable. An
+      // episodic session summary is history: it is never injected, so parking it
+      // here forever is how the queue became a wall nobody reads.
+      const reviewable = 'kinds=rule,semantic,procedural';
+      const candidates = useJson(`/list?status=candidate&limit=50&${reviewable}`);
+      const disputed = useJson(`/list?status=disputed&limit=50&${reviewable}`);
+      const [busy, setBusy] = useState(undefined);
+      const [failed, setFailed] = useState(undefined);
+      const act = async (path, body, id) => {
+        setBusy(id);
+        setFailed(undefined);
         try {
           await apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
           candidates.reload();
           disputed.reload();
           onChanged?.();
         } catch (failure) {
-          window.console?.warn?.('loci: review action failed', failure);
+          // A swallowed click is worse than a visible error: the user cannot tell
+          // "it worked" from "nothing happened".
+          setFailed(`${body.id ?? 'bulk'}: ${String(failure?.message ?? failure)}`);
+        } finally {
+          setBusy(undefined);
         }
       };
-      const block = (title, state) =>
+      const verifyMany = async (items) => {
+        setBusy('bulk');
+        setFailed(undefined);
+        try {
+          for (const item of items) {
+            await apiFetch('/verify', { method: 'POST', body: JSON.stringify({ id: item.id, status: 'verified' }) });
+          }
+          candidates.reload();
+          disputed.reload();
+          onChanged?.();
+        } catch (failure) {
+          setFailed(String(failure?.message ?? failure));
+        } finally {
+          setBusy(undefined);
+        }
+      };
+      const row = (item, actions) =>
+        h(
+          'div',
+          { key: item.id, className: 'loci-row' },
+          h('span', { className: 'loci-id' }, item.id.slice(0, 10)),
+          h(
+            'div',
+            { className: 'loci-main' },
+            h('div', { className: 'loci-name' }, item.title),
+            item.snippet ? h('div', { className: 'loci-snippet' }, item.snippet) : null,
+            h('div', { className: 'loci-meta' }, h('span', null, t(`kind.${item.kind}`)), item.scope ? h('span', null, item.scope) : null),
+          ),
+          h('div', { className: 'loci-actions' }, actions, h('button', { type: 'button', className: 'loci-btn is-quiet', onClick: () => onOpen(item.id) }, '→')),
+        );
+      const block = (title, state, actions) =>
         h(
           'div',
           null,
-          h('div', { className: 'loci-section' }, `${title} (${state.data?.total ?? 0})`),
+          h(
+            'div',
+            { className: 'loci-meta', style: { margin: '18px 0 8px', alignItems: 'center' } },
+            h('div', { className: 'loci-section', style: { margin: 0 } }, `${title} (${state.data?.total ?? 0})`),
+            h('span', { className: 'loci-grow' }),
+            state.data?.items?.length
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'loci-btn',
+                    disabled: busy !== undefined,
+                    onClick: () => verifyMany(state.data.items),
+                  },
+                  t('panel.verifyAll').replace('{n}', String(state.data.items.length)),
+                )
+              : null,
+          ),
           state.data?.items?.length
-            ? state.data.items.map((item) =>
-                h(
-                  'div',
-                  { key: item.id, className: 'loci-row' },
-                  h('span', { className: 'loci-id' }, item.id.slice(0, 10)),
-                  h('div', { className: 'loci-main' }, h('div', { className: 'loci-name' }, item.title), h('div', { className: 'loci-snippet' }, item.snippet)),
-                  h(
-                    'div',
-                    { className: 'loci-actions' },
-                    h('button', { type: 'button', className: 'loci-btn is-primary', onClick: () => act('/verify', { id: item.id, status: 'verified' }) }, t('panel.verify')),
-                    h('button', { type: 'button', className: 'loci-btn', onClick: () => onOpen(item.id) }, '→'),
-                  ),
-                ),
-              )
+            ? state.data.items.map((item) => row(item, actions(item)))
             : h('div', { className: 'loci-muted' }, t('panel.noCandidates')),
         );
-      return h('div', null, h(ErrorLine, { error: candidates.error ?? disputed.error, t }), block(t('panel.candidates'), candidates), block(t('panel.disputed'), disputed));
+      const candidateActions = (item) => [
+        h(
+          'button',
+          { key: 'v', type: 'button', className: 'loci-btn is-primary', disabled: busy !== undefined, onClick: () => act('/verify', { id: item.id, status: 'verified' }, item.id) },
+          t('panel.verify'),
+        ),
+        h(
+          'button',
+          {
+            key: 'r',
+            type: 'button',
+            className: 'loci-btn is-danger',
+            disabled: busy !== undefined,
+            onClick: () => act('/delete', { id: item.id, mode: 'soft', reason: 'rejected in review' }, item.id),
+          },
+          t('panel.reject'),
+        ),
+      ];
+      const disputedActions = (item) => [
+        h(
+          'button',
+          { key: 'v', type: 'button', className: 'loci-btn is-primary', disabled: busy !== undefined, onClick: () => act('/verify', { id: item.id, status: 'verified' }, item.id) },
+          t('panel.verify'),
+        ),
+      ];
+      return h(
+        'div',
+        null,
+        h(ErrorLine, { error: candidates.error ?? disputed.error, t }),
+        failed !== undefined ? h('div', { className: 'loci-error' }, `${t('panel.actionFailed')}: ${failed}`) : null,
+        h('div', { className: 'loci-muted' }, t('panel.reviewHint')),
+        block(t('panel.candidates'), candidates, candidateActions),
+        block(t('panel.disputed'), disputed, disputedActions),
+      );
     }
 
     function StatsTab({ t }) {

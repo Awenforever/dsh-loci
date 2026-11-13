@@ -51,6 +51,8 @@ export const DEFAULTS = Object.freeze({
   recallAssistBytes: 512,
   /** 'rules' | 'off' — deterministic durable-fact capture at turn end. */
   captureMode: 'rules',
+  /** Auto-verify a captured statement when its quote is found in the session. */
+  autoVerifyCaptured: true,
   /** Most capture passes per session. */
   captureMaxPerSession: 3,
   /** How long after a completed turn the capture pass runs. */
@@ -123,6 +125,7 @@ function buildSchema() {
     recallAssist: z.union(ENUMS.recallAssist).default(DEFAULTS.recallAssist).volatile(),
     recallAssistBytes: z.number().step(1).min(128).max(2048).default(DEFAULTS.recallAssistBytes).volatile(),
     captureMode: z.union(ENUMS.captureMode).default(DEFAULTS.captureMode).volatile(),
+    autoVerifyCaptured: z.boolean().default(DEFAULTS.autoVerifyCaptured).volatile(),
     captureMaxPerSession: z.number().step(1).min(0).max(20).default(DEFAULTS.captureMaxPerSession).volatile(),
     captureDebounceMs: z.number().step(500).min(0).max(600000).default(DEFAULTS.captureDebounceMs).volatile(),
     captureMaxPerStatementChars: z.number().step(1).min(40).max(400).default(DEFAULTS.captureMaxPerStatementChars).volatile(),
