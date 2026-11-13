@@ -100,6 +100,9 @@ function tierOf(kind, pinned) {
 /** Statuses that may be injected or returned by default. */
 export const INJECTABLE_STATUSES = Object.freeze(['verified']);
 
+/** The phrase a caller must echo before the whole store is forgotten. */
+export const CONFIRM_ALL = 'forget everything';
+
 /**
  * Open (and, when needed, create or migrate) the database behind one plugin
  * activation.
@@ -746,6 +749,51 @@ export class Store {
    * Every head id, newest first. Export iterates this rather than a page.
    * @returns memory ids.
    */
+  /**
+   * Forget everything in one scope, or the whole store.
+   *
+   * A privacy request ("delete what you remember about me") is not an exotic
+   * operation, and telling the user to go delete a directory by hand is a bad
+   * answer. The gate is the same shape as a single purge: the caller has to echo
+   * the exact confirmation phrase, and hard deletion additionally needs
+   * `allowHardDelete`.
+   *
+   * @param options - `scopeKey` (omit for every scope), `mode` (`soft`|`purge`),
+   *   `confirm`, `actor`, `reason`.
+   * @returns `{mode, scopeKey, count}`.
+   */
+  forgetAll(options = {}) {
+    this.#assertWritable();
+    const mode = options.mode === 'purge' ? 'purge' : 'soft';
+    const scopeKey = typeof options.scopeKey === 'string' && options.scopeKey.length > 0 ? options.scopeKey : undefined;
+    const expected = scopeKey === undefined ? CONFIRM_ALL : `forget ${scopeKey}`;
+    if (options.confirm !== expected) {
+      throw new MemoryRejectedError(`forget-all requires confirm: "${expected}"`);
+    }
+    if (mode === 'purge' && this.live('allowHardDelete') !== true) {
+      throw new MemoryRejectedError('hard delete is disabled; set allowHardDelete:true to permit it');
+    }
+    // `memory_head` carries no scope column; the scope lives on the revisions.
+    const ids =
+      scopeKey === undefined
+        ? this.allHeadIds()
+        : this.db
+            .prepare('SELECT DISTINCT id FROM memory WHERE scope_key = ?')
+            .all(scopeKey)
+            .map((row) => row.id);
+    for (const id of ids) {
+      // One entry at a time keeps the per-entry audit line and the index bump,
+      // at the cost of a slower loop — a bulk delete is rare and honesty wins.
+      this.forget(id, { mode, confirm: mode === 'purge' ? id : undefined, actor: options.actor ?? 'panel', reason: options.reason });
+    }
+    this.audit.append(
+      'delete',
+      { mode: `all:${mode}`, count: ids.length, scopeKey: scopeKey ?? null, actor: options.actor ?? 'panel' },
+      { sync: true },
+    );
+    return { mode, scopeKey: scopeKey ?? null, count: ids.length };
+  }
+
   allHeadIds() {
     return this.db
       .prepare('SELECT id FROM memory_head ORDER BY revision DESC, id ASC')

@@ -11,6 +11,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertInside } from '../paths.js';
+import { SCOPE_KINDS } from '../scope.js';
 
 /** Current projection format version, written into every file's front matter. */
 export const EXPORT_FORMAT = 1;
@@ -133,15 +134,25 @@ export function exportMarkdown(store, paths) {
 /**
  * Import Markdown files from a directory (default: the export directory).
  * Every imported entry is stored as a candidate with `trust_source: 'import'`.
+ *
+ * The reader and the writer have to agree on where the files are: `exportMarkdown`
+ * writes entries under `<root>/markdown/<scope>/<kind>/` and only a one-line
+ * summary under `<root>/exports/`, so defaulting the import to `exports` made
+ * "export then import" a no-op. The default is now the tree that actually holds
+ * the entries.
+ *
+ * The original scope is restored from the front matter: a fact exported from one
+ * project and imported must not silently reappear as "imported" in another.
+ *
  * @param store - open store.
  * @param paths - layout paths.
- * @param options - `dir`, `scopeKey`, `scopeLabel`.
+ * @param options - `dir`, `scopeKey`, `scopeLabel` (used only when a file has no scope).
  * @returns `{imported, skipped, errors}`.
  */
 export function importMarkdown(store, paths, options = {}) {
-  const dir = assertInside(paths.root, options.dir ?? paths.exports);
-  const scopeKey = options.scopeKey ?? 'workspace:imported';
-  const scopeLabel = options.scopeLabel ?? 'imported';
+  const dir = assertInside(paths.root, options.dir ?? paths.markdown);
+  const fallbackScopeKey = options.scopeKey ?? 'workspace:imported';
+  const fallbackScopeLabel = options.scopeLabel ?? 'imported';
   let imported = 0;
   let skipped = 0;
   const errors = [];
@@ -161,11 +172,18 @@ export function importMarkdown(store, paths, options = {}) {
         skipped += 1;
         continue;
       }
+      // Trust the document about where it came from; fall back only when the
+      // file predates the scope fields.
+      const scope = SCOPE_KINDS.includes(parsed.front.scope) ? parsed.front.scope : 'workspace';
+      const scopeKey =
+        typeof parsed.front.scope_key === 'string' && parsed.front.scope_key.length > 0
+          ? parsed.front.scope_key
+          : fallbackScopeKey;
       batch.push({
         kind: parsed.front.kind ?? 'semantic',
-        scope: 'workspace',
+        scope,
         scopeKey,
-        scopeLabel,
+        scopeLabel: scopeKey === fallbackScopeKey ? fallbackScopeLabel : scopeKey,
         title: parsed.front.title,
         body: parsed.body,
         tags: Array.isArray(parsed.front.tags) ? parsed.front.tags : [],

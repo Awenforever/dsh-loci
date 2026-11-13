@@ -89,6 +89,12 @@ window.__ModuleLoader__.load({
       'settings.secret': 'Secrets in memory',
       'settings.vector': 'Embedding channel',
       'settings.diagnostics': 'Diagnostics',
+      'settings.danger': 'Delete everything',
+      'settings.dangerHint': 'Type the phrase to confirm. Entries are soft-deleted: history stays readable and exportable.',
+      'settings.dangerPhrase': 'forget everything',
+      'settings.dangerRun': 'Delete all memory',
+      'settings.dangerBusy': 'Deleting…',
+      'settings.dangerDone': 'Deleted {n} entries.',
       'off': 'off',
       'captureRules': 'rules only',
       'secretRedact': 'redact',
@@ -199,6 +205,12 @@ window.__ModuleLoader__.load({
       'settings.secret': '记忆中的密钥',
       'settings.vector': '向量通道',
       'settings.diagnostics': '诊断',
+      'settings.danger': '清空记忆',
+      'settings.dangerHint': '输入确认短语才会执行。条目为软删除：历史仍可读、可导出。',
+      'settings.dangerPhrase': 'forget everything',
+      'settings.dangerRun': '删除全部记忆',
+      'settings.dangerBusy': '删除中…',
+      'settings.dangerDone': '已删除 {n} 条。',
       'off': '关闭',
       'captureRules': '仅规则',
       'secretRedact': '脱敏',
@@ -1140,6 +1152,9 @@ window.__ModuleLoader__.load({
       const ctx = props?.ctx;
       const effective = useJson('/config');
       const [status, setStatus] = useState(undefined);
+      const [forgetPhrase, setForgetPhrase] = useState('');
+      const [forgetBusy, setForgetBusy] = useState(false);
+      const [forgetResult, setForgetResult] = useState(undefined);
       const forms = ctx?.get?.('configForms');
       const form = forms?.get?.(ENTRY_ID);
       const [snapshot, setSnapshot] = useState(() => form?.getSnapshot?.() ?? { status: 'unavailable', value: undefined, writable: false });
@@ -1233,6 +1248,45 @@ window.__ModuleLoader__.load({
             ], values.vectorMode ?? 'off'),
           }),
         ),
+        h('div', { className: 'loci-section' }, t('settings.danger')),
+        h('div', { className: 'loci-muted' }, t('settings.dangerHint')),
+        h(
+          'div',
+          { className: 'loci-row', style: { borderBottom: 0 } },
+          h('input', {
+            className: 'loci-input',
+            value: forgetPhrase,
+            placeholder: t('settings.dangerPhrase'),
+            onChange: (event) => setForgetPhrase(event.target.value),
+            style: { maxWidth: '260px' },
+          }),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'loci-btn is-danger',
+              disabled: forgetPhrase.trim().length === 0 || forgetBusy,
+              onClick: async () => {
+                setForgetBusy(true);
+                setForgetResult(undefined);
+                try {
+                  const answer = await apiFetch('/forget-all', {
+                    method: 'POST',
+                    body: JSON.stringify({ confirm: forgetPhrase.trim(), mode: 'soft' }),
+                  });
+                  setForgetResult(t('settings.dangerDone').replace('{n}', String(answer.count ?? 0)));
+                  setForgetPhrase('');
+                } catch (failure) {
+                  setForgetResult(`${t('panel.actionFailed')}: ${String(failure?.message ?? failure)}`);
+                } finally {
+                  setForgetBusy(false);
+                }
+              },
+            },
+            forgetBusy ? t('settings.dangerBusy') : t('settings.dangerRun'),
+          ),
+        ),
+        forgetResult !== undefined ? h('div', { className: 'loci-muted' }, forgetResult) : null,
         h('div', { className: 'loci-section' }, t('settings.diagnostics')),
         h(
           'dl',

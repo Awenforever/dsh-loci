@@ -253,8 +253,27 @@ export function registerApiRoutes(ctx, deps) {
     return json(store.forget(id, { mode: mode ?? 'soft', reason, confirm, actor: 'panel' }));
   });
 
-  route('/api/loci/export', ['POST'], async (request) => {
+  // "Forget everything" is a privacy operation, not a bulk edit: the body must
+  // echo the confirmation phrase, and hard deletion still needs allowHardDelete.
+  route('/api/loci/forget-all', ['POST'], async (request) => {
     const parsed = await readJson(request);
+    if (parsed.error !== undefined) return parsed.error;
+    const { confirm, mode, scopeKey, reason } = parsed.value;
+    try {
+      return json(
+        store.forgetAll({
+          confirm,
+          mode: mode === 'purge' ? 'purge' : 'soft',
+          scopeKey: typeof scopeKey === 'string' ? scopeKey : undefined,
+          reason: typeof reason === 'string' ? reason : 'forget all',
+          actor: 'panel',
+        }),
+      );
+    } catch (error) {
+      return json({ error: String(error?.message ?? error) }, 400);
+    }
+  });
+  route('/api/loci/export', ['POST'], async (request) => {    const parsed = await readJson(request);
     if (parsed.error !== undefined) return parsed.error;
     if (parsed.value.action === 'import') {
       const result = importMarkdown(store, paths, {

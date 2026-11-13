@@ -20,7 +20,7 @@
  *
  * Common options: --home <path> (default $DSH_HOME), --json
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { effectiveConfig } from '../src/host/config.js';
 import { formatDoctor, runDoctor } from '../src/host/doctor.js';
@@ -32,6 +32,11 @@ import { migrate, newestBackup, restoreDatabaseFile } from '../src/host/store/mi
 import { search } from '../src/host/store/search.js';
 import { Store } from '../src/host/store/store.js';
 import { formatDate } from '../src/host/inject/index-section.js';
+
+// One source of truth for the version: the manifest that actually ships.
+const PLUGIN_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 
 const argv = process.argv.slice(2);
 const command = argv[0] ?? 'help';
@@ -56,7 +61,7 @@ function emit(value, text) {
 /** Open the store for a command that needs it, and close it after the work settles. */
 async function withStore(fn) {
   ensureMemoryRoot(memoryRoot);
-  const store = new Store({ memoryRoot, paths, config: effectiveConfig({ home }), pluginVersion: '1.0.0' });
+  const store = new Store({ memoryRoot, paths, config: effectiveConfig({ home }), pluginVersion: PLUGIN_VERSION });
   try {
     return await fn(store);
   } finally {
@@ -180,7 +185,7 @@ switch (command) {
       const result = migrate(db, {
         target: target === undefined ? undefined : Number(target),
         backupDir: paths.backups,
-        pluginVersion: '1.0.0',
+        pluginVersion: PLUGIN_VERSION,
       });
       emit(result, `migrated ${result.from} -> ${result.to} (${result.steps.join(', ') || 'no steps'}), snapshot ${result.backup ?? 'none'}`);
     } finally {
@@ -207,9 +212,15 @@ switch (command) {
   case 'purge': {
     const id = flag('id');
     const confirm = flag('confirm');
-    const config = effectiveConfig({ home, allowHardDelete: true });
+    // The config decides whether hard delete is permitted; the CLI must not grant
+    // itself a permission the user turned off. `--allow-hard-delete` is the
+    // explicit opt-in for exactly this invocation.
+    const config = effectiveConfig({
+      home,
+      ...(argv.includes('--allow-hard-delete') ? { allowHardDelete: true } : {}),
+    });
     ensureMemoryRoot(memoryRoot);
-    const store = new Store({ memoryRoot, paths, config, live: () => true, pluginVersion: '1.0.0' });
+    const store = new Store({ memoryRoot, paths, config, live: () => true, pluginVersion: PLUGIN_VERSION });
     try {
       const result = store.forget(id, { mode: 'purge', confirm, actor: 'cli' });
       emit(result, `purged ${result.id}`);
