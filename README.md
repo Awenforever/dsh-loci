@@ -29,6 +29,8 @@ Loci is built around one rule: **the prompt holds an index, not a memory.**
 
 ## What it remembers
 
+![The sidebar mirror and the memory panel](marketplace/screenshots/sidebar-mirror.png)
+
 | Layer | Kind | Injected? | Example |
 |---|---|---|---|
 | rules | `rule` | yes, first | "删除前必须做路径断言" |
@@ -61,7 +63,7 @@ No service, no native module, no CLI binary.
 | Tool | Use |
 |---|---|
 | `loci_write` | Save or update a fact. `evidenceQuote` must be verbatim; without it the entry is a candidate. |
-| `loci_search` | Hybrid search. Returns `total`, `hasMore`, `cursor`; `detail` is snippet/overview/full. |
+| `loci_search` | Hybrid search. Returns `total`, `hasMore`, `cursor`; `detail` is snippet/overview/full. Omit `query` to list the newest entries. |
 | `loci_get` | Full text plus revision history and the evidence quote. |
 | `loci_forget` | Soft-delete (history kept) or restore. |
 | `loci_stats` | Counts, budget use, channel health, database location. |
@@ -70,6 +72,18 @@ Tool names are prefixed `loci_` on purpose: `ctx.tools.register` throws on a
 duplicate name, so two memory plugins both claiming `memory_search` would break
 one of them.
 
+## Where you see it
+
+- **Sidebar mirror** — a flat card beside Settings, like the quota and advisor
+  cards: today's and this week's change counts, the last three changes as
+  one-liners, how many entries wait for review, the installed version in small
+  text, and an explicit "check for updates" that is the only path that touches
+  the network.
+- **Memory panel** — the full view, opening on a **Feed** of every add, revision,
+  verification, pin, deletion and import, newest first.
+- **Settings → Loci** — the budget, capture mode, default scope, secret policy
+  and embedding channel.
+
 ## Configuration
 
 Everything lives in the plugin's Loader row; Loci never reads a project file.
@@ -77,7 +91,7 @@ The settings page writes the fields marked *live* without a restart.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `sectionMaxBytes` | `5120` | hard byte budget for the injected section (max 16384) |
+| `sectionMaxBytes` | `3584` | hard byte budget for the injected section (max 16384) |
 | `rulesMaxBytes` | `1024` | ceiling for the rules block inside that budget |
 | `defaultScope` | `workspace` | scope a write lands in when it does not say |
 | `captureMode` | `rules` | deterministic capture of explicit durable statements |

@@ -139,6 +139,25 @@ export function apply(ctx, rawConfig = {}) {
   });
 
   const disposers = [];
+  // Disposal runs in reverse registration order, so this must be registered
+  // FIRST to run LAST: the capture layer flushes session summaries through the
+  // store on unload, and closing the database before that turned every summary
+  // into a logged-and-lost error. The integrity check moved to `doctor()` for
+  // the same reason — a synchronous check over every row on the agent's event
+  // loop is not something a shutdown should do.
+  disposers.push(
+    ctx.effect(
+      () => () => {
+        try {
+          store.close();
+        } catch (error) {
+          log.warn(`loci: store close failed: ${String(error?.message ?? error)}`);
+        }
+      },
+      'loci: store close',
+    ),
+  );
+
   disposers.push(ctx.effect(() => ctx.systemPrompt.section(indexSection), 'loci: index section'));
   disposers.push(ctx.effect(() => registerTools(ctx, { store, config: read, log, capture }), 'loci: tools'));
   disposers.push(ctx.effect(() => capture.attach(ctx), 'loci: capture'));
@@ -231,20 +250,6 @@ export function apply(ctx, rawConfig = {}) {
     );
   }
 
-  disposers.push(
-    ctx.effect(
-      () => () => {
-        try {
-          const doctor = runDoctor({ store, paths, config });
-          if (doctor.status === 'fail') log.warn(`loci: shutdown doctor is failing: ${doctor.summary}`);
-        } catch {
-          /* diagnostics at unload must not throw */
-        }
-        store.close();
-      },
-      'loci: store close',
-    ),
-  );
 
   return {
     store,

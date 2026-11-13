@@ -20,8 +20,21 @@ anything from a session that is not the root session of a conversation.
 
 ## What leaves the machine
 
-Nothing, by default. There is no telemetry, no analytics, no update check, and no
-network call in the plugin's normal path.
+Nothing, by default. There is no telemetry, no analytics, and no network call in the
+plugin's normal path.
+
+Two things can reach the network, and both are opt-in:
+
+| Path | When | What is sent | How to disable |
+|---|---|---|---|
+| Update check | only when you press "check for updates" on the sidebar card | one `GET https://registry.npmjs.org/dsh-loci/latest`; no query string, no identifier | `updateCheck: false`, or simply never press it |
+| Embedding channel | only when `vectorMode` is `http` and an endpoint is configured | the text of the memory being embedded | leave `vectorMode` at `off` |
+
+Opening the panel or the card does **not** contact the registry - the version
+badge renders what is installed, and the update answer is served from a local
+cache that only a press populates. `updateRegistry` exists for people behind a
+slow or blocked route (`https://registry.npmmirror.com` works); it is a config
+value, never something a project file can set.
 
 Optional and off by default:
 

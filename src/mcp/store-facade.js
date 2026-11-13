@@ -6,7 +6,7 @@
  * @module dsh-loci/mcp/store-facade
  */
 import { effectiveConfig } from '../host/config.js';
-import { layout, resolveDshHome, resolveMemoryRoot } from '../host/paths.js';
+import { ensureMemoryRoot, layout, resolveDshHome, resolveMemoryRoot } from '../host/paths.js';
 import { Store } from '../host/store/store.js';
 
 /**
@@ -27,11 +27,16 @@ export function openFacadeStore(options = {}) {
   const config = loadStoreConfig(options.home);
   const root = resolveMemoryRoot(resolveDshHome(config.home));
   const paths = layout(root);
+  // A user who configures the MCP server before ever opening the plugin has no
+  // store yet. Creating the directory keeps the facade from dying before the
+  // JSON-RPC handshake; a read-only facade then opens an empty database instead
+  // of crashing with ENOENT.
+  ensureMemoryRoot(root);
   const store = new Store({
     memoryRoot: root,
     paths,
     config,
-    pluginVersion: '1.0.0',
+    pluginVersion: '1.1.0',
     readOnly: options.readOnly === true,
   });
   return { store, paths };

@@ -262,11 +262,28 @@ export class Capture {
 
   /** Write the episodic summary for one session and drop its buffer. */
   summarize(sessionId, reason = 'dispose') {
-    if (this.config('summaryOnDispose') !== true) return 0;
     const buffer = this.sessions.get(sessionId);
-    if (buffer === undefined || buffer.messages.length < 2) return 0;
+    // The buffer is released even when no summary is written. Returning early
+    // without this left one session's transcript (up to 24 KB) alive for the
+    // lifetime of the process whenever summaries were off.
+    const release = () => {
+      if (buffer === undefined) return;
+      if (buffer.timer !== undefined) clearTimeout(buffer.timer);
+      this.sessions.delete(sessionId);
+    };
+    if (this.config('summaryOnDispose') !== true) {
+      release();
+      return 0;
+    }
+    if (buffer === undefined || buffer.messages.length < 2) {
+      release();
+      return 0;
+    }
     const firstUser = buffer.messages.find((message) => message.role === 'user');
-    if (firstUser === undefined) return 0;
+    if (firstUser === undefined) {
+      release();
+      return 0;
+    }
     const title = `Session ${new Date(this.now()).toISOString().slice(0, 16).replace('T', ' ')} — ${firstUser.text.replace(/\s+/g, ' ').slice(0, 60)}`;
     const body = [
       `Session summary (${reason}). ${buffer.turn} turn(s).`,
@@ -293,11 +310,7 @@ export class Capture {
     } catch (error) {
       this.log?.warn?.(`loci: summary write failed: ${String(error?.message ?? error)}`);
     } finally {
-      if (buffer.timer !== undefined) {
-        clearTimeout(buffer.timer);
-        buffer.timer = undefined;
-      }
-      this.sessions.delete(sessionId);
+      release();
     }
     return 1;
   }

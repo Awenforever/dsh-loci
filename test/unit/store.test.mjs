@@ -60,7 +60,7 @@ test('deduplicates an identical fact in the same scope', (t) => {
   assert.equal(store.stats().heads, 1);
 });
 
-test('a same-title write becomes a new revision and keeps history', (t) => {
+test('a same-title write is reported, and an explicit update keeps history', (t) => {
   const { store, scopes } = openTestStore(t);
   const first = store.write({
     ...base(scopes),
@@ -69,7 +69,20 @@ test('a same-title write becomes a new revision and keeps history', (t) => {
     title: '回滚窗口',
     body: '30 分钟',
   });
-  const second = store.write({
+  // Reusing a title must not silently overwrite what the user confirmed.
+  const collision = store.write({
+    ...base(scopes),
+    kind: 'semantic',
+    trustSource: 'user',
+    title: '回滚窗口',
+    body: '45 分钟，超过就必须人工决策',
+  });
+  assert.equal(collision.created, true, 'a second entry is created, not a silent revision');
+  assert.equal(collision.possibleDuplicates[0].reason, 'same-title');
+  assert.match(collision.warnings[0], /already exists/);
+
+  // The explicit path is what keeps history.
+  const second = store.update(first.entry.id, {
     ...base(scopes),
     kind: 'semantic',
     trustSource: 'user',
@@ -86,6 +99,68 @@ test('a same-title write becomes a new revision and keeps history', (t) => {
   assert.equal(fetched.history[0].supersededBy, `${first.entry.id}@2`);
   assert.equal(fetched.history[1].body, undefined, 'history rows must not carry bodies');
   assert.equal(fetched.entry.body, '45 分钟，超过就必须人工决策');
+});
+
+test('an edit re-opens verification even when the caller supplies the old quote', (t) => {
+  const { store, scopes } = openTestStore(t, {}, { quoteVerifier: (quote) => quote.includes('30 分钟') });
+  const created = store.write({
+    ...base(scopes),
+    kind: 'rule',
+    title: '回滚窗口',
+    body: '30 分钟',
+    evidence: { quote: '回滚窗口是 30 分钟' },
+  });
+  assert.equal(created.entry.status, 'verified');
+
+  // The quote is still true, but it does not vouch for different words. Trust is
+  // bound to the exact text, so any rewrite has to be re-confirmed by a human.
+  const rewritten = store.update(created.entry.id, {
+    ...base(scopes),
+    kind: 'rule',
+    title: '回滚窗口',
+    body: '实际上没有上限，随时可以回滚',
+    evidence: { quote: '回滚窗口是 30 分钟' },
+  });
+  assert.equal(rewritten.entry.status, 'candidate', 'a rewrite must not inherit trust it did not earn');
+
+  // Re-saving identical text is not a rewrite and keeps the verified state.
+  const touched = store.update(created.entry.id, {
+    ...base(scopes),
+    kind: 'rule',
+    title: '回滚窗口',
+    body: '30 分钟',
+    evidence: { quote: '回滚窗口是 30 分钟' },
+  });
+  assert.equal(touched.entry.status, 'verified', 'an unchanged revision stays verified');
+
+  // And a human can promote the rewritten revision explicitly.
+  store.setTrust(created.entry.id, 'verified', { actor: 'panel' });
+  assert.equal(store.get(created.entry.id).entry.status, 'verified');
+});
+
+test('an edit cannot move a verified entry into another scope', (t) => {
+  const { store, scopes, home } = openTestStore(t, {}, { quoteVerifier: (quote) => quote.includes('所有项目') });
+  const global = store.write({
+    scope: 'global',
+    scopeKey: scopes.global,
+    scopeLabel: 'global',
+    kind: 'rule',
+    title: '全局约定',
+    body: '所有项目都用中文回答',
+    evidence: { quote: '所有项目都用中文回答' },
+  });
+  assert.equal(global.entry.status, 'verified');
+  const other = resolveScopes({ sessionId: 'other', cwd: join(home, 'elsewhere') });
+  const moved = store.update(global.entry.id, {
+    scope: 'workspace',
+    scopeKey: other.workspace,
+    scopeLabel: other.labels.workspace,
+    kind: 'rule',
+    title: '全局约定',
+    body: '所有项目都用中文回答',
+    evidence: { quote: '所有项目都用中文回答' },
+  });
+  assert.equal(moved.entry.status, 'candidate', 'moving scope drops trust');
 });
 
 test('optimistic revision rejects a stale edit', (t) => {

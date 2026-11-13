@@ -13,9 +13,10 @@ import { Store } from '../../src/host/store/store.js';
 const SERVER = fileURLToPath(new URL('../../src/mcp/server.js', import.meta.url));
 
 /** Send one JSON-RPC line and collect the first response. */
-function withServer(home, lines, timeoutMs = 15_000) {
+function withServer(home, lines, options = {}) {
+  const { timeoutMs = 15_000, args = [] } = options;
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [SERVER, '--home', home], {
+    const child = spawn(process.execPath, [SERVER, '--home', home, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       env: { ...process.env, DSH_HOME: home },
@@ -72,11 +73,18 @@ test('the MCP facade answers initialize and lists read-only tools', async (t) =>
   store.close();
   t.after(() => rmSync(home, { recursive: true, force: true }));
 
-  const { messages } = await withServer(home, [
-    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '0' } } },
-    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'loci_search', arguments: { query: '发布顺序' } } },
-  ]);
+  const { messages } = await withServer(
+    home,
+    [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '0' } } },
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'loci_search', arguments: { query: '发布顺序' } } },
+    ],
+    // The facade reads the scope of the directory it is pointed at, so the test
+    // has to name it. That is the point: an MCP client cannot see memory that
+    // belongs to a project it was not started for.
+    { args: ['--cwd', home] },
+  );
 
   const init = messages.find((message) => message.id === 1);
   assert.equal(init.result.protocolVersion, '2024-11-05');
@@ -90,4 +98,38 @@ test('the MCP facade answers initialize and lists read-only tools', async (t) =>
   const call = messages.find((message) => message.id === 3);
   assert.equal(call.result.isError, false);
   assert.match(call.result.content[0].text, /canary|发布顺序/);
+});
+
+test('the facade does not read another workspace\'s memory', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'loci-mcp-scope-'));
+  const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
+  const store = new Store({ memoryRoot: root, paths: layout(root), config: effectiveConfig({}), pluginVersion: '1.1.0' });
+  // Seeded for one directory, read from another.
+  const other = resolveScopes({ sessionId: 'a', cwd: join(home, 'project-a') });
+  store.write({
+    scope: 'workspace',
+    scopeKey: other.workspace,
+    scopeLabel: other.labels.workspace,
+    kind: 'semantic',
+    status: 'verified',
+    trustSource: 'user',
+    title: '项目 A 的私有约定',
+    body: '只属于项目 A。',
+  });
+  store.close();
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+
+  const { messages } = await withServer(
+    home,
+    [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '0' } } },
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'loci_search', arguments: { query: '私有约定' } } },
+    ],
+    { args: ['--cwd', join(home, 'project-b')] },
+  );
+  const call = messages.find((message) => message.id === 2);
+  assert.equal(call.result.isError, false);
+  const text = call.result.content[0].text;
+  assert.match(text, /total=0/, 'project B must not see project A');
+  assert.equal(text.includes('私有约定'), false, 'the title must not leak across workspaces');
 });

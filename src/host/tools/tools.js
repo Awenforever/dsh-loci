@@ -105,15 +105,20 @@ export function createTools(deps) {
   const write = {
     name: 'loci_write',
     description:
-      'Save one durable fact, convention, decision, or lesson to long-term memory, or update/re-verify an existing entry. ' +
+      'Save one durable fact, convention, decision, or lesson to long-term memory, or revise an existing entry. ' +
       'Use it when the user states a lasting rule ("always", "never", "we agreed"), corrects something you will need next session, ' +
       'or when you find a non-obvious pitfall worth not repeating. Do not save progress, temporary state, or secrets. ' +
       '`evidenceQuote` must be a verbatim quote from this conversation: without it the entry is stored as unverified and is not injected.',
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['create', 'update', 'verify', 'dispute', 'pin', 'unpin', 'restore'] },
-        id: { type: 'string', description: 'Target memory id for update/verify/dispute/pin/unpin/restore.' },
+        op: {
+          type: 'string',
+          enum: ['create', 'update', 'pin', 'unpin', 'restore'],
+          description:
+            'create (default) saves a new entry; update revises by id and returns the entry to review unless the text is unchanged; pin/unpin/restore manage an existing id. Trust is never set here — only a person can verify or dispute.',
+        },
+        id: { type: 'string', description: 'Target memory id for update/pin/unpin/restore.' },
         expectedRevision: { type: 'integer', description: 'Optimistic lock for update; mismatch returns the current revision.' },
         kind: { type: 'string', enum: KINDS, description: 'semantic (fact), procedural (how-to), rule (hard constraint), episodic (event), working (this session only).' },
         scope: { type: 'string', enum: SCOPES, description: 'Default workspace. Use global only for user-wide preferences.' },
@@ -139,15 +144,9 @@ export function createTools(deps) {
     isConcurrencySafe: () => false,
     execute: async (args, exec) => {
       const context = execContext(exec);
-      const op = oneOf(args, 'op', ['create', 'update', 'verify', 'dispute', 'pin', 'unpin', 'restore'], 'create');
+      const op = oneOf(args, 'op', ['create', 'update', 'pin', 'unpin', 'restore'], 'create');
       const id = str(args, 'id', { fallback: undefined });
 
-      if (op === 'verify' || op === 'dispute') {
-        if (id === undefined) throw new Error('id is required for verify/dispute');
-        const actor = op === 'verify' ? 'user' : 'user';
-        const entry = store.setTrust(id, op === 'verify' ? 'verified' : 'disputed', { actor });
-        return { op, entry, warnings: [], possibleDuplicates: [] };
-      }
       if (op === 'pin' || op === 'unpin') {
         if (id === undefined) throw new Error('id is required for pin/unpin');
         return { op, entry: store.setPinned(id, op === 'pin'), warnings: [], possibleDuplicates: [] };
@@ -407,7 +406,10 @@ function renderWrite(value) {
   if (value.deduplicated === true) lines.push('an identical entry already existed; returned it unchanged');
   if (value.updated === true) lines.push(`new revision; revision ${entry.revision - 1} is closed but still readable`);
   if (entry.status === 'candidate') {
-    lines.push('status: candidate — not injected and not used for answers until evidence is confirmed (loci_write op:"verify")');
+    lines.push(
+      'status: candidate — not injected and not used for answers until a person approves it in Memory → Review. ' +
+        'Tell the user this entry is not active yet; do not try to approve it yourself.',
+    );
   }
   if (entry.status === 'disputed') lines.push('status: disputed — quarantined because the text reads like an instruction');
   if (entry.flags?.includes('secret-redacted')) lines.push('a credential-like string was redacted before storage');

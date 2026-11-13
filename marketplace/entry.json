@@ -2,7 +2,7 @@
   "name": "dsh-loci",
   "title": "Loci memory palace",
   "titleZh": "Loci 记忆宫殿",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Long-term memory for DeepSeek Harness where the prompt holds only a stable index: full text is one lookup away, facts are bi-temporal, and only verified entries are injected.",
   "descriptionZh": "给 DSH 的长期记忆：提示词里只放稳定索引，全文按需取回；事实双时间可查，只有已核实的条目才会被注入。",
   "license": "MIT",
@@ -26,19 +26,28 @@
         "os": ["linux"],
         "status": "code-paths-verified",
         "evidence": "docs/COMPATIBILITY.md#matrix"
+      },
+      {
+        "dsh": "0.2.2-rc.1 (host)",
+        "node": "24.22.3",
+        "os": ["linux"],
+        "status": "verified",
+        "evidence": "docs/COMPATIBILITY.md#matrix"
       }
     ]
   },
   "highlights": [
+    "a sidebar mirror and a memory panel: what was remembered, revised and removed, as it happens",
     "0 bytes injected on an empty store; a hard 3,584-byte budget afterwards",
     "the index never reorders on write, so the prompt prefix survives",
     "loci_search returns total + cursor: a broad question can list everything",
     "CJK bigram retrieval — 路径断言 and 迁移 both match",
     "bi-temporal history: edits close a revision instead of deleting it",
-    "only verified facts are injected; instruction-shaped text is quarantined",
-    "no model call, no network, no native module in the default path"
+    "only verified facts are injected, and only a person can verify",
+    "no model call and no network in the default path"
   ],
   "screenshots": [
+    "screenshots/sidebar-mirror.png",
     "screenshots/settings-light.png",
     "screenshots/panel-index.png"
   ],

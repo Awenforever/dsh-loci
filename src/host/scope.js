@@ -122,7 +122,11 @@ export function selectScope(scopes, scope) {
 export function readScopeKeys(scopes, options = {}) {
   const includeGlobal = options.includeGlobal !== false;
   if (typeof options.scope === 'string' && SCOPE_KINDS.includes(options.scope)) {
-    return options.scope === 'global' || includeGlobal ? [scopes[options.scope]] : [scopes[options.scope]];
+    // One explicit kind means exactly that key. `includeGlobal` used to be a
+    // no-op here (both branches were identical), which made the option a lie.
+    const keys = [scopes[options.scope]];
+    if (includeGlobal && options.scope !== 'global') keys.push(scopes.global);
+    return keys;
   }
   const keys = [scopes.session, scopes.workspace, scopes.project];
   if (includeGlobal) keys.push(scopes.global);

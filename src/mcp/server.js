@@ -16,6 +16,7 @@
  */
 import { createInterface } from 'node:readline';
 import { loadStoreConfig, openFacadeStore } from './store-facade.js';
+import { readScopeKeys, resolveScopes } from '../host/scope.js';
 
 const argv = process.argv.slice(2);
 const flagValue = (name) => {
@@ -26,6 +27,18 @@ const flagValue = (name) => {
 };
 const allowWrite = argv.includes('--allow-write');
 const home = flagValue('home');
+const cwdFlag = flagValue('cwd');
+const sessionFlag = flagValue('session');
+// Without an explicit scope the facade reads nothing. A stdio MCP server is
+// configured once and then used by every agent that mounts it, so "all scopes"
+// would hand one project's memory to another project's agent. The default is
+// therefore the working directory the server was started in — an explicit
+// `--cwd` (or `--session`) widens it deliberately.
+const scopes = resolveScopes({
+  home,
+  cwd: cwdFlag === undefined || cwdFlag === '' ? process.cwd() : cwdFlag,
+  sessionId: sessionFlag === '' || sessionFlag === undefined ? undefined : sessionFlag,
+});
 
 const { store, paths } = openFacadeStore({ home, readOnly: !allowWrite });
 
@@ -93,6 +106,18 @@ function renderSearch(result) {
   return lines.join('\n');
 }
 
+/** The one scope a caller asked for, or undefined for the default read set. */
+function requestedScope(args) {
+  const value = args?.scope;
+  return ['session', 'workspace', 'project', 'global'].includes(value) ? value : undefined;
+}
+
+/** The scope key that owns an id, so a read can be authorised against the read set. */
+function readScopeOf(store, id) {
+  const row = store.db.prepare('SELECT scope_key FROM memory WHERE id = ? LIMIT 1').get(id);
+  return row?.scope_key ?? '';
+}
+
 /** Call one tool. */
 async function callTool(name, args) {
   switch (name) {
@@ -100,7 +125,7 @@ async function callTool(name, args) {
       const query = String(args?.query ?? '').trim();
       if (query.length === 0) throw new Error('query is required');
       const { search } = await import('../host/store/search.js');
-      const scopeKeys = store.allScopeKeys();
+      const scopeKeys = readScopeKeys(scopes, { scope: requestedScope(args) });
       const result = await search(store, {
         query,
         scopeKeys,
@@ -117,6 +142,10 @@ async function callTool(name, args) {
         revision: Number.isSafeInteger(args?.revision) ? args.revision : undefined,
         includeHistory: true,
       });
+      // An id from another project is not readable through this facade.
+      if (!readScopeKeys(scopes).includes(readScopeOf(store, id))) {
+        throw new Error('that memory belongs to another scope; pass the matching --cwd when starting this server');
+      }
       const lines = [`${entry.entry.id}@${entry.entry.revision} · ${entry.entry.kind} · ${entry.entry.status}`, entry.entry.title, '', entry.entry.body];
       const quote = entry.entry.evidence?.quote;
       if (typeof quote === 'string' && quote.length > 0) lines.push('', `evidence: “${quote}”`);
@@ -124,7 +153,7 @@ async function callTool(name, args) {
       return lines.join('\n');
     }
     case 'loci_stats': {
-      const stats = store.stats({ scopeKeys: store.allScopeKeys() });
+      const stats = store.stats({ scopeKeys: readScopeKeys(scopes) });
       return [
         `entries: ${stats.heads} · revisions: ${stats.revisions} · pending: ${stats.pendingCandidates}`,
         `store: ${stats.memoryRoot}`,
@@ -133,8 +162,8 @@ async function callTool(name, args) {
     }
     case 'loci_write': {
       if (!allowWrite) throw new Error('this server is read-only; start it with --allow-write to propose memories');
-      const scopeKeys = store.allScopeKeys();
-      const scopeKey = scopeKeys[0] ?? 'workspace:mcp';
+      const scopeKeys = readScopeKeys(scopes, { scope: requestedScope(args) });
+      const scopeKey = scopeKeys[0] ?? scopes.workspace;
       const result = store.write({
         kind: ['semantic', 'procedural', 'rule', 'episodic'].includes(args?.kind) ? args.kind : 'semantic',
         scope: ['workspace', 'project', 'global'].includes(args?.scope) ? args.scope : 'workspace',

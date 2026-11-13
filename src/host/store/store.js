@@ -222,7 +222,10 @@ export class Store {
     }
 
     const sameTitle = this.#findByTitle(scopeKey, titleNorm);
-    if ((input.op ?? 'create') === 'create' && sameTitle !== undefined && input.allowUpdateByTitle !== false) {
+    // A same-title write is *reported*, never silently applied: a model that
+    // reuses a title must not overwrite text the user already confirmed. The
+    // caller has to address the entry by id (`op:'update'`) once it has seen it.
+    if ((input.op ?? 'create') === 'create' && sameTitle !== undefined && input.allowUpdateByTitle === true) {
       return this.update(sameTitle.id, {
         ...input,
         expectedRevision: sameTitle.revision,
@@ -234,6 +237,18 @@ export class Store {
 
     const warnings = [];
     const possibleDuplicates = [];
+    if (sameTitle !== undefined) {
+      possibleDuplicates.push({
+        id: sameTitle.id,
+        revision: Number(sameTitle.revision),
+        title: prepared.title,
+        similarity: 1,
+        reason: 'same-title',
+      });
+      warnings.push(
+        `an entry with this title already exists (${sameTitle.id}); writing it again creates a second entry - use id + op:update to revise it`,
+      );
+    }
     if (input.force !== true) {
       const similar = this.#findSimilar(scopeKey, prepared, contentHash);
       possibleDuplicates.push(...similar);
@@ -326,12 +341,20 @@ export class Store {
       throw new MemoryRejectedError(`memory contains a high-confidence secret (${prepared.redactions.join(', ')})`);
     }
     const evidence = prepared.evidence ?? {};
-    const status =
-      input.status ?? (prepared.instructionLike ? 'disputed' : head.row.status === 'verified' ? 'verified' : 'candidate');
     const revision = Number(head.row.revision) + 1;
     const contentHash = createHash('sha256')
       .update(`${normalizeTitle(prepared.title)}\n${normalizeText(prepared.body)}`, 'utf8')
       .digest('hex');
+    // Trust is bound to the exact text that was verified. An edit keeps
+    // `verified` only when the new text is byte-identical to a revision of this
+    // entry that a human (or an evidence-checked write) already verified, and the
+    // entry has not moved to another scope. Anything else re-opens verification:
+    // the new revision lands as a candidate and waits for a human. A caller cannot
+    // opt out by supplying a quote, because a quote proves what the user said,
+    // not that it supports different words.
+    const sameScope = input.scopeKey === undefined || input.scopeKey === head.row.scope_key;
+    const keepsVerification = sameScope && this.#textWasVerified(id, contentHash);
+    const status = input.status ?? (prepared.instructionLike ? 'disputed' : keepsVerification ? 'verified' : 'candidate');
 
     const ord = withTransaction(this.db, () => {
       this.db
@@ -1168,19 +1191,54 @@ export class Store {
     if (prepared.instructionLike) return 'disputed';
     if (trustSource === 'import' || trustSource === 'summary' || trustSource === 'rule') return 'candidate';
     if (trustSource === 'user') return 'verified';
-    const quote = typeof evidence.quote === 'string' ? evidence.quote.trim() : '';
-    if (quote.length < 8) return 'candidate';
+    return this.#quoteVerifies(evidence, input) ? 'verified' : 'candidate';
+  }
+
+  /**
+   * Whether this exact text was ever verified for this entry.
+   *
+   * Comparison is against every revision, not just the head: reverting an edit
+   * back to previously verified wording must restore trust, because the text is
+   * literally the text a human confirmed. Anything stricter would make a
+   * correction one-way, which is how users learn to stop correcting.
+   * @param id - memory id.
+   * @param contentHash - hash of the candidate revision's title and body.
+   * @returns true when some revision with that hash carries a verification stamp.
+   */
+  #textWasVerified(id, contentHash) {
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS hit FROM memory
+         WHERE id = ? AND content_hash = ? AND verified_at IS NOT NULL
+         LIMIT 1`,
+      )
+      .get(id, contentHash);
+    return row !== undefined;
+  }
+
+  /**
+   * Whether the evidence carried by a write is a quote this session can confirm.
+   * The single place verification is decided — the create path, the update path
+   * and the tool surface all call it, so they cannot drift apart.
+   * @param evidence - `{quote, sessionId, eventSeq}`.
+   * @param input - the write input (for `sourceSession`/`sourceEvent` fallbacks).
+   * @returns true when the quote is long enough and the verifier accepts it.
+   */
+  #quoteVerifies(evidence, input) {
+    const quote = typeof evidence?.quote === 'string' ? evidence.quote.trim() : '';
+    if (quote.length < 8) return false;
     let verified = false;
     try {
-      verified = this.quoteVerifier(quote, {
-        sessionId: evidence.sessionId ?? input.sourceSession ?? undefined,
-        eventSeq: Number.isSafeInteger(evidence.eventSeq) ? evidence.eventSeq : input.sourceEvent,
-      }) === true;
+      verified =
+        this.quoteVerifier(quote, {
+          sessionId: evidence.sessionId ?? input?.sourceSession ?? undefined,
+          eventSeq: Number.isSafeInteger(evidence.eventSeq) ? evidence.eventSeq : input?.sourceEvent,
+        }) === true;
     } catch {
       verified = false;
     }
     this.quoteChecked += 1;
-    return verified ? 'verified' : 'candidate';
+    return verified;
   }
 
   #insertRevision(row) {
@@ -1278,6 +1336,22 @@ function nowOrMax(value) {
   return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
 }
 
+/**
+ * Whether a verbatim quote is about the same claim as this text.
+ *
+ * Verification proves the user said the quote; it does not prove the quote
+ * supports a *different* sentence. Reusing an old quote while replacing the
+ * claim is the cheapest way to launder an edit, so an update keeps `verified`
+ * only when the quote and the new text still overlap.
+ *
+ * @param quote - evidence quote.
+ * @param text - new title and body.
+ * @returns true when the two share at least 15% of their character bigrams.
+ */
+function evidenceSupports(quote, text) {
+  if (typeof quote !== 'string' || quote.trim().length < 8) return false;
+  return jaccard(quote, text) >= 0.15;
+}
 /** Jaccard over whitespace-collapsed character bigrams (duplicate heuristic). */
 function jaccard(a, b) {
   const grams = (text) => {

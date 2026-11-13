@@ -87,6 +87,15 @@ export class UpdateChecker {
   }
 
   /**
+   * The last answer, without any I/O — the default for a panel that must never
+   * surprise the user with a network call.
+   * @returns the cached answer, or the installed-only shape when none exists.
+   */
+  cachedOrInstalled() {
+    return this.cached ?? this.installed();
+  }
+
+  /**
    * The current answer, refreshing at most once per cache window.
    * @param options - `force` bypasses the cache.
    * @returns `{version, latestVersion, updateAvailable, checkedAt, status, error?}`.

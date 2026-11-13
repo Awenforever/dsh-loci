@@ -64,7 +64,7 @@ bundle 会插入一行 Host 插件（`dsh-loci`）和一个 Client 半边。重�
 
 | 键 | 默认 | 含义 |
 |---|---|---|
-| `sectionMaxBytes` | `5120` | 注入段的硬字节预算（上限 16384） |
+| `sectionMaxBytes` | `3584` | 注入段的硬字节预算（上限 16384） |
 | `rulesMaxBytes` | `1024` | 段内规则块的字节上限 |
 | `defaultScope` | `workspace` | 未显式指定时的写入作用域 |
 | `captureMode` | `rules` | 规则型捕获用户的明确约定 |

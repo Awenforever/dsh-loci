@@ -27,5 +27,5 @@ section and URL behind each claim.
 - Claude Code, Cursor, ChatGPT — product documentation reviewed for what to
   adopt and what not to copy.
 
-Runtime dependencies: `@deepseek-ai/schemastery` (Apache-2.0), used for the
+Runtime dependencies: `@deepseek-ai/schemastery` (MIT), used for the
 plugin configuration schema. It is not modified.

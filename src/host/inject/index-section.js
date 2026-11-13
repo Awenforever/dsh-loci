@@ -92,7 +92,10 @@ export function renderIndexBody(options) {
 
   // The header carries no count and no date: both change on ordinary writes and
   // would invalidate the prompt prefix for no retrieval benefit.
-  const indexHeader = `Index — ${renderSafe(scopeLabel)}`;
+  // A scope label comes from a directory name, which a user can make contain a
+  // newline. Flattening it here is what stops a crafted folder name from writing
+  // extra lines into the fence.
+  const indexHeader = `Index — ${renderSafe(indexTitle(scopeLabel, 120))}`;
   const entryLine = (entry) => `- ${entry.id} · ${entry.kind} · ${formatDate(entry.validFrom)} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
 
   const footerFor = (listed) => {
@@ -153,6 +156,8 @@ export function createIndexSection(options) {
   const { store, config, resolveContext, log } = options;
   const cache = new Map();
   const MAX_CACHE = 24;
+  // One warning per section instance: a broken render must not spam every turn.
+  let failureLogged = false;
 
   const record = (context, rendered) => {
     if (context.sessionId === undefined) return;
@@ -170,15 +175,35 @@ export function createIndexSection(options) {
   };
 
   const text = (assembly) => {
+    // This runs inside `systemPrompt.assemble`, which the agent loop calls once
+    // per request. An exception here fails the whole conversation, so any fault
+    // in rendering degrades to "no memory section" instead of "no answer".
+    try {
+      return render(assembly);
+    } catch (error) {
+      if (failureLogged === false) {
+        failureLogged = true;
+        log?.warn?.(`loci: memory section unavailable (${String(error?.message ?? error)}); continuing without it`);
+      }
+      return '';
+    }
+  };
+
+  const render = (assembly) => {
     const context = resolveContext(assembly);
     if (context === undefined) return '';
+    // Trust changes bump `index_rev`; the date and the config are part of the key
+    // so that an entry expiring at midnight or a budget change is not served from
+    // a stale cache in a long-lived process.
     const configKey = [
       config('sectionMaxBytes'),
       config('rulesMaxBytes'),
       config('indexMaxEntries'),
       config('indexLineMaxChars'),
     ].join(':');
-    const key = `${context.scopeKeys.join(',')}|${store.indexRev()}|${configKey}`;
+    const now = Date.now();
+    const day = new Date(now).toISOString().slice(0, 10);
+    const key = `${context.scopeKeys.join(',')}|${store.indexRev()}|${configKey}|${day}`;
     const cached = cache.get(key);
     if (cached !== undefined) {
       record(context, cached);
@@ -189,7 +214,7 @@ export function createIndexSection(options) {
       scopeKeys: context.scopeKeys,
       scopeLabel: context.scopeLabel,
       config,
-      now: Date.now(),
+      now,
     });
     if (cache.size >= MAX_CACHE) cache.clear();
     cache.set(key, rendered);

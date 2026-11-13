@@ -63,7 +63,7 @@ test('the activity feed names what changed without exposing bodies', (t) => {
     title: '发布顺序',
     body: 'staging → canary → 全量。这段正文不应该出现在动态里。',
   });
-  store.write({
+  store.update(created.entry.id, {
     ...workspaceFields(scopes),
     kind: 'semantic',
     trustSource: 'user',

@@ -42,6 +42,19 @@ export function normalizeTitle(title) {
 }
 
 /**
+ * Characters that have no business in stored memory: C0/C1 controls, the Unicode
+ * "format" class (zero-width spaces, joiners, BOM) and, most importantly, the
+ * bidirectional overrides.
+ *
+ * Bidi is the interesting one. `\u202E` makes the *rendered* order differ from
+ * the stored order, so a candidate can read as harmless in the panel — the only
+ * place a human ever approves it — while the model consumes hostile text. Storage
+ * is the right place to remove it, because every surface (prompt, panel, MCP,
+ * export) then sees the same string.
+ */
+const UNSAFE_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff]/g;
+
+/**
  * Remove characters that must not survive into storage, collapse line endings,
  * and cap the length.
  * @param text - raw text.
@@ -51,7 +64,7 @@ export function normalizeTitle(title) {
 export function cleanText(text, maxChars) {
   const cleaned = String(text ?? '')
     .replace(/\r\n?/g, '\n')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(UNSAFE_CHARS, '')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim();
   if (cleaned.length <= maxChars) return cleaned;
@@ -72,13 +85,15 @@ export function cleanText(text, maxChars) {
  * @returns text safe to place inside a prompt fence.
  */
 export function renderSafe(text) {
+  // Strip first, escape second: the `{{` guard deliberately *inserts* a
+  // zero-width space, so removing unsafe characters afterwards would undo it.
   return String(text ?? '')
+    .replace(UNSAFE_CHARS, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\{\{/g, '{\u200b{')
-    .replace(/\}\}/g, '}\u200b}')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+    .replace(/\}\}/g, '}\u200b}');
 }
 
 /** High-confidence credential shapes. Ordered most specific first. */
@@ -94,6 +109,21 @@ const SECRET_PATTERNS = Object.freeze([
     name: 'credential-assignment',
     re: /\b(?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd|pwd)\s*[:=]\s*["']?[A-Za-z0-9_./+-]{16,}["']?/gi,
   },
+  // The product is Chinese-first; a scanner that only knows English words misses
+  // the most likely way a Chinese-speaking user leaks a credential.
+  {
+    name: 'credential-assignment-cjk',
+    re: /(?:密码|口令|密钥|秘钥|令牌|私钥|访问令牌)\s*[:：=]\s*\S{6,}/g,
+  },
+  { name: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{30,}\b/g },
+  { name: 'slack-token', re: /\bxox[abprs]-[0-9A-Za-z-]{10,}\b/g },
+  { name: 'stripe-key', re: /\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{16,}\b/g },
+  { name: 'gitlab-token', re: /\bglpat-[0-9A-Za-z_-]{16,}\b/g },
+  { name: 'npm-token', re: /\bnpm_[0-9A-Za-z]{30,}\b/g },
+  // A presigned URL grants access without any header, so the signature segment is
+  // the credential even though it looks like a hex blob.
+  { name: 'presigned-url', re: /[?&](?:X-Amz-Signature|X-Amz-Credential|Signature|sig|token)=[0-9A-Za-z%._~-]{16,}/gi },
+  { name: 'basic-auth-header', re: /\bAuthorization\s*:\s*(?:Basic|Token)\s+[A-Za-z0-9+/=._-]{16,}/gi },
 ]);
 
 /** Instruction-shaped text: never injected until a human promotes it. */
@@ -219,11 +249,21 @@ export function prepareForStorage(input, config) {
         .slice(0, LIMITS.entityCount)
     : [];
 
+  // Tags and entities are rendered, exported and returned by search like any
+  // other field, so they get the same secret scan. Before this, a token pasted
+  // into a tag was stored verbatim while the same token in the body was redacted.
+  const scannedTags = tags.map((tag) => scanSecrets(tag, policy));
+  const scannedEntities = entities.map((entity) => scanSecrets(entity.name, policy));
+  for (const hit of [...scannedTags.flatMap((s) => s.hits), ...scannedEntities.flatMap((s) => s.hits)]) {
+    redactions.push(hit);
+    if (!flags.includes('secret-redacted')) flags.push('secret-redacted');
+  }
+
   return {
     title: safeTitle,
     body,
-    tags,
-    entities,
+    tags: scannedTags.map((entry) => entry.text),
+    entities: entities.map((entity, index) => ({ ...entity, name: scannedEntities[index].text })),
     evidence: {
       ...(input?.evidence ?? {}),
       quote: evidenceQuote,

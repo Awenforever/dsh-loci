@@ -103,17 +103,28 @@ export function registerApiRoutes(ctx, deps) {
     });
   });
 
-  route('/api/loci/preview', ['GET'], async () => {
-    const scopeKeys = store.allScopeKeys();
-    return json(
-      renderIndexBody({
+  // What one chat actually sees is a *subset* of every stored scope, so the
+  // preview must say which subset it rendered. `?cwd=` / `?session=` let the
+  // panel ask "what does this conversation get" instead of "what exists".
+  route('/api/loci/preview', ['GET'], async (request) => {
+    const url = new URL(request.url);
+    const cwd = url.searchParams.get('cwd') ?? undefined;
+    const sessionId = url.searchParams.get('session') ?? undefined;
+    const scoped = cwd !== undefined || sessionId !== undefined;
+    const resolved = scoped ? resolveScopes({ cwd, sessionId, home: paths.home }) : undefined;
+    const scopeKeys = scoped ? resolved.readKeys : store.allScopeKeys();
+    const scopeLabel = scoped ? resolved.label : `all ${scopeKeys.length} stored scope(s)`;
+    return json({
+      ...renderIndexBody({
         store,
         scopeKeys,
-        scopeLabel: scopeKeys.length === 0 ? 'empty store' : `${scopeKeys.length} scope(s)`,
-        config: (key) => config[key],
+        scopeLabel,
+        config: (key) => config(key),
         now: Date.now(),
       }),
-    );
+      scopeKeys,
+      scopeLabel,
+    });
   });
 
   // The sidebar mirror reads this: what changed, newest first, plus the two
@@ -125,13 +136,16 @@ export function registerApiRoutes(ctx, deps) {
     return json(buildActivity(store, { limit, since: Number.isFinite(since) ? since : undefined }));
   });
 
-  // Version badge + update hint. `?refresh=1` bypasses the six-hour cache, and
-  // only an explicit press reaches the registry.
+  // Version badge + update hint. The default answer is **cache only**: opening
+  // the panel never contacts the registry, because the privacy page says the
+  // plugin makes no network call unless the user configures one. `?refresh=1`
+  // (the explicit press) is the only path that fetches.
   route('/api/loci/update', ['GET'], async (request) => {
     const url = new URL(request.url);
     const refresh = url.searchParams.get('refresh') === '1';
     if (deps.updates === undefined || config.updateCheck === false) return json(installedOnly(deps.version));
-    return json(await deps.updates.check({ force: refresh }));
+    if (!refresh) return json(deps.updates.cachedOrInstalled());
+    return json(await deps.updates.check({ force: true }));
   });
 
   route('/api/loci/version', ['GET'], async () => json({ version: deps.version ?? '0.0.0' }));
@@ -242,6 +256,8 @@ export function registerApiRoutes(ctx, deps) {
     return json({ events: store.auditTail(limit) });
   });
 
+  // The settings page needs the *effective* values, including defaults, not the
+  // raw row from the profile (which usually has none of these keys).
   route('/api/loci/config', ['GET'], async () => json({ config: { ...config } }));
 
   return () => {
