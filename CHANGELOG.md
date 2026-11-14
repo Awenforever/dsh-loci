@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.0.2] — 2026-11-14
+
+### Fixed
+
+- The manifest gate now checks the `bin` entry: bare relative path, target exists,
+  shebang present, covered by `files`. No user-visible behaviour changed — measured
+  on the published builds, `bin` was already correct in both 2.0.0 and 2.0.1
+  (`node_modules/.bin/dsh-loci` is created and `npx dsh-loci help` works).
+
+  The reason for the guard: npm rewrites a bin path that starts with `./` and prints
+  `script name … was invalid and removed`, which reads like the binary was dropped.
+  It was not. The value is now canonical so that warning cannot hide a real problem
+  next time.
+
 ## [2.0.1] — 2026-11-14
 
 ### Changed

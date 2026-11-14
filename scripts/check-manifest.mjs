@@ -59,6 +59,32 @@ const patch = read('cordis.patch.yml');
 if (!patch.includes('id: dsh-loci')) problems.push('cordis.patch.yml does not insert the dsh-loci row');
 if (!patch.includes('name: dsh-loci')) problems.push('cordis.patch.yml row must resolve the package by name');
 
+// 7. Keep the bin entry canonical.
+//
+// npm normalises a bin path that starts with `./` and prints
+// "script name … was invalid and removed", which reads far more alarming than it
+// is: measured on the published 2.0.0 and 2.0.1, the registry metadata still
+// carries `bin: {"dsh-loci":"scripts/cli.mjs"}`, a fresh install creates
+// `node_modules/.bin/dsh-loci`, and `npx dsh-loci help` works. So this is not a
+// "the binary was dropped" guard — it is a guard against the value drifting into
+// a form npm rewrites, or into a target that no longer exists or lost its shebang,
+// and against that warning being the only signal.
+for (const [name, target] of Object.entries(manifest.bin ?? {})) {
+  if (typeof target !== 'string') {
+    problems.push(`bin.${name} must be a string`);
+    continue;
+  }
+  if (target.startsWith('./') || target.startsWith('/') || target.includes('..')) {
+    problems.push(`bin.${name} must be a bare relative path (no "./", no ".."): ${target}`);
+  }
+  if (!existsSync(join(root, target))) problems.push(`bin.${name} points at a missing file: ${target}`);
+  else if (!read(target).startsWith('#!')) problems.push(`bin.${name} target must start with a shebang: ${target}`);
+  const files = manifest.files ?? [];
+  if (!files.some((entry) => entry === target || entry === 'scripts/**/*.js' || entry.startsWith('scripts/'))) {
+    problems.push(`bin.${name} target is not covered by "files": ${target}`);
+  }
+}
+
 if (problems.length > 0) {
   console.error(`manifest gate failed (${problems.length}):`);
   for (const problem of problems) console.error(`  - ${problem}`);
