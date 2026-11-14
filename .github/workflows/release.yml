@@ -1,8 +1,9 @@
 name: release
 
-# Publishing is deliberately a manual, tag-driven action: the owner configures an
-# npm automation token (or trusted publishing) as `NODE_AUTH_TOKEN`, then pushes a
-# `vX.Y.Z` tag. Nothing here publishes on a branch push.
+# Publishing is deliberately a manual, tag-driven action: pushing a `vX.Y.Z` tag
+# is the only trigger. The credential is the OIDC identity token from
+# `id-token: write` plus a Trusted Publisher binding on npmjs.com — there is no
+# npm secret in this repository (collaboration center AGENTS.md K21 / §15).
 #
 # Guards added after the release audit:
 #   - the tag must be an ancestor of main (a tag on a side branch cannot publish);
@@ -29,7 +30,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          # Deliberately NO `registry-url`: that option writes
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
+          # an empty value makes npm fall back to token auth instead of the OIDC
+          # exchange — the exact `ENEEDAUTH` trap recorded in the collaboration
+          # center's npm runbook (§15.3).
+
+      - name: npm must be new enough to attempt the OIDC exchange
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(npm --version)"
+          echo "npm $version"
+          # npm 10 never performs the exchange; trusted publishing needs >= 11.5.
+          node -e 'const [a,b]=process.argv[1].split(".").map(Number); process.exit(a>11 || (a===11 && b>=5) ? 0 : 1)' "$version" \
+            || { echo "npm $version is too old for trusted publishing (need >= 11.5)"; exit 1; }
 
       - name: the tag must be on main
         shell: bash
@@ -65,7 +80,11 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      # Trusted publishing: no secret is referenced here on purpose. The OIDC
+      # identity token from `id-token: write` is the credential, so there is no
+      # long-lived npm token to leak, rotate, or forget (collaboration center
+      # AGENTS.md K21). If the binding on npmjs.com is missing, this step fails
+      # with ENEEDAUTH and the fix is to create the Trusted Publisher, not to add
+      # a secret.
       - name: publish with provenance
         run: npm publish --provenance --access public --tag "${{ steps.dist.outputs.tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
