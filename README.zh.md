@@ -46,7 +46,15 @@ bundle 会插入一行 Host 插件（`dsh-loci`）和一个 Client 半边。重�
 
 侧栏底部还有一张**便签**（和额度、advisor 卡片并排），它不是看板：顶上 `更新于 <时间>`，下面一小段话，是它此刻真正理解的东西——达成的共识、踩过的经验、事实。没有数字，看到的就是"它有没有把这件事接住"。
 
-要求：DSH `>=0.2.2-rc.1 <0.3.0-0`，Node `>=24.9.0`（Harness 自带）。无服务、无原生模块、无外部 CLI。
+要求：DSH `>=0.2.2-rc.1 <0.3.0-0`，Node `>=24.9.0`（Harness 自带）。无服务、无原生模块。
+
+包里还带一个小 CLI（`snapshot`/`export`/`import`/`doctor`/`stats`/`review`/`purge`/`migrate`/`rollback`）。插件安装后它不在 PATH 上，按 profile 调用：
+
+```text
+node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" doctor --json
+```
+
+会话里还有零 token 的斜杠命令：`/loci`、`/loci review`、`/loci doctor`、`/loci export`。
 
 ## 五个工具
 

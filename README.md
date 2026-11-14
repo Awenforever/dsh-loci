@@ -56,7 +56,18 @@ The bundle adds one Host row (`dsh-loci`) and one Client half. Restart the
 Harness, then open **Settings → Loci** or the **Memory** panel in the sidebar.
 
 Requirements: DSH `>=0.2.2-rc.1 <0.3.0-0`, Node `>=24.9.0` (the Harness ships it).
-No service, no native module, no CLI binary.
+No service and no native module.
+
+The package also ships a small CLI (`snapshot`, `export`, `import`, `doctor`,
+`stats`, `review`, `purge`, `migrate`, `rollback`). It is not on your `PATH` after a
+plugin install — call it through the profile:
+
+```text
+node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" doctor --json
+```
+
+Inside a chat there are zero-token slash commands too: `/loci`, `/loci review`,
+`/loci doctor`, `/loci export`.
 
 ## The five tools
 
