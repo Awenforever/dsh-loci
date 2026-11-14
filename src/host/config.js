@@ -61,6 +61,14 @@ export const DEFAULTS = Object.freeze({
   captureMaxPerStatementChars: 200,
   /** Write one episodic session summary when a root agent is disposed. */
   summaryOnDispose: true,
+  /** 'off' | 'on' — background extraction of preferences stated in passing. */
+  extractMode: 'off',
+  /** Hard cap on extraction calls per hour; exhausting it is silent. */
+  extractMaxCallsPerHour: 6,
+  /** How many candidates one extraction run may write. */
+  extractMaxCandidates: 3,
+  /** Wall-clock budget for one model call. */
+  extractTimeoutMs: 20000,
   /** 'sweep' | 'off' — periodic TTL/merge/reindex maintenance. */
   maintenanceMode: 'sweep',
   /** Hours between maintenance sweeps. */
@@ -108,6 +116,7 @@ export const ENUMS = Object.freeze({
   defaultScope: ['workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
   captureMode: ['rules', 'off'],
+  extractMode: ['off', 'on'],
   maintenanceMode: ['sweep', 'off'],
   secretPolicy: ['redact', 'reject'],
   vectorMode: ['off', 'http'],
@@ -130,6 +139,10 @@ function buildSchema() {
     captureDebounceMs: z.number().step(500).min(0).max(600000).default(DEFAULTS.captureDebounceMs).volatile(),
     captureMaxPerStatementChars: z.number().step(1).min(40).max(400).default(DEFAULTS.captureMaxPerStatementChars).volatile(),
     summaryOnDispose: z.boolean().default(DEFAULTS.summaryOnDispose).volatile(),
+    extractMode: z.union(ENUMS.extractMode).default(DEFAULTS.extractMode).volatile(),
+    extractMaxCallsPerHour: z.number().step(1).min(0).max(240).default(DEFAULTS.extractMaxCallsPerHour).volatile(),
+    extractMaxCandidates: z.number().step(1).min(0).max(20).default(DEFAULTS.extractMaxCandidates).volatile(),
+    extractTimeoutMs: z.number().step(500).min(1000).max(120000).default(DEFAULTS.extractTimeoutMs).volatile(),
     maintenanceMode: z.union(ENUMS.maintenanceMode).default(DEFAULTS.maintenanceMode).volatile(),
     maintenanceIntervalHours: z.number().step(0.5).min(0.5).max(168).default(DEFAULTS.maintenanceIntervalHours).volatile(),
     auditMaxBytes: z.number().step(1024).min(65536).max(268435456).default(DEFAULTS.auditMaxBytes),

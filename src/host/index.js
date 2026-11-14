@@ -17,11 +17,12 @@ import { createIndexSection, renderAssistBlock } from './inject/index-section.js
 import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
 import { UpdateChecker } from './update.js';
+import { Extractor, completeViaHost } from './extract/extractor.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '1.8.0';
+export const VERSION = '1.9.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -113,11 +114,13 @@ export function apply(ctx, rawConfig = {}) {
     log,
   });
 
+  const extractor = new Extractor({ store, config: read, log });
   capture = new Capture({
     store,
     config: read,
     log,
     resolveScopes,
+    extractor,
   });
 
   const indexSection = createIndexSection({
@@ -174,6 +177,24 @@ export function apply(ctx, rawConfig = {}) {
   disposers.push(
     ctx.inject(['commands'], (child) =>
       child.effect(() => registerCommands(child, { store, paths, config, log }), 'loci: commands'),
+    ),
+  );
+  // The extractor needs a model route. `llm` is provided by whichever provider
+  // bundle the profile installed; when it is absent the feature simply stays
+  // off (and reports `no-model` if someone switches it on).
+  disposers.push(
+    ctx.inject(['llm'], (child) =>
+      child.effect(() => {
+        const complete = completeViaHost(child.llm, {
+          provider: child.agent?.config?.provider ?? undefined,
+          model: child.agent?.config?.model ?? undefined,
+        });
+        if (complete === undefined) return () => {};
+        extractor.complete = complete;
+        return () => {
+          extractor.complete = undefined;
+        };
+      }, 'loci: extractor model route'),
     ),
   );
 

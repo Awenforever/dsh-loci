@@ -78,10 +78,12 @@ export class Capture {
     this.log = options.log;
     this.now = options.now ?? (() => Date.now());
     this.resolveScopes = options.resolveScopes;
+    /** Optional background extractor; absent unless the feature is wired and on. */
+    this.extractor = options.extractor;
     /** @type {Map<string, {messages: {seq:number, role:string, text:string}[], bytes:number, captures:number, timer:NodeJS.Timeout|undefined, turn:number, cwd:string|undefined}>} */
     this.sessions = new Map();
     this.attached = false;
-    this.statistics = { captured: 0, summaries: 0, skipped: 0 };
+    this.statistics = { captured: 0, summaries: 0, skipped: 0, extracted: 0 };
   }
 
   /**
@@ -164,13 +166,50 @@ export class Capture {
       }
       if (event.type === 'turn/end') {
         buffer.turn = Number(event.data?.turn ?? buffer.turn);
-        if (event.data?.reason?.kind === 'completed') this.#schedule(sessionId, buffer);
+        if (event.data?.reason?.kind === 'completed') {
+          this.#schedule(sessionId, buffer);
+          // The extractor reads the same buffer, on its own timer and its own
+          // budget; a failure here must never touch the turn.
+          this.#scheduleExtraction(sessionId, buffer);
+        }
       }
     } catch (error) {
       this.log?.warn?.(`loci: capture listener failed: ${String(error?.message ?? error)}`);
     }
   }
 
+  /**
+   * Debounced extraction pass.
+   *
+   * Separate timer from capture on purpose: extraction is the expensive one, and a
+   * slow model must not delay the rule capture that costs nothing.
+   */
+  #scheduleExtraction(sessionId, buffer) {
+    if (this.config('extractMode') !== 'on' || this.extractor === undefined) return;
+    if (buffer.extractTimer !== undefined) return;
+    const delay = Math.max(0, Number(this.config('captureDebounceMs') ?? 30000));
+    buffer.extractTimer = setTimeout(() => {
+      buffer.extractTimer = undefined;
+      const extractor = this.extractor;
+      if (extractor === undefined) return;
+      Promise.resolve()
+        .then(() =>
+          extractor.run({
+            sessionId,
+            messages: buffer.messages,
+            scopeKey: this.#workspaceKey(buffer.cwd, sessionId),
+            scopeLabel: this.#workspaceLabel(buffer.cwd),
+          }),
+        )
+        .then((result) => {
+          if (result.written > 0) this.statistics.extracted += result.written;
+        })
+        .catch((error) => {
+          this.log?.debug?.(`loci: extraction pass failed: ${String(error?.message ?? error)}`);
+        });
+    }, delay);
+    buffer.extractTimer.unref?.();
+  }
   /** Debounced capture pass; the timer never holds the process open. */
   #schedule(sessionId, buffer) {
     if (this.config('captureMode') !== 'rules') return;
@@ -269,6 +308,7 @@ export class Capture {
     const release = () => {
       if (buffer === undefined) return;
       if (buffer.timer !== undefined) clearTimeout(buffer.timer);
+      if (buffer.extractTimer !== undefined) clearTimeout(buffer.extractTimer);
       this.sessions.delete(sessionId);
     };
     if (this.config('summaryOnDispose') !== true) {

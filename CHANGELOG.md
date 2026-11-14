@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.9.0] — 2026-11-14
+
+### Added
+
+- **Candidate-only background extraction** (`extractMode: 'on'`, **off by default**).
+  The deterministic capture layer only records statements that announce themselves
+  ("always", "never", "we agreed"). A preference stated in passing — "honestly I'd
+  rather see the diff first" — carries no such marker and was lost. With the feature
+  on, the recent conversation is sent to the configured model at turn end and the
+  answers land as **candidates** for review.
+
+  Four rules keep it from becoming the feature a user turns off:
+  - off unless `extractMode: 'on'`, and inert when the profile has no `llm` route
+    (reports `no-model`, writes nothing);
+  - candidates only — an extracted preference can never reach the prompt by itself;
+  - budgeted: `extractMaxCallsPerHour` (6), `extractMaxCandidates` (3),
+    `extractTimeoutMs` (20 s), and a 12 KB input cap. Exhausting the budget is
+    silent, not an error;
+  - it can always fail: timeout, provider error, unparseable answer or an invented
+    quote all return `{written: 0, reason}` on its own timer, never touching the
+    turn. A quote that is not in the transcript is dropped before storage.
+
+- `test/unit/extractor.test.mjs` covers the switch, the missing route, the budget,
+  the timeout, invented quotes and the unusable-answer paths.
+
+### Unverified
+
+- The `ctx.llm` adapter is written against the Host's `llm.stream(request)` call and
+  collects text from whatever frame shape the provider emits. **It has not been run
+  against a live provider**; the unit tests use a fake completer and a fake stream.
+  If a provider's chunk shape is not one of the recognised forms, the extractor
+  records `model-error` and stays out of the way — it does not write junk.
+
 ## [1.8.0] — 2026-11-14
 
 ### Added
