@@ -19,6 +19,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
+import { scanSecrets } from '../inject/sanitize.js';
 
 /** Events that must survive a crash immediately; everything else is buffered. */
 const SYNC_EVENTS = new Set(['write', 'delete', 'verify', 'import', 'migrate', 'error', 'maintenance']);
@@ -72,7 +73,7 @@ export class AuditLog {
    */
   append(event, detail = {}, options = {}) {
     if (this.closed) return;
-    const line = { ts: Date.now(), event, ...detail };
+    const line = { ts: Date.now(), event, ...sanitizeDetail(detail) };
     this.buffer.push(line);
     this.ring.push(line);
     if (this.ring.length > RING_SIZE) this.ring.splice(0, this.ring.length - RING_SIZE);
@@ -182,3 +183,26 @@ export function readAuditTail(file, limit = 100) {
     if (fd !== undefined) closeSync(fd);
   }
 }
+
+/**
+ * Keep free text out of the audit log unless it is short and harmless.
+ *
+ * The audit is a factual record of ids, modes and counts. A caller-supplied
+ * `reason` is the one field that can carry arbitrary prose, and prose is where a
+ * credential ends up after a copy-paste. It is therefore capped and scanned with
+ * the same detector the memory body uses; a hit replaces the text with a marker
+ * instead of dropping the event.
+ *
+ * @param detail - the fields the caller wants recorded.
+ * @returns the fields that are safe to write.
+ */
+function sanitizeDetail(detail) {
+  if (typeof detail.reason !== 'string') return detail;
+  const cleaned = detail.reason.replace(/\s+/g, ' ').trim();
+  const { hits } = scanSecrets(cleaned, 'redact');
+  return {
+    ...detail,
+    reason: hits.length > 0 ? '[redacted]' : cleaned.slice(0, 160),
+  };
+}
+

@@ -15,7 +15,7 @@
  *   reindex                rebuild the full-text index
  *   maintenance            run one maintenance pass
  *   migrate --target <n>   run available migrations
- *   rollback --from <file> restore a snapshot (database must be idle)
+ *   snapshot [--label <name>]   write a consistent VACUUM INTO backup\n *   rollback --from <file> restore a snapshot (database must be idle)
  *   purge --id <id> --confirm <id>   hard-delete one entry
  *
  * Common options: --home <path> (default $DSH_HOME), --json
@@ -38,8 +38,34 @@ const PLUGIN_VERSION = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;
 
-const argv = process.argv.slice(2);
-const command = argv[0] ?? 'help';
+const rawArgv = process.argv.slice(2);
+
+/**
+ * Find the subcommand wherever it sits.
+ *
+ * `--json doctor` used to print the help text and exit 2 because the first token
+ * was taken as the command. Flags are position-independent now, which is what
+ * everyone expects from a CLI.
+ */
+const COMMANDS = new Set([
+  'doctor',
+  'stats',
+  'search',
+  'review',
+  'export',
+  'import',
+  'reindex',
+  'maintenance',
+  'migrate',
+  'rollback',
+  'purge',
+  'snapshot',
+  'snapshots',
+  'help',
+]);
+const command = rawArgv.find((token) => COMMANDS.has(token)) ?? 'help';
+// Keep the original token order for the flag readers below.
+const argv = [command, ...rawArgv.filter((token) => token !== command)];
 const flag = (name) => {
   const index = argv.indexOf(`--${name}`);
   if (index < 0) return undefined;
@@ -74,6 +100,24 @@ const sessionsScope = () => {
   return { scopes, scopeKeys: readScopeKeys(scopes, { includeGlobal: true }) };
 };
 
+/**
+ * The scope set a diagnostic command should look at.
+ *
+ * `stats` and `doctor` answer "what is in my store", so they default to the whole
+ * database; narrowing happens only when the caller passes `--scope` or asks for a
+ * session view. Reporting zero entries because the shell's cwd happened to be a
+ * different directory is a diagnostic that lies.
+ */
+const diagnosticScope = () => {
+  if (has('session')) {
+    const { scopeKeys } = sessionsScope();
+    return { scopeKeys };
+  }
+  const kind = flag('scope');
+  if (kind !== undefined && kind !== '') return { scopeKeys: [], kind };
+  return { scopeKeys: undefined };
+};
+
 switch (command) {
   case 'doctor': {
     const result = await withStore((store) => runDoctor({ store, paths, config: effectiveConfig({ home }) }));
@@ -84,7 +128,7 @@ switch (command) {
   }
   case 'stats': {
     const result = await withStore((store) => {
-      const { scopeKeys } = sessionsScope();
+      const { scopeKeys } = diagnosticScope();
       return { ...store.stats({ scopeKeys }), injections: store.recentInjections(10) };
     });
     if (json) console.log(JSON.stringify(result, null, 2));
@@ -177,6 +221,28 @@ switch (command) {
     });
     break;
   }
+  case 'snapshots': {
+    // Previously unreachable: the block sat after the switch, so it printed help
+    // and exited 2 before ever listing anything.
+    const dir = paths.backups;
+    const files = existsSync(dir) ? readdirSync(dir) : [];
+    emit({ dir, files }, files.length === 0 ? 'no snapshots' : files.join('\\n'));
+    break;
+  }
+  case 'snapshot': {
+    // The backup path that actually works before an upgrade: one consistent file
+    // produced by SQLite itself (VACUUM INTO), not a Markdown projection.
+    const label = flag('label') ?? 'manual';
+    ensureMemoryRoot(memoryRoot);
+    const store = new Store({ memoryRoot, paths, config: effectiveConfig({ home }), pluginVersion: PLUGIN_VERSION });
+    try {
+      const file = store.snapshot(label);
+      emit({ file, label }, `snapshot ${file}`);
+    } finally {
+      store.close();
+    }
+    break;
+  }
   case 'migrate': {
     const target = flag('target');
     ensureMemoryRoot(memoryRoot);
@@ -233,23 +299,17 @@ switch (command) {
   default: {
     console.log(`dsh-loci <command> [options]
 
-  doctor | stats | review | export | reindex | maintenance
+  doctor | stats | review | export | export-import | reindex | maintenance | snapshots
   search <query>
   import --dir <path>
+  snapshot [--label <name>]
   migrate [--target <n>]
   rollback [--from <snapshot>]
-  purge --id <id> --confirm <id>
+  purge --id <id> --confirm <id> [--allow-hard-delete]
 
-options: --home <path>  --json
+options: --home <path>  --json   (either may come before or after the command)
 
 store: ${memoryRoot}`);
     if (command !== 'help') process.exitCode = 2;
   }
-}
-
-if (command === 'snapshots') {
-  // Listed after the switch on purpose: this command is diagnostic only.
-  const dir = paths.backups;
-  if (!existsSync(dir)) console.log('no snapshots');
-  else console.log(readdirSync(join(dir)).join('\n'));
 }

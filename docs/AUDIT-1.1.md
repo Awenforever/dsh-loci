@@ -91,11 +91,11 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 |---|---|---|---|
 | 21 | `npm test` broken on Node 24 (directories passed to `--test`) | D | **fixed** — globs; `npm test` now runs 53 tests |
 | 22 | `build:client` pointed at a script that does not exist | D | **fixed** — removed; `client.js` is hand-authored |
-| 23 | no public GitHub repo, so `--provenance` cannot publish | D | **open, operator-gated** — the repository must be created and pushed before a release tag |
-| 24 | release workflow can publish a prerelease as `latest`, no ancestry check | D | **open** — documented as a release-checklist item |
-| 25 | no lockfile, `npm install` in CI | D | **open** — there are no runtime dependencies beyond the Host, so the risk is small but real |
+| 23 | no public GitHub repo, so `--provenance` cannot publish | D | **fixed** — https://github.com/Awenforever/dsh-loci is public; the remaining gate is the npm token (R1) |
+| 24 | release workflow can publish a prerelease as `latest`, no ancestry check | D | **fixed in 1.5.0** — a prerelease tag publishes to the `next` dist-tag, and a tag whose commit is not an ancestor of `main` is refused before anything is published |
+| 25 | no lockfile, `npm install` in CI | D | **fixed in 1.5.0** — `package-lock.json` is committed and both workflows install with `npm ci` |
 | 26 | NOTICE said schemastery is Apache-2.0 | D | **fixed** — the registry says MIT |
-| 27 | coverage gate is line-only (83% lines, 60.8% branches) | D | **open** — the threshold is explicit about being line coverage |
+| 27 | coverage gate is line-only (83% lines, 60.8% branches) | D | **fixed in 1.5.0** — the gate fails on lines (<80), branches (<55) and functions (<70), and prints all three numbers on every run |
 | 28 | e2e harness had `record(..., true)` tautologies | D | **partly fixed** — the two literal passes were replaced by real assertions in `ui.mjs`/`mirror.mjs` |
 
 ### UX and docs
@@ -104,11 +104,11 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 |---|---|---|---|
 | 29 | first run has no "it worked" moment; empty store is correct but invisible | C | **fixed** — the sidebar card states "nothing learned yet · facts you confirm appear here", and the panel opens on a Feed that explains itself |
 | 30 | the review queue is a dead end (≤50, no reject, no bulk, no evidence) | C | **fixed in 1.3.0** — reject, verify-all and a visible error line; the queue lists only kinds that could be injected. Root cause was upstream of the UI: default capture wrote candidates nobody could ever promote, so the queue was fed by statements the user had literally just made. Captured statements now pass the same quote gate as a model quote. |
-| 30b | `export` then `import` imports nothing: entries go to `<root>/markdown/<scope>/<kind>/<id>.md` but `importMarkdown` defaults to `<root>/exports`, which holds only a one-line header file | D | **open** — verified: `export.js:119` writes to `paths.markdown`, `export.js:142` reads `paths.exports`. The importer also drops ids, status, evidence and the original scope. A real `snapshot` command (VACUUM INTO) plus a tested round trip is the fix. |
+| 30b | `export` then `import` imports nothing: entries go to `<root>/markdown/<scope>/<kind>/<id>.md` but `importMarkdown` defaults to `<root>/exports`, which holds only a one-line header file | D | **fixed in 1.4.0** — the importer now reads the tree the exporter writes and restores each entry's original scope; `test/unit/export.test.mjs` pins the round trip |
 | 31 | the panel's Index tab said "exactly what the model sees" but rendered every scope | C | **partly fixed** — the label now states which scopes were rendered; `?cwd=`/`?session=` let a caller ask for one conversation's view |
 | 32 | README said 5,120 B where the default is 3,584 | C, D | **fixed** (both READMEs) |
-| 33 | docs describe a CLI that is not on PATH; `/loci` commands undocumented | C | **open** — `scripts/cli.mjs` works via `node <profile>/node_modules/dsh-loci/scripts/cli.mjs`; `OPERATIONS.md` needs that exact line |
-| 34 | no "forget everything" affordance for a privacy request | C | **open** — `purge` is per-id by design; the documented path is deleting the data directory |
+| 33 | docs describe a CLI that is not on PATH; `/loci` commands undocumented | C | **fixed in 1.5.0** — OPERATIONS §1 carries the exact install path, flags are position-independent, `/loci review|doctor|export` are documented, and `snapshot`/`snapshots` are real commands |
+| 34 | no "forget everything" affordance for a privacy request | C | **fixed in 1.4.0** — `store.forgetAll()` + `POST /api/loci/forget-all` + Settings → Delete everything, gated by an echoed phrase; purging still requires `allowHardDelete` |
 | 35 | tool descriptions under-specified for a weaker model | C | **partly fixed** — `query` is optional with a stated meaning, and `op` documents that trust is not settable |
 
 ## What A would have looked at

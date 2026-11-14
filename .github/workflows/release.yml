@@ -1,9 +1,15 @@
 name: release
 
-# Publishing is deliberately a manual, tag-driven action: the repository owner
-# configures an npm automation token (or npm trusted publishing) as
-# `NODE_AUTH_TOKEN`, then pushes a `vX.Y.Z` tag. Nothing here publishes on a
-# branch push.
+# Publishing is deliberately a manual, tag-driven action: the owner configures an
+# npm automation token (or trusted publishing) as `NODE_AUTH_TOKEN`, then pushes a
+# `vX.Y.Z` tag. Nothing here publishes on a branch push.
+#
+# Guards added after the release audit:
+#   - the tag must be an ancestor of main (a tag on a side branch cannot publish);
+#   - a prerelease (`v1.2.3-rc.1`) publishes to the `next` dist-tag, so it can
+#     never become `latest` by accident;
+#   - the install is `npm ci` from the committed lockfile;
+#   - the tag/version equality check runs before anything is published.
 on:
   push:
     tags: ['v*.*.*']
@@ -17,13 +23,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history is required for the ancestry check below.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install --no-audit --no-fund
-      - run: node scripts/check-manifest.mjs
-      - run: node --disable-warning=ExperimentalWarning --test "test/unit/*.test.mjs" "test/integration/*.test.mjs"
+
+      - name: the tag must be on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+            exit 1
+          fi
+
       - name: tag must match package.json version
         shell: bash
         run: |
@@ -31,7 +48,24 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           tag="${GITHUB_REF_NAME#v}"
           test "$version" = "$tag" || { echo "tag $tag does not match package version $version"; exit 1; }
+
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/check-manifest.mjs
+      - run: node --disable-warning=ExperimentalWarning --test "test/unit/*.test.mjs" "test/integration/*.test.mjs"
+      - run: node --disable-warning=ExperimentalWarning scripts/check-coverage.mjs
+      - name: decide the dist-tag
+        id: dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1.2.3-rc.1 -> next ; 1.2.3 -> latest
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: publish with provenance
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "${{ steps.dist.outputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}

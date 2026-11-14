@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: install
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: manifest and syntax gate
         run: node scripts/check-manifest.mjs
       - name: unit and integration tests
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: pack
         run: npm pack
       - name: the tarball must carry the client, the schema, the locale and the icon
@@ -53,3 +53,18 @@ jobs:
             grep -qx "$required" files.txt || { echo "missing $required"; exit 1; }
           done
           echo "pack contents ok ($(wc -l < files.txt) entries)"
+
+      # The bin entry ships with the package but nothing used to prove it runs
+      # after an install: a broken `files` list or a bad shebang would only show
+      # up in a user's terminal.
+      - name: install the tarball and run its bin
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball="$(ls "$PWD"/dsh-loci-*.tgz)"
+          mkdir -p /tmp/loci-smoke
+          cd /tmp/loci-smoke
+          npm init -y > /dev/null 2>&1
+          npm install --no-audit --no-fund "$tarball"
+          npx --no-install dsh-loci doctor --home /tmp/loci-smoke-home
+

@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.5.0] — 2026-11-14
+
+### Fixed
+
+- **`--json doctor` printed the help text and exited 2.** Flags are now
+  position-independent: `--json doctor` and `doctor --json` are the same thing.
+- **`snapshots` was unreachable** — its block sat after the switch, so it never ran.
+  It is a real command now, alongside a new `snapshot [--label <name>]` that writes
+  one consistent `VACUUM INTO` file under `backups/`.
+- **`stats` reported the current directory's scope only.** Running it from another
+  directory showed "0 entries" for a store with entries in it. Diagnostics default
+  to the whole store; `--session` narrows to the current scope set.
+- **The audit log accepted arbitrary prose** in a delete `reason`. It is now capped
+  and scanned by the same secret detector as memory bodies.
+- **`assertInside` was lexical**: a symlink inside the data directory passed the
+  prefix check and then wrote wherever the link pointed. It now also resolves the
+  deepest existing part of the path and requires that to stay inside, with a test
+  that skips on a host that cannot create symlinks.
+
+### Changed
+
+- CI and the release workflow install with **`npm ci`** from a committed
+  `package-lock.json`.
+- The release workflow refuses a tag whose commit is not an ancestor of `main`,
+  publishes prereleases to the **`next`** dist-tag, and runs the coverage gate
+  before publishing.
+- The coverage gate now fails on **lines (<80), branches (<55) and functions
+  (<70)**, and prints all three; before, only lines were checked while branches sat
+  at 62%.
+- CI installs the packed tarball and runs its `bin`, so a broken `files` list or
+  shebang fails the build instead of a user's terminal.
+- `docs/OPERATIONS.md` shows the exact way to invoke the CLI from an installed
+  profile (`node <profile>/node_modules/dsh-loci/scripts/cli.mjs`), documents the
+  `/loci` slash commands, and replaces the "no snapshot command" note.
+
 ## [1.4.0] — 2026-11-14
 
 ### Fixed

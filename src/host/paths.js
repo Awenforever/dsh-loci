@@ -8,9 +8,9 @@
  * documented `memory` root, namespaced so another memory plugin can share it.
  * @module dsh-loci/paths
  */
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 /**
  * Expand the tilde forms the Harness accepts in user-supplied paths.
@@ -57,13 +57,47 @@ export function resolveMemoryRoot(dshHome) {
  * @throws when the target escapes the root or either path is not absolute.
  */
 export function assertInside(root, target) {
-  const absRoot = resolve(root);
+  const absRoot = realpathSyncSafe(resolve(root));
   const absTarget = resolve(target);
-  if (absTarget === absRoot) return absTarget;
-  if (!absTarget.startsWith(absRoot.endsWith(sep) ? absRoot : absRoot + sep)) {
-    throw new Error(`refusing path outside ${absRoot}: ${absTarget}`);
+  const lexical =
+    absTarget === absRoot || absTarget.startsWith(absRoot.endsWith(sep) ? absRoot : absRoot + sep);
+  if (!lexical) throw new Error(`refusing path outside ${absRoot}: ${absTarget}`);
+  // A lexical check alone is not enough: a symlink created inside the data
+  // directory would pass it and then write outside. Resolve the deepest part of
+  // the path that exists and require that to stay inside the root too.
+  const probe = deepestExisting(absTarget);
+  if (probe !== undefined) {
+    const realProbe = realpathSyncSafe(probe);
+    if (realProbe !== absRoot && !realProbe.startsWith(absRoot.endsWith(sep) ? absRoot : absRoot + sep)) {
+      throw new Error(`refusing path outside ${absRoot}: ${absTarget} resolves to ${realProbe}`);
+    }
   }
   return absTarget;
+}
+
+/** `realpathSync` that treats a missing path as "use it as given". */
+function realpathSyncSafe(value) {
+  try {
+    return realpathSync(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * The longest prefix of `target` that exists on disk.
+ * @param target - an absolute path that may not exist yet.
+ * @returns the existing prefix, or undefined when nothing does.
+ */
+function deepestExisting(target) {
+  let current = target;
+  for (let depth = 0; depth < 64; depth += 1) {
+    if (existsSync(current)) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+  return undefined;
 }
 
 /**

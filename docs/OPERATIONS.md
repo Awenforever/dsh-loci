@@ -19,10 +19,33 @@ of an already-installed package needs a fresh process to pick up new JavaScript.
 Verify after restart:
 
 1. `Settings → Loci` exists and shows values.
-2. The sidebar shows a **Memory** icon; the panel opens with four tabs.
-3. `dsh-loci --json doctor` prints `"status": "ok"` (or `warn` with a reason).
+2. The sidebar shows a **Memory** note card; clicking it opens the panel (Feed, Index,
+   Search, Review, Stats).
+3. The CLI reports healthy — see the note below on how to invoke it.
 4. Start one chat and ask it to remember something. The audit file gains a `write`
    line and the next request's `inject` line carries `bytes > 0`.
+
+### Invoking the CLI
+
+`dsh plugin ... add` installs the package into the profile, so its `bin` lands in
+`<profile>/node_modules/.bin` — **not** on your `PATH`. Either call it through the
+profile, or use the absolute path:
+
+```text
+# from anywhere, with <profile> being the profile you installed into (e.g. desktop)
+node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" doctor --json
+
+# or add the profile's bin directory to PATH for the session
+export PATH="$HOME/.dsh/profiles/<profile>/node_modules/.bin:$PATH"
+dsh-loci doctor --json
+```
+
+On Windows the same path is `%USERPROFILE%\.dsh\profiles\<profile>\node_modules\dsh-loci\scripts\cli.mjs`.
+Options may appear before or after the command (`--json doctor` and `doctor --json`
+are equivalent).
+
+There are also zero-token slash commands inside a chat: `/loci`, `/loci review`,
+`/loci doctor`, `/loci export`. They call the same store without a model turn.
 
 ## 2. Upgrade
 
@@ -32,7 +55,7 @@ migrates it forward after taking a snapshot.
 ```text
 dsh plugin --profile <profile> add dsh-loci@<version>
 # restart the Harness
-dsh-loci doctor         # schema version, index coverage, integrity
+node scripts/cli.mjs doctor   # schema version, index coverage, integrity
 ```
 
 If the build expects a newer schema, `Store.open` runs the migration itself:
@@ -75,8 +98,8 @@ Three layers, cheapest first:
 
 | What | When | Command |
 |---|---|---|
-| snapshot | before every migration, on demand | `dsh-loci` has no snapshot command; `curl -X POST /api/loci/export` from the panel does an export, and `migrate` snapshots automatically |
-| Markdown export | any time | `dsh-loci export` (writes `exports/` and `markdown/`) |
+| snapshot | before every migration, on demand | `dsh-loci snapshot` → `backups/<label>-<ts>.db` (one consistent file, produced by SQLite `VACUUM INTO`); `migrate` also snapshots automatically |
+| Markdown export | any time | `dsh-loci export` → `markdown/<scope>/<kind>/*.md`; `dsh-loci import` reads exactly that tree back, restoring each entry's original scope |
 | file copy | machine-level backup | copy `$DSH_HOME/memory/loci/` while the Harness is stopped, or `memory.db` + `memory.db-wal` while it runs |
 
 The Markdown projection is lossy in one direction by design: it carries the head
