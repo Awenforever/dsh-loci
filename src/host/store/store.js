@@ -430,6 +430,123 @@ export class Store {
   }
 
   /**
+   * Merge near-duplicate entries into one.
+   *
+   * Two facts that say the same thing differently are worse than one: they split
+   * the ranking, they both take an index line, and a correction has to be applied
+   * twice. Dedupe on the write path only catches byte-identical or same-title
+   * writes, so the realistic case — "we wrote this twice, months apart, with
+   * different words" — needs an explicit operation.
+   *
+   * The sources are **superseded, never deleted**: their history stays readable
+   * and `get(id)` keeps working, which is what makes a merge reviewable later.
+   *
+   * Verification is not inherited: if the merged entry's text changes, the target
+   * goes back to `candidate` through the same path as any other edit.
+   *
+   * @param input - `targetId`, `sourceIds[]`, `expectedRevisions[]` (optional,
+   *   aligned with target-then-sources order), `title`, `body`, `actor`, `reason`.
+   * @returns `{entry, merged: string[], revision}`.
+   */
+  merge(input) {
+    this.#assertWritable();
+    const targetId = typeof input?.targetId === 'string' ? input.targetId : undefined;
+    if (targetId === undefined) throw new MemoryRejectedError('merge requires targetId');
+    const sourceIds = Array.isArray(input?.sourceIds) ? [...new Set(input.sourceIds)] : [];
+    if (sourceIds.length === 0) throw new MemoryRejectedError('merge requires at least one sourceId');
+    if (sourceIds.includes(targetId)) throw new MemoryRejectedError('a merge cannot list the target as its own source');
+
+    const now = this.now();
+    const target = this.#headRow(targetId);
+    if (target === undefined || target.status === 'deleted') throw new MemoryNotFoundError(targetId);
+    const sources = sourceIds.map((id) => {
+      const head = this.#headRow(id);
+      if (head === undefined || head.status === 'deleted') throw new MemoryNotFoundError(id);
+      return { id, head };
+    });
+
+    // Optimistic lock, when the caller supplies revisions (target first, then
+    // sources in the order given). A stale expectation aborts before any write.
+    const expected = Array.isArray(input.expectedRevisions) ? input.expectedRevisions : [];
+    const expectedList = [Number(target.row.revision), ...sources.map((source) => Number(source.head.row.revision))];
+    expectedList.forEach((actual, index) => {
+      const wanted = expected[index];
+      if (Number.isSafeInteger(wanted) && wanted !== actual) {
+        throw new RevisionConflictError(index === 0 ? targetId : sourceIds[index - 1], wanted, actual);
+      }
+    });
+
+    // Union the metadata first: the merged entry should carry every tag and entity
+    // either side had, or the merge loses searchability.
+    const asArray = (value) => {
+      try {
+        const parsed = JSON.parse(value ?? '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+    const unionTags = (rows) => [...new Set(rows.flatMap((row) => asArray(row.tags)))];
+    const unionEntities = (rows) => [...new Set(rows.flatMap((row) => asArray(row.entities)))];
+    const rows = [target.row, ...sources.map((source) => source.head.row)];
+    const tags = unionTags(rows);
+    const entities = unionEntities(rows);
+
+    let entry;
+    if (typeof input.title === 'string' || typeof input.body === 'string') {
+      // A content change goes through update(), so it lands as a candidate unless
+      // the text is a previously verified revision.
+      const updated = this.update(targetId, {
+        kind: input.kind ?? target.row.kind,
+        scope: input.scope ?? target.row.scope,
+        scopeKey: input.scopeKey ?? target.row.scope_key,
+        scopeLabel: input.scopeLabel ?? target.row.scope_label,
+        title: typeof input.title === 'string' ? input.title : target.row.title,
+        body: typeof input.body === 'string' ? input.body : target.row.body,
+        tags,
+        entities,
+        trustSource: 'tool',
+        expectedRevision: Number(target.row.revision),
+      });
+      entry = updated.entry;
+    } else {
+      this.db
+        .prepare('UPDATE memory SET tags = ?, entities = ?, updated_at = ? WHERE id = ? AND revision = ?')
+        .run(JSON.stringify(tags), JSON.stringify(entities), now, targetId, Number(target.row.revision));
+      entry = this.get(targetId).entry;
+    }
+
+    const mergedAt = `${targetId}@${entry.revision}`;
+    withTransaction(this.db, () => {
+      for (const source of sources) {
+        this.db
+          .prepare(
+            `UPDATE memory SET status = 'superseded', valid_to = ?, superseded_by = ?, updated_at = ?
+             WHERE id = ? AND revision = ?`,
+          )
+          .run(now, mergedAt, now, source.id, Number(source.head.row.revision));
+        this.db.prepare('UPDATE memory_head SET status = ? WHERE id = ?').run('superseded', source.id);
+      }
+      this.#recomputeTokenStats();
+      this.bumpIndexRev();
+    });
+
+    this.audit.append(
+      'merge',
+      {
+        targetId,
+        sources: sourceIds,
+        revision: entry.revision,
+        bytes: Buffer.byteLength(entry.title) + Buffer.byteLength(entry.body),
+        actor: input.actor ?? 'tool',
+        reason: input.reason ?? null,
+      },
+      { sync: true },
+    );
+    return { entry, merged: sourceIds, revision: entry.revision };
+  }
+
+  /**
    * Insert many entries in one transaction, skipping the per-write duplicate
    * search. This is the import and benchmark path: the caller owns dedupe
    * (imports are all candidates, and a benchmark seeds synthetic rows).

@@ -255,6 +255,29 @@ export function registerApiRoutes(ctx, deps) {
 
   // "Forget everything" is a privacy operation, not a bulk edit: the body must
   // echo the confirmation phrase, and hard deletion still needs allowHardDelete.
+  // Fold near-duplicates into one entry. The sources are superseded, never
+  // deleted, so the decision stays reviewable.
+  route('/api/loci/merge', ['POST'], async (request) => {
+    const parsed = await readJson(request);
+    if (parsed.error !== undefined) return parsed.error;
+    const { targetId, sourceIds, title, body } = parsed.value;
+    if (typeof targetId !== 'string') return json({ error: 'targetId is required' }, 400);
+    if (!Array.isArray(sourceIds) || sourceIds.length === 0) return json({ error: 'sourceIds is required' }, 400);
+    try {
+      const result = store.merge({
+        targetId,
+        sourceIds: sourceIds.filter((value) => typeof value === 'string'),
+        title: typeof title === 'string' ? title : undefined,
+        body: typeof body === 'string' ? body : undefined,
+        actor: 'panel',
+        reason: 'merged in panel',
+      });
+      return json({ entry: result.entry, merged: result.merged, revision: result.revision });
+    } catch (error) {
+      return json({ error: String(error?.message ?? error) }, 400);
+    }
+  });
+
   route('/api/loci/forget-all', ['POST'], async (request) => {
     const parsed = await readJson(request);
     if (parsed.error !== undefined) return parsed.error;

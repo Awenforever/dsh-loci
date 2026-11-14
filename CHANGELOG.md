@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.6.0] — 2026-11-14
+
+### Added
+
+- **`merge`** (`loci_write` with `op:'merge'`, `store.merge()`, `POST /api/loci/merge`).
+  Two entries that say the same thing in different words split the ranking, each
+  take an index line, and force a correction to be applied twice. Write-time dedupe
+  only catches byte-identical or same-title writes, so the realistic case — written
+  months apart, different wording — now has an explicit operation:
+  - the sources are **superseded, never deleted**: their history stays readable and
+    `loci_get` keeps working;
+  - tags and entities are unioned, so the merged entry keeps both entries'
+    searchability;
+  - an optional `expectedRevisions` list aborts the whole merge on a stale
+    expectation, before anything is written;
+  - a merge that changes the text re-opens verification (the target lands as a
+    candidate), because trust is bound to the words that were confirmed;
+  - one `merge` audit line names both sides.
+
 ## [1.5.0] — 2026-11-14
 
 ### Fixed

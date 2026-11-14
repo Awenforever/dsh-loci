@@ -114,9 +114,9 @@ export function createTools(deps) {
       properties: {
         op: {
           type: 'string',
-          enum: ['create', 'update', 'pin', 'unpin', 'restore'],
+          enum: ['create', 'update', 'merge', 'pin', 'unpin', 'restore'],
           description:
-            'create (default) saves a new entry; update revises by id and returns the entry to review unless the text is unchanged; pin/unpin/restore manage an existing id. Trust is never set here — only a person can verify or dispute.',
+            'create (default) saves a new entry; update revises by id and returns the entry to review unless the text is unchanged; merge folds duplicate ids into one target (the sources are superseded, not deleted); pin/unpin/restore manage an existing id. Trust is never set here — only a person can verify or dispute.',
         },
         id: { type: 'string', description: 'Target memory id for update/pin/unpin/restore.' },
         expectedRevision: { type: 'integer', description: 'Optimistic lock for update; mismatch returns the current revision.' },
@@ -131,6 +131,11 @@ export function createTools(deps) {
         validFrom: { type: 'string', description: 'ISO time the fact became true (default: now).' },
         ttlDays: { type: 'integer', description: 'Close the fact after N days (default: no expiry).' },
         pinned: { type: 'boolean' },
+        sourceIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'For op:merge — entries to fold into id. They are marked superseded and stop being injected; their history stays readable.',
+        },
         force: { type: 'boolean', description: 'Keep a near-duplicate instead of reporting it.' },
       },
       required: [],
@@ -144,9 +149,23 @@ export function createTools(deps) {
     isConcurrencySafe: () => false,
     execute: async (args, exec) => {
       const context = execContext(exec);
-      const op = oneOf(args, 'op', ['create', 'update', 'pin', 'unpin', 'restore'], 'create');
+      const op = oneOf(args, 'op', ['create', 'update', 'merge', 'pin', 'unpin', 'restore'], 'create');
       const id = str(args, 'id', { fallback: undefined });
 
+      if (op === 'merge') {
+        if (id === undefined) throw new Error('id is required for merge (the entry to keep)');
+        const sourceIds = Array.isArray(args?.sourceIds) ? args.sourceIds.filter((value) => typeof value === 'string') : [];
+        if (sourceIds.length === 0) throw new Error('sourceIds is required for merge (at least one id to fold in)');
+        const result = store.merge({
+          targetId: id,
+          sourceIds,
+          title: str(args, 'title', { fallback: undefined }),
+          body: str(args, 'body', { fallback: undefined }),
+          actor: 'tool',
+          reason: 'merged duplicates',
+        });
+        return { op, entry: result.entry, merged: result.merged, warnings: [], possibleDuplicates: [] };
+      }
       if (op === 'pin' || op === 'unpin') {
         if (id === undefined) throw new Error('id is required for pin/unpin');
         return { op, entry: store.setPinned(id, op === 'pin'), warnings: [], possibleDuplicates: [] };
@@ -403,6 +422,11 @@ function renderWrite(value) {
   const lines = [
     `saved ${entry.id}@${entry.revision} · ${entry.status} · ${entry.kind} · ${entry.scope}:${entry.scopeLabel}`,
   ];
+  if (Array.isArray(value.merged) && value.merged.length > 0) {
+    lines.push(
+      `merged ${value.merged.join(', ')} into ${entry.id}; the sources are superseded and no longer injected, and their history stays readable`,
+    );
+  }
   if (value.deduplicated === true) lines.push('an identical entry already existed; returned it unchanged');
   if (value.updated === true) lines.push(`new revision; revision ${entry.revision - 1} is closed but still readable`);
   if (entry.status === 'candidate') {

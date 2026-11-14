@@ -60,7 +60,7 @@ node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" docto
 
 | 工具 | 用途 |
 |---|---|
-| `loci_write` | 写入/更新一条事实。`evidenceQuote` 必须逐字；没有就落为候选。 |
+| `loci_write` | 写入、修订或合并事实。`evidenceQuote` 必须逐字；没有就落为候选。`op:'merge'` 把重复条目折进一条——源条目被 supersede，不删除。 |
 | `loci_search` | 混合检索，返回 `total`、`hasMore`、`cursor`；`detail` 可选 snippet/overview/full。 |
 | `loci_get` | 全文 + 修订历史 + 证据引文。 |
 | `loci_forget` | 软删除（历史保留）或恢复。 |

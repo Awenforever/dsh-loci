@@ -73,7 +73,7 @@ Inside a chat there are zero-token slash commands too: `/loci`, `/loci review`,
 
 | Tool | Use |
 |---|---|
-| `loci_write` | Save or update a fact. `evidenceQuote` must be verbatim; without it the entry is a candidate. |
+| `loci_write` | Save, revise, or merge facts. `evidenceQuote` must be verbatim; without it the entry is a candidate. `op:'merge'` folds duplicate ids into one — the sources are superseded, never deleted. |
 | `loci_search` | Hybrid search. Returns `total`, `hasMore`, `cursor`; `detail` is snippet/overview/full. Omit `query` to list the newest entries. |
 | `loci_get` | Full text plus revision history and the evidence quote. |
 | `loci_forget` | Soft-delete (history kept) or restore. |
