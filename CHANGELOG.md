@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.8.0] — 2026-11-14
+
+### Added
+
+- **Import bridges** for the memory plugins a user is likely leaving
+  (`dsh-loci import --from auto-memory|claude`, `POST /api/loci/import-peer`,
+  `--dry-run` to preview):
+  - **dsh-auto-memory**: reads one Markdown file per memory with its front matter
+    (`name/title/type/disabled/evidence`). `_user/` becomes global scope, each
+    `--<project>--/` directory keeps its own scope key, `type: feedback` maps to
+    `procedural`, and disabled or already-superseded entries are skipped.
+  - **Claude Code memory**: reads `MEMORY.md`'s links plus every topic file that
+    is not in the index, so a hand-added file is not silently lost.
+  - everything lands as a **candidate**: another plugin's trust level is not
+    evidence here, and the source file is recorded as `sourceRef`.
+  - format details were taken from the producer's own serializer, not guessed;
+    `@tr1v3r/dsh-ltm` is deliberately not read (private SQLite schema) and the
+    operations guide says why.
+
+### Fixed
+
+- A **byte-order mark** in front matter silently disabled parsing: the whole file
+  became body text and the entry imported with a filename-derived title. A BOM is
+  now stripped before the fence is matched, with a regression test.
+
 ## [1.7.0] — 2026-11-14
 
 ### Added

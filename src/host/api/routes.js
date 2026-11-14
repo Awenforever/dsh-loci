@@ -13,6 +13,7 @@ import { search } from '../store/search.js';
 import { exportMarkdown, importMarkdown } from '../store/export.js';
 import { renderIndexBody } from '../inject/index-section.js';
 import { buildActivity, buildKnowledge } from '../store/activity.js';
+import { importPeer } from '../store/importers.js';
 
 /** Refuse request bodies above this size. */
 export const MAX_BODY_BYTES = 256 * 1024;
@@ -296,6 +297,20 @@ export function registerApiRoutes(ctx, deps) {
       return json({ error: String(error?.message ?? error) }, 400);
     }
   });
+  // Import from another memory plugin's on-disk format. Everything lands as a
+  // candidate: another plugin's trust level is not evidence for this store.
+  route('/api/loci/import-peer', ['POST'], async (request) => {
+    const parsed = await readJson(request);
+    if (parsed.error !== undefined) return parsed.error;
+    const { from, dir, dryRun } = parsed.value;
+    try {
+      const result = importPeer(store, { from, dir, dryRun: dryRun === true });
+      return json(result);
+    } catch (error) {
+      return json({ error: String(error?.message ?? error) }, 400);
+    }
+  });
+
   route('/api/loci/export', ['POST'], async (request) => {    const parsed = await readJson(request);
     if (parsed.error !== undefined) return parsed.error;
     if (parsed.value.action === 'import') {

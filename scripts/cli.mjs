@@ -11,7 +11,7 @@
  *   search <query>         print ranked hits
  *   review                 candidates and disputed entries
  *   export                 write the Markdown projection
- *   import --dir <path>    import Markdown as candidates
+ *   import --dir <path> [--from auto-memory|claude] [--scope-key <key>] [--dry-run]    import Markdown as candidates
  *   reindex                rebuild the full-text index
  *   maintenance            run one maintenance pass
  *   migrate --target <n>   run available migrations
@@ -28,6 +28,7 @@ import { ensureMemoryRoot, layout, resolveDshHome, resolveMemoryRoot } from '../
 import { resolveScopes, readScopeKeys } from '../src/host/scope.js';
 import { closeDatabase, openDatabase } from '../src/host/store/db.js';
 import { exportMarkdown, importMarkdown } from '../src/host/store/export.js';
+import { importPeer } from '../src/host/store/importers.js';
 import { migrate, newestBackup, restoreDatabaseFile } from '../src/host/store/migrate.js';
 import { search } from '../src/host/store/search.js';
 import { Store } from '../src/host/store/store.js';
@@ -201,9 +202,24 @@ switch (command) {
   case 'import': {
     await withStore((store) => {
       const dir = flag('dir');
+      const from = flag('from');
+      // `--from` selects a foreign format; without it the directory is read as
+      // Loci's own Markdown projection.
+      if (from !== undefined && from !== '') {
+        const result = importPeer(store, {
+          from,
+          dir,
+          scopeKey: flag('scope-key'),
+          scopeLabel: flag('scope-label'),
+          dryRun: has('dry-run'),
+        });
+        emit(result, `imported ${result.imported} from ${result.from} · read ${result.read}`);
+        return result;
+      }
       const result = importMarkdown(store, paths, dir === undefined ? {} : { dir });
       emit(result, `imported ${result.imported} · skipped ${result.skipped} · errors ${result.errors.length}`);
       for (const error of result.errors.slice(0, 10)) console.error(`  ${error.file}: ${error.error}`);
+      return result;
     });
     break;
   }
@@ -301,7 +317,7 @@ switch (command) {
 
   doctor | stats | review | export | export-import | reindex | maintenance | snapshots
   search <query>
-  import --dir <path>
+  import --dir <path> [--from auto-memory|claude] [--scope-key <key>] [--dry-run]
   snapshot [--label <name>]
   migrate [--target <n>]
   rollback [--from <snapshot>]

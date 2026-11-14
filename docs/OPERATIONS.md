@@ -106,6 +106,38 @@ The Markdown projection is lossy in one direction by design: it carries the head
 revision, tags, entities, status and evidence note. Importing it produces
 **candidates**, so a restored file can never silently become prompt text.
 
+### Coming from another memory plugin
+
+Two on-disk formats are read directly, so a user switching plugins does not start
+from zero:
+
+```text
+# dsh-auto-memory: $DSH_HOME/memory/{_user,--<project>--}/*.md
+dsh-loci import --from auto-memory --dir "$DSH_HOME/memory"
+
+# Claude Code memory: a directory holding MEMORY.md plus topic files
+dsh-loci import --from claude --dir "$HOME/.claude/memory"
+
+# see what would be imported, without writing
+dsh-loci import --from auto-memory --dir <path> --dry-run
+```
+
+What the bridge preserves and what it deliberately does not:
+
+- `_user/` entries become **global** scope; `--<project>--/` entries keep their
+  project folder as the scope key, so two projects do not merge into one.
+- auto-memory `type: feedback` maps to `procedural`, `user`/`reference` to
+  `semantic`; `disabled: true` and already-superseded entries are skipped.
+- every imported entry is a **candidate**. The other plugin's trust level is not
+  evidence here: only a verbatim quote from this session, or a person, promotes an
+  entry.
+- the source file is recorded as `sourceRef` (`auto-memory:_user/foo.md`) so the
+  original is one click away.
+
+`@tr1v3r/dsh-ltm` is not read directly: its store is a private SQLite schema, and
+guessing at it would be worse than asking. Export from ltm as JSON and convert, or
+keep both plugins installed.
+
 ## 5. Inspect and repair
 
 ```text
