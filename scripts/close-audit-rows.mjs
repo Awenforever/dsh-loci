@@ -14,13 +14,15 @@ const FILE = 'docs/AUDIT-1.1.md';
 const checkOnly = process.argv.includes('--check');
 
 const UPDATES = {
+  9: '**fixed in 1.5.0** — the audit caps a delete reason at 160 characters and replaces it with [redacted] when the secret detector fires',
+  10: '**fixed in 1.5.0** — assertInside also resolves the deepest existing part of the path, so a symlink inside the data directory cannot point a write outside; test/unit/paths.test.mjs covers it (skipped on a host that cannot create symlinks)',
   23: '**fixed** — https://github.com/Awenforever/dsh-loci is public; the remaining gate is the npm token (R1)',
-  24: '**fixed in 1.5.0** — a prerelease tag publishes to the `next` dist-tag, and a tag whose commit is not an ancestor of `main` is refused before anything is published',
-  25: '**fixed in 1.5.0** — `package-lock.json` is committed and both workflows install with `npm ci`',
+  24: '**fixed in 1.5.0** — a prerelease tag publishes to the next dist-tag, and a tag whose commit is not an ancestor of main is refused before anything is published',
+  25: '**fixed in 1.5.0** — package-lock.json is committed and both workflows install with npm ci',
   27: '**fixed in 1.5.0** — the gate fails on lines (<80), branches (<55) and functions (<70), and prints all three numbers on every run',
-  33: '**fixed in 1.5.0** — OPERATIONS §1 carries the exact install path, flags are position-independent, `/loci review|doctor|export` are documented, and `snapshot`/`snapshots` are real commands',
-  34: '**fixed in 1.4.0** — `store.forgetAll()` + `POST /api/loci/forget-all` + Settings → Delete everything, gated by an echoed phrase; purging still requires `allowHardDelete`',
-  '30b': '**fixed in 1.4.0** — the importer now reads the tree the exporter writes and restores each entry\'s original scope; `test/unit/export.test.mjs` pins the round trip',
+  33: '**fixed in 1.5.0** — OPERATIONS section 1 carries the exact install path, flags are position-independent, and snapshot/snapshots are real commands',
+  34: '**fixed in 1.4.0** — store.forgetAll() + POST /api/loci/forget-all + Settings Delete everything, gated by an echoed phrase; purging still requires allowHardDelete',
+  '30b': '**fixed in 1.4.0** — the importer now reads the tree the exporter writes and restores the original scope; test/unit/export.test.mjs pins the round trip',
 };
 
 const lines = readFileSync(FILE, 'utf8').split('\n');

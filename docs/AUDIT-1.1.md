@@ -62,8 +62,8 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 | 6 | a directory name containing a newline injects lines into the fence | B | **fixed** — scope label flattened and capped through `indexTitle` |
 | 7 | bidi overrides / zero-width characters let the panel display one thing and the model read another | B | **fixed** — stripped at storage, so every surface agrees |
 | 8 | secret scanner knew no Chinese keywords; tags and entities were never scanned | B | **fixed** — plus presigned URLs, Google/Slack/Stripe/GitLab/npm tokens, `Authorization: Basic` |
-| 9 | delete `reason` written verbatim to the audit | B | **open** — it is a human-supplied field; the audit is mode 0600. Recorded as a known limitation. |
-| 10 | `assertInside` is lexical, so a symlink inside the root escapes | B | **open** — export/backup paths are chosen by the plugin, not by a caller; noted for a future hardening pass |
+| 9 | delete `reason` written verbatim to the audit | B | **fixed in 1.5.0** — the audit caps a delete reason at 160 characters and replaces it with [redacted] when the secret detector fires |
+| 10 | `assertInside` is lexical, so a symlink inside the root escapes | B | **fixed in 1.5.0** — assertInside also resolves the deepest existing part of the path, so a symlink inside the data directory cannot point a write outside; test/unit/paths.test.mjs covers it (skipped on a host that cannot create symlinks) |
 
 ### Privacy
 
@@ -92,8 +92,8 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 | 21 | `npm test` broken on Node 24 (directories passed to `--test`) | D | **fixed** — globs; `npm test` now runs 53 tests |
 | 22 | `build:client` pointed at a script that does not exist | D | **fixed** — removed; `client.js` is hand-authored |
 | 23 | no public GitHub repo, so `--provenance` cannot publish | D | **fixed** — https://github.com/Awenforever/dsh-loci is public; the remaining gate is the npm token (R1) |
-| 24 | release workflow can publish a prerelease as `latest`, no ancestry check | D | **fixed in 1.5.0** — a prerelease tag publishes to the `next` dist-tag, and a tag whose commit is not an ancestor of `main` is refused before anything is published |
-| 25 | no lockfile, `npm install` in CI | D | **fixed in 1.5.0** — `package-lock.json` is committed and both workflows install with `npm ci` |
+| 24 | release workflow can publish a prerelease as `latest`, no ancestry check | D | **fixed in 1.5.0** — a prerelease tag publishes to the next dist-tag, and a tag whose commit is not an ancestor of main is refused before anything is published |
+| 25 | no lockfile, `npm install` in CI | D | **fixed in 1.5.0** — package-lock.json is committed and both workflows install with npm ci |
 | 26 | NOTICE said schemastery is Apache-2.0 | D | **fixed** — the registry says MIT |
 | 27 | coverage gate is line-only (83% lines, 60.8% branches) | D | **fixed in 1.5.0** — the gate fails on lines (<80), branches (<55) and functions (<70), and prints all three numbers on every run |
 | 28 | e2e harness had `record(..., true)` tautologies | D | **partly fixed** — the two literal passes were replaced by real assertions in `ui.mjs`/`mirror.mjs` |
@@ -104,11 +104,11 @@ behaviour is intended, now stated honestly; **open** = real, not yet addressed.
 |---|---|---|---|
 | 29 | first run has no "it worked" moment; empty store is correct but invisible | C | **fixed** — the sidebar card states "nothing learned yet · facts you confirm appear here", and the panel opens on a Feed that explains itself |
 | 30 | the review queue is a dead end (≤50, no reject, no bulk, no evidence) | C | **fixed in 1.3.0** — reject, verify-all and a visible error line; the queue lists only kinds that could be injected. Root cause was upstream of the UI: default capture wrote candidates nobody could ever promote, so the queue was fed by statements the user had literally just made. Captured statements now pass the same quote gate as a model quote. |
-| 30b | `export` then `import` imports nothing: entries go to `<root>/markdown/<scope>/<kind>/<id>.md` but `importMarkdown` defaults to `<root>/exports`, which holds only a one-line header file | D | **fixed in 1.4.0** — the importer now reads the tree the exporter writes and restores each entry's original scope; `test/unit/export.test.mjs` pins the round trip |
+| 30b | `export` then `import` imports nothing: entries go to `<root>/markdown/<scope>/<kind>/<id>.md` but `importMarkdown` defaults to `<root>/exports`, which holds only a one-line header file | D | **fixed in 1.4.0** — the importer now reads the tree the exporter writes and restores the original scope; test/unit/export.test.mjs pins the round trip |
 | 31 | the panel's Index tab said "exactly what the model sees" but rendered every scope | C | **partly fixed** — the label now states which scopes were rendered; `?cwd=`/`?session=` let a caller ask for one conversation's view |
 | 32 | README said 5,120 B where the default is 3,584 | C, D | **fixed** (both READMEs) |
-| 33 | docs describe a CLI that is not on PATH; `/loci` commands undocumented | C | **fixed in 1.5.0** — OPERATIONS §1 carries the exact install path, flags are position-independent, `/loci review|doctor|export` are documented, and `snapshot`/`snapshots` are real commands |
-| 34 | no "forget everything" affordance for a privacy request | C | **fixed in 1.4.0** — `store.forgetAll()` + `POST /api/loci/forget-all` + Settings → Delete everything, gated by an echoed phrase; purging still requires `allowHardDelete` |
+| 33 | docs describe a CLI that is not on PATH; `/loci` commands undocumented | C | **fixed in 1.5.0** — OPERATIONS section 1 carries the exact install path, flags are position-independent, and snapshot/snapshots are real commands |doctor|export` are documented, and `snapshot`/`snapshots` are real commands |
+| 34 | no "forget everything" affordance for a privacy request | C | **fixed in 1.4.0** — store.forgetAll() + POST /api/loci/forget-all + Settings Delete everything, gated by an echoed phrase; purging still requires allowHardDelete |
 | 35 | tool descriptions under-specified for a weaker model | C | **partly fixed** — `query` is optional with a stated meaning, and `op` documents that trust is not settable |
 
 ## What A would have looked at
@@ -130,21 +130,24 @@ instead. The findings that mattered:
 ## The ten improvements worth doing next
 
 Ranked by (effect on trust × cheapness), from the research reviewer and confirmed by
-the others:
+the others. Status as of 1.5.0 (2026-11-14):
 
-1. A review queue that can reject, page and bulk-approve — it is the only surface
-   that decides what enters the prompt.
-2. `loci_doctor`: placement, duplicates, injected tokens, one screen, read-only.
-3. Export/import that round-trips (the current importer loses ids, status and
-   revisions, and reads a different directory than the exporter writes).
-4. A public GitHub repository, so provenance, issues and SECURITY.md are real.
-5. "Delete all memory" with a typed confirmation.
-6. `loci_merge` for near-duplicates (ltm's `expectedSourceRevisions` shape).
-7. A candidate-only background extractor, so preferences stated in passing are not
-   lost.
-8. Import bridges from auto-memory / ltm / Claude memory.
-9. `sourceRef` (path:line) so a fact can cite the file it came from.
-10. A snapshot command in the CLI, and a tested restore.
+| # | Improvement | Status |
+|---|---|---|
+| 1 | a review queue that can reject, bulk-approve and explain itself — the only surface that decides what enters the prompt | **done in 1.3.0**; paging still open |
+| 2 | `loci_doctor`: placement, duplicates, injected tokens, one screen | partly — `doctor` covers placement/index/integrity, not duplicates |
+| 3 | export/import that round-trips | **done in 1.4.0** |
+| 4 | a public GitHub repository, so provenance, issues and SECURITY.md are real | **done** |
+| 5 | "delete all memory" with a typed confirmation | **done in 1.4.0** |
+| 6 | `loci_merge` for near-duplicates (ltm's `expectedSourceRevisions` shape) | not started |
+| 7 | a candidate-only background extractor, so preferences stated in passing are not lost | not started |
+| 8 | import bridges from auto-memory / ltm / Claude memory | not started |
+| 9 | `sourceRef` (path:line) so a fact can cite the file it came from | not started |
+| 10 | a snapshot command in the CLI, and a tested restore | **done in 1.5.0** (`snapshot`, `snapshots`, `migrate`, `rollback`) |
+
+The remaining four are features rather than defects: none of them is required for the
+plugin to be safe to distribute, which is why the audit's blocker and serious rows are
+now all closed while this list still has entries.
 
 ## What the reviewers said was genuinely good
 
