@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.0.1] — 2026-11-14
+
+### Changed
+
+- **Publishing now uses Trusted Publishing (OIDC) only.** `setup-node` no longer
+  receives `registry-url` and the publish step no longer reads `NODE_AUTH_TOKEN`:
+  the collaboration center's npm runbook records both as `ENEEDAUTH` traps, and
+  with a Trusted Publisher bound, the OIDC identity token is the credential. The
+  repository therefore holds no npm secret.
+- `release.yml` gained an `npm >= 11.5` check, because npm 10 never performs the
+  OIDC exchange.
+
+### Note
+
+`2.0.0` was the bootstrap publish (npm does not allow a first publish over OIDC,
+[npm/cli#8544](https://github.com/npm/cli/issues/8544)), so it carries no
+attestation. **2.0.1 is the first version with a provenance attestation.**
+
 ## [2.0.0] — 2026-11-14
 
 ### Added
