@@ -67,6 +67,14 @@ const COMMANDS = new Set([
 const command = rawArgv.find((token) => COMMANDS.has(token)) ?? 'help';
 // Keep the original token order for the flag readers below.
 const argv = [command, ...rawArgv.filter((token) => token !== command)];
+
+// `dsh-loci --version` is the first thing anyone types. It used to fall through
+// to the help text, which looks like the version flag is unsupported rather than
+// like the value was never wired up.
+if (rawArgv.some((token) => token === '--version' || token === '-v' || token === 'version')) {
+  console.log(PLUGIN_VERSION);
+  process.exit(0);
+}
 const flag = (name) => {
   const index = argv.indexOf(`--${name}`);
   if (index < 0) return undefined;

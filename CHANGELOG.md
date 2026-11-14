@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.0.3] — 2026-11-14
+
+### Fixed
+
+- `dsh-loci --version` (and `-v`, and the bare `version` word) prints the version.
+  It fell through to the help text before, because the version was only read for
+  the store's metadata and never wired to an argument. `test/unit/cli-version.test.mjs`
+  keeps it from regressing, including the "flag before command" position.
+
 ## [2.0.2] — 2026-11-14
 
 ### Fixed
