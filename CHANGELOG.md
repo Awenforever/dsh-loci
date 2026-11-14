@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.0.0] — 2026-11-14
+
+### Added
+
+- **`loci doctor` now looks for near-duplicates.** Two entries that say the same
+  thing split the ranking, each take an index line, and force a correction to be
+  applied twice. The check reports groups with their ids and a similarity score, and
+  leaves the merge to a person (the store can already do it: `loci_write op:'merge'`).
+
+  The metric is `max(Jaccard, containment)` over character bigrams. Jaccard alone
+  scores a restated Chinese title at 0.55 — under any useful threshold — because the
+  two titles share most of the *shorter* one rather than most of the union. The scan
+  is bounded (verified heads only, ≤2000 entries, candidate pairs from shared tags
+  and title windows, report capped at 5 groups).
+
+- `test/unit/duplicates.test.mjs`: the metric, the verified-only rule, the clean
+  store, the caps, and the doctor row.
+
+### Changed
+
+- `publishConfig.access: "public"` is set in the manifest, so a direct `npm publish`
+  cannot accidentally create a private package.
+
+### Note
+
+This is the last item from the audit's "ten improvements" list: rows 1–3 and 5–10
+are done, and row 2's remaining gap (duplicate detection) closed here. The version
+jumps to 2.0.0 because the feature set that list described is complete, not because
+anything in the on-disk format broke — schemas and the tool surface are unchanged.
+
 ## [1.9.0] — 2026-11-14
 
 ### Added

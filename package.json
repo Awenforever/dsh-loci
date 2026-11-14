@@ -1,6 +1,6 @@
 {
   "name": "dsh-loci",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "description": "Layered long-term memory for DeepSeek Harness: the prompt sees only a stable index, full text is one lookup away. Bi-temporal facts, strict scope isolation, verified-only injection.",
   "type": "module",
   "license": "MIT",
@@ -58,7 +58,10 @@
     {
       "dsh": "0.2.2-rc.1",
       "node": ">=24.9.0",
-      "os": ["win32", "linux"],
+      "os": [
+        "win32",
+        "linux"
+      ],
       "status": "verified",
       "evidence": "docs/COMPATIBILITY.md#022-rc1"
     }
@@ -80,5 +83,8 @@
     "test:unit": "node --disable-warning=ExperimentalWarning --test \"test/unit/*.test.mjs\"",
     "bench": "node --disable-warning=ExperimentalWarning scripts/bench.mjs",
     "doctor": "node --disable-warning=ExperimentalWarning scripts/cli.mjs doctor"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

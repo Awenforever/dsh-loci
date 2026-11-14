@@ -8,6 +8,7 @@
  */
 import { accessSync, constants, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { findDuplicateGroups } from './store/duplicates.js';
 
 /** One check result. */
 function check(name, status, detail) {
@@ -111,6 +112,31 @@ export function runDoctor(options) {
 
   const auditSize = existsSync(paths.audit) ? statSync(paths.audit).size : 0;
   checks.push(check('audit', auditSize > 0 ? 'ok' : 'warn', `${auditSize} bytes at ${paths.audit}`));
+
+  // Near-duplicates: two entries that say the same thing split the ranking, each
+  // take an index line, and force a correction to be applied twice. The store can
+  // merge them (`loci_write op:'merge'`), so the doctor's job is only to point at
+  // them — it never repairs this itself.
+  try {
+    const duplicates = findDuplicateGroups(store, { limit: 5 });
+    if (duplicates.groups.length === 0) {
+      checks.push(check('duplicates', 'ok', `${duplicates.scanned} entries scanned, none close enough to merge`));
+    } else {
+      const summary = duplicates.groups
+        .map((group) => group.ids.slice(0, 3).join(' ≈ '))
+        .join('; ');
+      checks.push(
+        check(
+          'duplicates',
+          'warn',
+          `${duplicates.groups.length} near-duplicate group(s): ${summary} — review with \`loci review\`, then merge`,
+        ),
+      );
+    }
+  } catch (error) {
+    // A diagnostic that fails must not turn the whole report into a failure.
+    checks.push(check('duplicates', 'warn', `could not scan: ${String(error?.message ?? error)}`));
+  }
 
   const worst = checks.some((entry) => entry.status === 'fail')
     ? 'fail'
