@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [1.7.0] — 2026-11-14
+
+### Added
+
+- **`sourceRef`**: a fact can cite where it lives (`src/host/store.js:120`).
+  - accepted by `loci_write`, stored with the evidence (the quote and the citation
+    are both provenance), returned by `loci_get` as a `source:` line, shown under
+    **Source** in the panel detail, and written to the export front matter so a
+    round trip keeps it;
+  - flattened and capped at 160 characters like every other free-text field;
+  - a citation that trips the secret scanner is dropped rather than stored;
+  - it never raises trust: a model-written entry with a citation is still a
+    candidate, because knowing where something is written down does not make it
+    true.
+
 ## [1.6.0] — 2026-11-14
 
 ### Added

@@ -127,6 +127,10 @@ export function createTools(deps) {
         tags: { type: 'array', items: { type: 'string' } },
         entities: { type: 'array', items: { type: 'string' }, description: 'Projects, hosts, files, tools this fact is about.' },
         evidenceQuote: { type: 'string', description: 'Verbatim quote from the user that supports this entry.' },
+        sourceRef: {
+          type: 'string',
+          description: 'Where this fact lives in the repository, e.g. "src/host/store.js:120". Shown by loci_get so a reader can check it.',
+        },
         evidenceNote: { type: 'string' },
         validFrom: { type: 'string', description: 'ISO time the fact became true (default: now).' },
         ttlDays: { type: 'integer', description: 'Close the fact after N days (default: no expiry).' },
@@ -200,6 +204,7 @@ export function createTools(deps) {
         entities,
         sourceSession: context.sessionId ?? null,
         sourceEvent: Number.isSafeInteger(lastUserSeq) ? lastUserSeq : undefined,
+        sourceRef: str(args, 'sourceRef', { fallback: undefined }),
         evidence: {
           ...(evidenceQuote === undefined ? {} : { quote: evidenceQuote }),
           ...(str(args, 'evidenceNote', { fallback: undefined }) === undefined
@@ -494,6 +499,10 @@ function renderGet(value) {
   ];
   if (entry.pinned) lines.push('pinned');
   if (entry.tags.length > 0) lines.push(`tags: ${entry.tags.join(', ')}`);
+  // A citation is only useful if the reader can see it next to the claim.
+  if (typeof entry.sourceRef === 'string' && entry.sourceRef.length > 0) {
+    lines.push(`source: ${renderSafe(entry.sourceRef)}`);
+  }
   lines.push('', renderSafe(entry.body));
   const quote = entry.evidence?.quote;
   if (typeof quote === 'string' && quote.length > 0) {

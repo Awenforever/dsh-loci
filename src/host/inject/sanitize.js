@@ -26,6 +26,8 @@ export const LIMITS = Object.freeze({
   entityCount: 32,
   entityChars: 64,
   quoteChars: 1000,
+  /** A citation like `src/host/store.js:120`; enough for a path and one line number. */
+  sourceRefChars: 160,
 });
 
 /**
@@ -234,6 +236,16 @@ export function prepareForStorage(input, config) {
   const instructionLike = detectInstructionLike(`${safeTitle}\n${body}`);
   if (instructionLike) flags.push('instruction-like');
 
+  // A citation back to the code the fact came from (`src/host/store.js:120`).
+  // It lives with the evidence rather than in its own column: provenance is what
+  // evidence already means, and the trust gate reads only `quote`.
+  const sourceRef = cleanText(input?.sourceRef, LIMITS.sourceRefChars);
+  const scannedRef = sourceRef.length === 0 ? undefined : scanSecrets(sourceRef, policy);
+  if (scannedRef !== undefined && scannedRef.hits.length > 0) {
+    redactions.push(...scannedRef.hits);
+    if (!flags.includes('secret-redacted')) flags.push('secret-redacted');
+  }
+
   const tags = Array.isArray(input?.tags)
     ? [...new Set(input.tags.map((tag) => cleanText(tag, LIMITS.tagChars)).filter(Boolean))].slice(0, LIMITS.tagCount)
     : [];
@@ -267,6 +279,7 @@ export function prepareForStorage(input, config) {
     evidence: {
       ...(input?.evidence ?? {}),
       quote: evidenceQuote,
+      ...(scannedRef !== undefined && scannedRef.hits.length === 0 ? { ref: scannedRef.text } : {}),
       ...(typeof input?.evidence?.sessionId === 'string' ? { sessionId: input.evidence.sessionId } : {}),
       ...(Number.isSafeInteger(input?.evidence?.eventSeq) ? { eventSeq: input.evidence.eventSeq } : {}),
       ...(scannedQuote.hits.length > 0 ? { redacted: scannedQuote.hits } : {}),

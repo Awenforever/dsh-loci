@@ -52,6 +52,7 @@ export function toMarkdown(entry) {
     `tags: ${scalar(entry.tags)}`,
     `entities: ${scalar(entry.entities.map((entity) => entity.name))}`,
     `source_session: ${scalar(entry.sourceSession)}`,
+    `source_ref: ${scalar(entry.sourceRef)}`,
     '---',
     '',
     entry.body,
@@ -190,6 +191,7 @@ export function importMarkdown(store, paths, options = {}) {
         entities: Array.isArray(parsed.front.entities) ? parsed.front.entities : [],
         status: 'candidate',
         trustSource: 'import',
+        sourceRef: typeof parsed.front.source_ref === 'string' ? parsed.front.source_ref : undefined,
         evidence: { note: `imported from ${file}` },
       });
       imported += 1;

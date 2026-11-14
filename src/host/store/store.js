@@ -76,6 +76,8 @@ function mapRow(row) {
     supersedes: row.supersedes ?? null,
     supersededBy: row.superseded_by ?? null,
     evidence: JSON.parse(row.evidence ?? '{}'),
+    /** Citation back to the code or document the fact came from. */
+    sourceRef: JSON.parse(row.evidence ?? '{}').ref ?? null,
     sourceSession: row.source_session ?? null,
     sourceEvent: row.source_event === null || row.source_event === undefined ? null : Number(row.source_event),
     verifiedAt: row.verified_at === null || row.verified_at === undefined ? null : Number(row.verified_at),

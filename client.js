@@ -129,6 +129,7 @@ window.__ModuleLoader__.load({
       'panel.back': 'Back',
       'panel.history': 'History',
       'panel.evidence': 'Evidence',
+      'panel.source': 'Source',
       'panel.candidates': 'Candidates',
       'panel.disputed': 'Disputed',
       'panel.noCandidates': 'Nothing waiting for review.',
@@ -245,6 +246,7 @@ window.__ModuleLoader__.load({
       'panel.back': '返回',
       'panel.history': '历史',
       'panel.evidence': '证据',
+      'panel.source': '出处',
       'panel.candidates': '候选',
       'panel.disputed': '争议',
       'panel.noCandidates': '没有待审条目。',
@@ -791,6 +793,18 @@ window.__ModuleLoader__.load({
               ),
               h('div', { className: 'loci-section' }, 'Body'),
               h('pre', { className: 'loci-pre' }, entry.body),
+              entry.sourceRef
+                ? h(
+                    'div',
+                    null,
+                    h('div', { className: 'loci-section' }, t('panel.source')),
+                    h(
+                      'div',
+                      { className: 'loci-meta' },
+                      h('code', { className: 'loci-id' }, entry.sourceRef),
+                    ),
+                  )
+                : null,
               entry.evidence?.quote
                 ? h(
                     'div',
