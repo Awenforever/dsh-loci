@@ -124,6 +124,10 @@ window.__ModuleLoader__.load({
       'panel.refresh': 'Refresh',
       'panel.loading': 'Loading…',
       'panel.empty': 'Nothing here yet.',
+      'legend.added': 'saved, but the model cannot see it yet',
+      'legend.verified': 'approved by a person, so it is in the model\'s prompt',
+      'legend.disputed': 'marked wrong, kept in history, never injected',
+      'panel.openHint': 'Open this entry',
       'panel.feedHint': 'What was remembered, revised, verified or removed. Newest first.',
       'panel.searchHint': 'Search titles and bodies across this project\'s memory.',
       'panel.statsHint': 'How this memory is being used: what is injected, what is opened, what earns its bytes.',
@@ -178,7 +182,7 @@ window.__ModuleLoader__.load({
     };
 
     const CSS = `
-.loci-root { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); font-size: 13px; }
+.loci-root { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 1.5; }
 .loci-card-root { display: flex; flex-direction: column; gap: 5px; flex: 0 0 100%; order: 1; grid-column: 1 / -1; width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 6px; padding: 10px 9px 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); box-shadow: 0 3px 12px rgba(0, 0, 0, .16); cursor: pointer; text-align: left; font: inherit; color: var(--dsw-alias-label-primary); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .loci-card-root:hover { background: var(--dsw-alias-bg-layer-2); }
 .loci-card-root.is-rail { flex: 0 0 auto; padding: 6px; align-items: center; justify-content: center; }
@@ -213,35 +217,40 @@ window.__ModuleLoader__.load({
 .loci-card-hint-action:hover { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 
-.loci-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-.loci-title { font-size: 14px; font-weight: 600; }
+.loci-bar { display: flex; align-items: center; gap: 12px; padding: 18px max(24px, calc((100% - 960px) / 2)) 10px; }
+.loci-title { font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: -0.01em; }
 .loci-tabs { display: flex; gap: 2px; }
-.loci-tab { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+.loci-tab { border: 0; background: transparent; color: var(--dsw-alias-label-secondary); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px; }
 .loci-tab:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .loci-tab.is-active { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-weight: 600; }
 .loci-grow { flex: 1 1 auto; }
-.loci-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px max(16px, calc((100% - 860px) / 2)) 28px; }
-.loci-btn { border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 3px 9px; font: inherit; cursor: pointer; }
-.loci-btn:hover { border-color: var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); }
+.loci-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px max(24px, calc((100% - 960px) / 2)) 32px; }
+.loci-btn { border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-primary); border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 13px; line-height: 20px; cursor: pointer; }
+.loci-btn:hover { border-color: var(--dsw-alias-border-l4); background: var(--dsw-alias-interactive-bg-hover, var(--dsw-alias-bg-layer-2)); }
 .loci-btn:disabled { opacity: .5; cursor: default; }
 .loci-btn.is-primary { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .loci-btn.is-danger { color: var(--dsw-alias-state-error-primary); }
-.loci-btn.is-quiet { border-color: transparent; background: transparent; color: var(--dsw-alias-label-secondary); padding: 1px 6px; font-size: 11px; }
+.loci-btn.is-quiet { border-color: transparent; background: transparent; color: var(--dsw-alias-label-secondary); padding: 2px 8px; font-size: 12px; }
 .loci-btn.is-quiet:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); }
-.loci-input { width: 100%; box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 6px 9px; font: inherit; }
-.loci-row { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-.loci-row:last-child { border-bottom: 0; }
+.loci-input { width: 100%; box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; }
+.loci-row { display: flex; gap: 12px; align-items: flex-start; width: 100%; box-sizing: border-box; margin: 0 -10px; padding: 12px 10px; border: 0; border-radius: var(--dsw-radius-xl, 12px); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.loci-chevron { color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); font-size: 13px; line-height: 20px; transition: transform .12s ease; }
+.loci-row:hover .loci-chevron { transform: translateX(2px); color: var(--dsw-alias-label-primary); }
+.loci-row:hover { background: var(--dsw-alias-interactive-bg-hover, var(--dsw-alias-bg-layer-2)); }
 .loci-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--dsw-alias-label-secondary); flex: 0 0 auto; }
 .loci-main { min-width: 0; flex: 1 1 auto; }
-.loci-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.loci-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
-.loci-snippet { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.loci-name { font-size: 14px; font-weight: 500; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loci-meta { font-size: 12px; color: var(--dsw-alias-label-secondary); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 3px; }
+.loci-snippet { font-size: 13px; color: var(--dsw-alias-label-secondary); margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .loci-actions { display: flex; gap: 6px; flex: 0 0 auto; align-items: center; }
-.loci-pill { font-size: 11px; border-radius: 999px; padding: 1px 7px; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+.loci-pill { font-size: 10px; font-weight: 500; line-height: 16px; border-radius: 999px; padding: 0 8px; border: 1px solid var(--dsw-alias-border-l3); color: var(--dsw-alias-label-secondary); white-space: nowrap; }
 .loci-pill.is-verified { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
 .loci-pill.is-candidate { color: var(--dsw-alias-state-warn-primary); border-color: var(--dsw-alias-state-warn-primary); }
 .loci-pill.is-disputed { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
 .loci-pill.is-deleted { color: var(--dsw-alias-state-idle-primary); }
+.loci-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.loci-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.loci-legend-key { font-weight: 500; color: var(--dsw-alias-label-primary); }
 .loci-tag { font-size: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 4px; padding: 0 5px; color: var(--dsw-alias-label-secondary); }
 .loci-tag.is-added { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
 .loci-tag.is-revised { color: var(--dsw-alias-brand-primary); border-color: var(--dsw-alias-brand-primary); }
@@ -252,12 +261,12 @@ window.__ModuleLoader__.load({
 .loci-cell b { display: block; font-size: 18px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .loci-label { font-size: 11px; color: var(--dsw-alias-label-secondary); }
 .loci-pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 10px 12px; margin: 0; }
-.loci-section { margin: 18px 0 8px; font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); text-transform: uppercase; letter-spacing: .06em; }
+.loci-section { margin: 20px 0 8px; font-size: 14px; font-weight: 500; color: var(--dsw-alias-label-primary); }
 .loci-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .loci-field:last-child { border-bottom: 0; }
 .loci-field select, .loci-field input[type="number"] { border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 4px 8px; font: inherit; }
 .loci-error { color: var(--dsw-alias-state-error-primary); font-size: 12px; margin: 6px 0; }
-.loci-muted { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.loci-muted { color: var(--dsw-alias-label-secondary); font-size: 13px; }
 .loci-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 12px; }
 .loci-kv dt { color: var(--dsw-alias-label-secondary); }
 .loci-kv dd { margin: 0; }
@@ -624,35 +633,57 @@ window.__ModuleLoader__.load({
         rows.push(row);
         if (item.id !== null) byId.set(item.id, row);
       }
+      // What the tags mean, in the place a person asks the question. "Recorded" and "verified"
+      // are not synonyms: the first means a row exists, the second means a person let it into
+      // the prompt.
+      const legend = h(
+        'div',
+        { className: 'loci-legend' },
+        h(
+          'span',
+          { className: 'loci-legend-item' },
+          h('span', { className: 'loci-tag is-added' }, t('action.added')),
+          h('span', null, t('legend.added')),
+        ),
+        h(
+          'span',
+          { className: 'loci-legend-item' },
+          h('span', { className: 'loci-tag is-verified' }, t('action.verified')),
+          h('span', null, t('legend.verified')),
+        ),
+        h(
+          'span',
+          { className: 'loci-legend-item' },
+          h('span', { className: 'loci-tag is-deleted' }, t('action.disputed')),
+          h('span', null, t('legend.disputed')),
+        ),
+      );
+
       return h(
         'div',
         null,
         h(
           'div',
-          { className: 'loci-meta', style: { marginBottom: '10px', alignItems: 'center' } },
+          { className: 'loci-meta', style: { marginBottom: '8px', alignItems: 'center' } },
           h('span', { className: 'loci-muted' }, t('panel.feedHint')),
           h('span', { className: 'loci-grow' }),
           h('button', { type: 'button', className: 'loci-btn', onClick: reload }, t('panel.refresh')),
         ),
+        legend,
         h(ErrorLine, { error, t }),
         loading && data === undefined ? h('div', { className: 'loci-muted' }, t('panel.loading')) : null,
         data !== undefined && rows.length === 0 ? h('div', { className: 'loci-muted' }, t('panel.empty')) : null,
-        rows.map((item, index) =>
-          h(
-            'div',
-            { key: `${item.ts}-${item.id ?? 'x'}-${index}`, className: 'loci-row' },
-            h(
-              'span',
-              { className: 'loci-actions', style: { gap: '3px' } },
-              item.chain.map((action, step) =>
-                h(
-                  'span',
-                  { key: `${action}-${step}`, className: 'loci-tag is-' + action, style: { display: 'flex', gap: '3px' } },
-                  step > 0 ? h('span', { className: 'loci-muted' }, '→') : null,
-                  t(ACTION_KEY(action)),
-                ),
-              ),
-            ),
+        rows.map((item, index) => {
+          const open = item.id === null ? undefined : () => onOpen(item.id);
+          return h(
+            open === undefined ? 'div' : 'button',
+            {
+              key: `${item.ts}-${item.id ?? 'x'}-${index}`,
+              className: 'loci-row',
+              type: open === undefined ? undefined : 'button',
+              onClick: open,
+              title: open === undefined ? undefined : t('panel.openHint'),
+            },
             h(
               'div',
               { className: 'loci-main' },
@@ -660,6 +691,13 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'loci-meta' },
+                item.chain.map((action, step) =>
+                  h(
+                    'span',
+                    { key: `${action}-${step}`, className: 'loci-tag is-' + action },
+                    t(ACTION_KEY(action)),
+                  ),
+                ),
                 h('span', null, fmtSince(item.ts, t)),
                 item.kind ? h('span', null, t(`kind.${item.kind}`)) : null,
                 item.scope ? h('span', null, item.scope) : null,
@@ -672,15 +710,9 @@ window.__ModuleLoader__.load({
                   : null,
               ),
             ),
-            h(
-              'div',
-              { className: 'loci-actions' },
-              item.id
-                ? h('button', { type: 'button', className: 'loci-btn is-quiet', onClick: () => onOpen(item.id) }, '→')
-                : null,
-            ),
-          ),
-        ),
+            open === undefined ? null : h('div', { className: 'loci-actions' }, h('span', { className: 'loci-chevron' }, '→')),
+          );
+        }),
       );
     }
 
@@ -715,7 +747,9 @@ window.__ModuleLoader__.load({
 
     function Detail({ id, t, onBack, onChange }) {
       const { data, error, loading, reload } = useJson(`/item?id=${encodeURIComponent(id)}&history=1`);
-      // \edges\ is a sibling of \entry\ in the API payload; fold it in so the detail view\n      // can show declared relations without a second request.\n      const entry = data?.entry === undefined ? undefined : { ...data.entry, edges: data.edges ?? [] };
+      // `edges` is a sibling of `entry` in the API payload; fold it in so the detail view
+      // can show declared relations without a second request.
+      const entry = data?.entry === undefined ? undefined : { ...data.entry, edges: data.edges ?? [] };
       const act = async (path, body) => {
         try {
           await apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
@@ -771,7 +805,7 @@ window.__ModuleLoader__.load({
           ? h(
               'div',
               null,
-              h('div', { className: 'loci-name', style: { fontSize: '15px', fontWeight: 600 } }, entry.title),
+              h('div', { className: 'loci-name', style: { fontSize: '16px', fontWeight: 600, lineHeight: '24px', whiteSpace: 'normal' } }, entry.title),
               h(
                 'div',
                 { className: 'loci-meta' },
@@ -1217,12 +1251,12 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The one mark of this product: three stacked sheets.
+     * The one mark of this product: a quill.
      *
      * It lives here, in one place, because the sidebar menu and the footer card used to draw
-     * two different symbols — layers in the menu, a leaf on the card — and a person sees both
-     * at once. The geometry is tuned to the native menu icons: 3–21 inside a 24 viewBox at
-     * stroke 1.8, which matches their optical weight.
+     * two different symbols and a person sees both at once. The quill is the right one: a pen
+     * is what this product is for. Geometry spans 4–21 of a 24 viewBox so it reads at the same
+     * optical weight as the native menu icons beside it.
      *
      * @param options - `size` in pixels, `opacity` for the active/inactive state.
      * @returns the svg element.
@@ -1239,25 +1273,12 @@ window.__ModuleLoader__.load({
           style: { opacity, display: 'block', flex: '0 0 auto' },
         },
         h('path', {
-          d: 'M12 3 21 7.5 12 12 3 7.5 12 3Z',
+          d: 'M20 4c0 9-6.5 15-16 16 0 0 .5-7 4.5-11S20 4 20 4Z',
           stroke: 'currentColor',
-          strokeWidth: 1.8,
+          strokeWidth: 1.7,
           strokeLinejoin: 'round',
         }),
-        h('path', {
-          d: 'M3.6 12.2 12 16.4l8.4-4.2',
-          stroke: 'currentColor',
-          strokeWidth: 1.8,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        }),
-        h('path', {
-          d: 'M3.6 16.8 12 21l8.4-4.2',
-          stroke: 'currentColor',
-          strokeWidth: 1.8,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        }),
+        h('path', { d: 'M5 20 14 10', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
       );
     }
 

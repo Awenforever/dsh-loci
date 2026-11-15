@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.7.0] — 2026-11-16
+
+The panel was unreadable, and one of its views had been blank since a bad patch.
+
+### Fixed
+
+- **The detail view rendered nothing, and had for several releases.** A patch that meant to
+  insert a newline wrote the two characters \n instead, so a comment and the statement after
+  it became one physical line: `const entry = ...` was inside the comment. The component then
+  threw on its first reference to `entry`, React unmounted it, and clicking the row's arrow
+  showed an empty panel. It compiled, and every gate passed.
+
+  `scripts/check-swallowed.mjs` now fails on that exact signature, and `npm test` runs it
+  first, so the class of bug cannot come back silently.
+
+- **The panel was a notch smaller than its neighbours.** Measured from the installed
+  plugin-manager stylesheet: page title 20px, group and card titles 14px/500, descriptions
+  13px, buttons 13px, status tags 10px, hints 12px, column 960px. Memory had a 14px title,
+  11px meta, 12px snippets, 11px pills and an 860px column. All of it now matches.
+
+### Changed
+
+- **A row is clickable as a whole.** Only a small arrow at the right edge opened the detail
+  view, which made the arrow read as decoration next to a dead row.
+
+- **The Feed tab explains its own tags.** "I don't understand anything in here — what does
+  added/verified mean, does it mean it entered memory?" is a fair reading of a bare tag, so
+  the tab now opens with one line per state:
+
+  | tag | meaning |
+  |---|---|
+  | `added` | saved, but the model cannot see it yet |
+  | `verified` | approved by a person, so it is in the model's prompt |
+  | `disputed` | marked wrong, kept in history, never injected |
+
+- **The sidebar mark is the quill, everywhere.** It had been a quill on the card and stacked
+  layers in the menu; asked to unify I unified onto the wrong one. The quill is what the
+  product is for, so the menu, the card and the collapsed rail all draw it now.
+
+### Added
+
+- `scripts/shot-panel.mjs`: renders the panel from the real stylesheet, because the blank
+  detail view is exactly the kind of defect a passing test suite does not show.
+
 ## [3.6.0] — 2026-11-15
 
 One product, one mark.
