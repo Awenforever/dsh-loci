@@ -1123,7 +1123,7 @@ export class Store {
 
   /**
    * Record one injected section, so the cost of each request is queryable.
-   * @param row - `sessionId`, `scopeKey`, `bytes`, `listed`, `hidden`.
+   * @param row - `sessionId`, `scopeKey`, `bytes`, `listed`, `hidden`, `ids`, `source`, `ts`.
    */
   recordInjection(row) {
     // `source` separates the two injection surfaces. The index runs every request; the
@@ -1135,7 +1135,7 @@ export class Store {
       .prepare(
         'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden, source);
+      .run(row.ts ?? this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden, source);
     // Per-entry counters, so "which line earns its bytes" stays answerable after the
     // aggregate rows rotate out. A listed entry never fetched by id is the dead
     // weight this product exists to find.
@@ -1161,6 +1161,10 @@ export class Store {
       // The ids are what makes the line answerable. Without them an audit record says
       // "3 entries were injected" and nothing about which three.
       ids: Array.isArray(row.ids) ? row.ids : undefined,
+      // Which store state produced this. Together with `ts` and the ids it is enough to
+      // replay the decision and confirm the snapshot, which is what R3 means by
+      // reproducible — recording only the outcome would make the claim unfalsifiable.
+      indexRev: Number.isFinite(row.indexRev) ? row.indexRev : this.indexRev(),
     });
   }
 

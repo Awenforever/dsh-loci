@@ -279,13 +279,18 @@ export function createIndexSection(options) {
  * @returns `{ text, ids, bytes }`; `text` is `''` when nothing was rendered.
  */
 export async function renderAssistBlock(options) {
-  const { store, scopeKeys, query, maxBytes = 512, limit = 3, sessionId, scopeKey } = options;
+  const { store, scopeKeys, query, maxBytes = 512, limit = 3, sessionId, scopeKey, now } = options;
   const empty = { text: '', ids: [], bytes: 0 };
   if (typeof query !== 'string' || query.trim().length < 2) return empty;
   // `sessionId`/`scopeKey` go into the search call so its own audit row can say which
   // session and scope asked. They used to be omitted, which made the recall audit line
   // unattributable even when it was written.
-  const result = await search(store, { query, scopeKeys, statuses: ['verified'], limit, detail: 'snippet', sessionId, scopeKey });
+  //
+  // `now` is threaded through rather than read here: search's recency term and its
+  // time-window filter both key off it, so leaving it undefined makes the same store rank
+  // differently on replay. Passed explicitly, this evaluation is a pure function of
+  // (store snapshot, query, scope keys, now) — which is what R3 asks for.
+  const result = await search(store, { query, scopeKeys, statuses: ['verified'], limit, detail: 'snippet', sessionId, scopeKey, now });
   if (result.hits.length === 0) return empty;
   const lines = ['<loci-recall note="possibly relevant; confirm with loci_get before relying on it">'];
   const ids = [];

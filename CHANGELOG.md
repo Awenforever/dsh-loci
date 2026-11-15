@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.9.0] — 2026-11-15
+
+R3 was the last rule the product stated and did not keep.
+
+### Fixed
+
+- **The recall assist was not reproducible.** R3 requires the conditional path to evaluate
+  over a reproducible snapshot: the same session replayed must produce the same result, and
+  the outcome must not drift with a moving clock. `search` already accepted a `now` for its
+  recency term and its time-window filter — but `renderAssistBlock` never passed one, so it
+  silently took `Date.now()` and the same store ranked differently on replay. The sentence
+  in the document was not a property of the code.
+
+  `renderAssistBlock` now takes `now` and threads it through, and the caller reads the clock
+  **once**: that single instant is used for the evaluation *and* for
+  `recordInjection({ ts })`. Measured:
+
+  | | Result |
+  |---|---|
+  | same snapshot, same `now`, twice | identical ids, identical order |
+  | same snapshot, `now` pushed 400 days | same set, order swapped |
+
+  That second row is the whole argument for passing the instant in: the dependency exists,
+  so it has to be an explicit input rather than a hidden `Date.now()`.
+
+- **The record now names its snapshot.** The `inject` audit line carries `ids`,
+  `source`, and the store's `indexRev` alongside the timestamp, so "why these entries"
+  is answerable after the fact instead of being asserted.
+
+### Note
+
+All five rules in §2.1 of `docs/PRIOR-ART.md` are now marked against the code — R1 and R2 as
+written-down exceptions, R3 and R4 as enforced since 2.9.0 and 2.8.0, R5 as always true.
+Two of the five were violations when the audit found them, and both were fixed rather than
+re-worded.
+
 ## [2.8.0] — 2026-11-15
 
 Two real defects, both found by measuring rather than reading: search returned nothing for

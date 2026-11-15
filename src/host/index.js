@@ -23,7 +23,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '2.8.0';
+export const VERSION = '2.9.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -231,6 +231,12 @@ export function apply(ctx, rawConfig = {}) {
             if (query.length < 2) return decision;
             const scopes = resolveScopes({ sessionId: session.id, cwd: session.header?.cwd });
             const assistScopeKeys = readScopeKeys(scopes, { includeGlobal: read('includeGlobal') });
+            // One instant, used for the evaluation *and* the record. Reading the clock
+            // twice would make the recorded time disagree with the time the ranking saw,
+            // and R3 asks that a replay of (snapshot, query, scopes, now) reproduce the
+            // same ids — which only holds if both halves use the same value.
+            const evaluatedAt = Date.now();
+            const snapshotRev = store.indexRev?.() ?? null;
             const assist = await renderAssistBlock({
               store,
               scopeKeys: assistScopeKeys,
@@ -238,6 +244,7 @@ export function apply(ctx, rawConfig = {}) {
               maxBytes: read('recallAssistBytes'),
               sessionId: session.id,
               scopeKey: scopes.workspace,
+              now: evaluatedAt,
             });
             assisted.add(session.id);
             if (assisted.size > ASSIST_MEMORY) assisted.clear();
@@ -254,6 +261,8 @@ export function apply(ctx, rawConfig = {}) {
                 hidden: 0,
                 ids: assist.ids,
                 source: 'assist',
+                ts: evaluatedAt,
+                indexRev: snapshotRev,
               });
             } catch (error) {
               // Recording must never break the turn it is recording.
