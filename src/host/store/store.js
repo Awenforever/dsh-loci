@@ -934,6 +934,39 @@ export class Store {
    * Markdown export, which are administrative views rather than session reads.
    * @returns distinct scope keys.
    */
+  /**
+   * The scopes the agent was most recently given, for surfaces that describe "this
+   * conversation" rather than "everything stored".
+   *
+   * Derived from the last system-prompt assembly rather than from a client session id: the
+   * sidebar footer is global chrome with no session, but the Host already records which
+   * scope key each assembly served. Falls back to every stored scope when nothing has been
+   * assembled yet, which is the honest answer — with no history there is no "current".
+   *
+   * @returns the key list, most specific first.
+   */
+  activeScopeKeys() {
+    const row = this.db
+      .prepare(
+        `SELECT session_id, scope_key FROM request_stat
+          WHERE source = 'section' AND scope_key IS NOT NULL
+          ORDER BY ts DESC, id DESC LIMIT 1`,
+      )
+      .get();
+    if (row === undefined || typeof row.scope_key !== 'string') return this.allScopeKeys();
+    // The workspace key is what the assembly chose; the read set around it is the session,
+    // the workspace and the project (plus global when enabled). Rebuild that shape instead
+    // of returning the single key, so counts match what the prompt actually carried.
+    const keys = [];
+    if (typeof row.session_id === 'string') keys.push(`session:${row.session_id}`);
+    keys.push(row.scope_key);
+    if (row.scope_key.startsWith('workspace:')) {
+      keys.push(row.scope_key.replace(/^workspace:/, 'project:'));
+    }
+    keys.push('global:');
+    return keys;
+  }
+
   allScopeKeys() {
     return this.db
       .prepare('SELECT DISTINCT m.scope_key AS key FROM memory m JOIN memory_head h ON h.ord = m.ord')

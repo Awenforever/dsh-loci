@@ -94,8 +94,11 @@ export function registerApiRoutes(ctx, deps) {
     disposers.push(dispose);
   };
 
-  route('/api/loci/stats', ['GET'], async () => {
-    const scopeKeys = store.allScopeKeys();
+  route('/api/loci/stats', ['GET'], async (request) => {
+    // `?all=1` keeps the admin view. The default is the scope the agent is actually
+    // reading, because this route feeds the sidebar card, which describes one conversation.
+    const url = new URL(request.url);
+    const scopeKeys = url.searchParams.get('all') === '1' ? store.allScopeKeys() : store.activeScopeKeys();
     return json({
       ...store.stats({ scopeKeys }),
       pluginVersion: deps.version ?? '0.0.0',
@@ -157,10 +160,14 @@ export function registerApiRoutes(ctx, deps) {
     const cwd = url.searchParams.get('cwd') ?? undefined;
     const sessionId = url.searchParams.get('session') ?? undefined;
     const limit = Math.max(1, Math.min(20, Number(url.searchParams.get('limit') ?? 4)));
+    // No explicit scope: describe the conversation the agent is currently in, which the
+    // store derives from the last prompt assembly. `?all=1` keeps the admin view.
     const scopeKeys =
-      cwd === undefined && sessionId === undefined
+      url.searchParams.get('all') === '1'
         ? store.allScopeKeys()
-        : readScopeKeys(resolveScopes({ cwd, sessionId }), { includeGlobal: config.includeGlobal !== false });
+        : cwd === undefined && sessionId === undefined
+          ? store.activeScopeKeys()
+          : readScopeKeys(resolveScopes({ cwd, sessionId }), { includeGlobal: config.includeGlobal !== false });
     return json(buildKnowledge(store, { limit, scopeKeys }));
   });
 

@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.3.0] — 2026-11-15
+
+R23 and R24: the card now describes *this* conversation, and the panel explains itself.
+
+### Fixed — R23: the card showed the whole store
+
+Commit `4065c98` recorded the intent for this surface as "what does this conversation's
+agent know", scoped to this project's read set. The card read every stored scope instead,
+because `sidebar.footer.action` is global chrome: it receives `{ wide }` and nothing else, so
+it has no session and no cwd.
+
+`dsh-ustc-quota` solves a similar problem with a DOM probe that finds the focused split pane.
+That is a lot of fragile machinery for a summary card, and there is a better source already
+in the database: **every prompt assembly records the scope key it served**
+(`request_stat.scope_key`, `source = 'section'`). The scope of the most recent assembly is,
+by definition, the scope the agent is reading right now.
+
+- `store.activeScopeKeys()` derives the session/workspace/project/global set from that last
+  assembly, and falls back to every stored scope when nothing has been assembled yet — with
+  no history there is no "current", and saying "everything" is the honest answer.
+- `/api/loci/stats` and `/api/loci/knowledge` default to it. `?all=1` keeps the admin view,
+  and an explicit `?cwd=` / `?session=` still wins.
+
+**Known limit, stated rather than hidden:** switching conversations without sending a message
+leaves the card showing the previous conversation's scope, because nothing has been assembled
+for the new one yet. It is a summary of what the agent was last given, which is what it says
+on the tin.
+
+### Fixed — R24: the panel did not explain itself
+
+Five tabs, one of which said what it was for. The first complaint about the panel was
+literally "I don't know how to review". Now:
+
+- every tab opens with one line of purpose, in the same place the Feed tab already used;
+- every row action carries a `title` that says what it does rather than what it is called —
+  *"Approve: this entry can now be injected into the prompt"* rather than "Verify",
+  *"Mark as wrong or unsafe: kept in history, never injected"* rather than "Dispute".
+
 ## [3.2.0] — 2026-11-15
 
 The sidebar was sending people to an empty room. Found in the live store, not in a test.

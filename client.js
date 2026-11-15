@@ -125,6 +125,14 @@ window.__ModuleLoader__.load({
       'panel.loading': 'Loading…',
       'panel.empty': 'Nothing here yet.',
       'panel.feedHint': 'What was remembered, revised, verified or removed. Newest first.',
+      'panel.searchHint': 'Search titles and bodies across this project\'s memory.',
+      'panel.statsHint': 'How this memory is being used: what is injected, what is opened, what earns its bytes.',
+      'panel.verifyHint': 'Approve: this entry can now be injected into the prompt.',
+      'panel.disputeHint': 'Mark as wrong or unsafe: kept in history, never injected.',
+      'panel.rejectHint': 'Reject this proposal and close it.',
+      'panel.restoreHint': 'Bring a removed entry back.',
+      'panel.pinHint': 'Pinned entries sort to the top of both the index and the panel.',
+      'panel.deleteHint': 'Soft delete: the row leaves the index and stays readable in history.',
       'panel.indexHint': 'Exactly what the model sees in its system prompt, with its byte cost.',
       'panel.bytes': 'bytes',
       'panel.listed': 'listed',
@@ -745,18 +753,18 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'loci-actions' },
                 entry.status !== 'verified'
-                  ? h('button', { type: 'button', className: 'loci-btn is-primary', onClick: () => act('/verify', { id, status: 'verified' }) }, t('panel.verify'))
+                  ? h('button', { type: 'button', className: 'loci-btn is-primary', title: t('panel.verifyHint'), onClick: () => act('/verify', { id, status: 'verified' }) }, t('panel.verify'))
                   : null,
                 entry.status !== 'disputed'
-                  ? h('button', { type: 'button', className: 'loci-btn', onClick: () => act('/verify', { id, status: 'disputed' }) }, t('panel.dispute'))
+                  ? h('button', { type: 'button', className: 'loci-btn', title: t('panel.disputeHint'), onClick: () => act('/verify', { id, status: 'disputed' }) }, t('panel.dispute'))
                   : null,
                 h(
                   'button',
-                  { type: 'button', className: 'loci-btn', onClick: () => act('/verify', { id, status: entry.pinned ? 'unpin' : 'pin' }) },
+                  { type: 'button', className: 'loci-btn', title: t('panel.pinHint'), onClick: () => act('/verify', { id, status: entry.pinned ? 'unpin' : 'pin' }) },
                   entry.pinned ? t('panel.unpin') : t('panel.pin'),
                 ),
                 entry.status === 'deleted'
-                  ? h('button', { type: 'button', className: 'loci-btn', onClick: () => act('/delete', { id, mode: 'restore' }) }, t('panel.restore'))
+                  ? h('button', { type: 'button', className: 'loci-btn', title: t('panel.restoreHint'), onClick: () => act('/delete', { id, mode: 'restore' }) }, t('panel.restore'))
                   : h(
                       'button',
                       {
@@ -925,6 +933,7 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         null,
+        h('div', { className: 'loci-muted', style: { marginBottom: '8px' } }, t('panel.searchHint')),
         h(
           'form',
           {
@@ -1107,6 +1116,7 @@ window.__ModuleLoader__.load({
         'div',
         null,
         h(ErrorLine, { error, t }),
+        h('div', { className: 'loci-muted', style: { marginBottom: '8px' } }, t('panel.statsHint')),
         data
           ? h(
               'div',

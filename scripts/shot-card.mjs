@@ -88,7 +88,8 @@ const panel = `
       </div>
     </div>
     <div class="loci-body">
-      <div class="loci-muted" style="margin-bottom:8px">What was recorded, corrected, verified or removed. Newest first.</div>
+      <div class="loci-muted" style="margin-bottom:8px">What was remembered, revised, verified or removed. Newest first.</div>
+      <div class="loci-muted" style="margin-bottom:10px;padding:8px 10px;border-left:2px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2);border-radius:0 6px 6px 0">Review tab: proposals waiting for a person. Verified entries enter the prompt; disputed ones are kept but excluded.</div>
       ${panelRow('Rollback window is 30 minutes', 'procedural · 2026-11-15 19:12 · workspace')}
       ${panelRow('Deploy order is staging to canary to full', 'procedural · 2026-11-15 18:40 · workspace')}
       ${panelRow('Never run migrations directly on production', 'rule · 2026-11-15 17:02 · project')}
