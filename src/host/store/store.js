@@ -945,6 +945,36 @@ export class Store {
    *
    * @returns the key list, most specific first.
    */
+  /**
+   * The most recent recorded injection, whichever surface produced it.
+   *
+   * Exists so `doctor` can answer "is memory actually reaching the model" without re-deriving
+   * the query: a store full of entries with an all-zero injection history is the failure worth
+   * naming, and it used to take a hand-written diagnostic script to see it.
+   *
+   * @returns the newest `request_stat` row, or `undefined` before the first assembly.
+   */
+  lastInjection() {
+    const row = this.db
+      .prepare(
+        `SELECT ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source, cwd
+           FROM request_stat ORDER BY id DESC LIMIT 1`,
+      )
+      .get();
+    if (row === undefined) return undefined;
+    return {
+      ts: row.ts,
+      sessionId: row.session_id ?? null,
+      scopeKey: row.scope_key ?? null,
+      bytes: row.section_bytes,
+      listed: row.entries_listed,
+      hidden: row.entries_hidden,
+      // Rows written before schema v4 have no source and were all the index section.
+      source: row.source ?? 'section',
+      cwd: row.cwd ?? null,
+    };
+  }
+
   activeScopeKeys() {
     const row = this.db
       .prepare(

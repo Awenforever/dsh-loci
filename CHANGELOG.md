@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.9.0] — 2026-11-16
+
+`doctor` can now answer "is memory actually reaching the model".
+
+### Added
+
+- **An `injection` row** reporting the last prompt assembly: bytes, entries listed, when, and
+  which surface produced it, plus how many entries are verified and how many await review.
+  Every other row reported storage; none reported delivery, so the question was answered by
+  writing a diagnostic script. Zero bytes with verified entries present is reported as `fail`,
+  not as a quiet empty state.
+
+- **A `review queue` row** for a dead end that took a hand-written probe to find: the capture
+  layer records episodic session summaries, review covers `rule`, `semantic` and `procedural`
+  only, so on a live store with 13 candidates the Review tab stays empty forever and nothing can
+  ever be promoted. The row says so in those words.
+
+### Why this matters more than a missing row
+
+Running it on the live store produced an uncomfortable answer, recorded here rather than only
+in the log:
+
+```
+[ok]   injection: 323 bytes, 1 entry listed at 2026-11-15 17:22 (section) · 1 verified · 0 awaiting review
+[warn] review queue: 13 candidates can never be reviewed: they are captured session summaries
+       (episodic) and review covers rule, semantic, procedural only — so nothing here can be
+       promoted into the prompt
+```
+
+One entry has ever reached the prompt, and it is a fact invented for an end-to-end test. The
+card's `Latest` line reads `/knowledge`, which filters `status = 'verified'`, so it has been
+frozen on that same line for every release since — not a caching bug, but the only verified
+entry there is.
+
+This release does not fix that; it makes it visible. The fix is a change to when a human must
+approve, which is a decision about the product's central claim, not a patch.
+
 ## [3.8.0] — 2026-11-16
 
 Memory now has an explicit boundary per conversation, and stops sharing by default.

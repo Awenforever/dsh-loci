@@ -9,6 +9,7 @@
 import { accessSync, constants, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { findDuplicateGroups } from './store/duplicates.js';
+import { REVIEWABLE_KINDS } from './store/store.js';
 import { detectInstructionLike, renderSafe } from './inject/sanitize.js';
 import { compareVersions } from './update.js';
 
@@ -197,6 +198,63 @@ export function runDoctor(options) {
 
   const auditSize = existsSync(paths.audit) ? statSync(paths.audit).size : 0;
   checks.push(check('audit', auditSize > 0 ? 'ok' : 'warn', `${auditSize} bytes at ${paths.audit}`));
+
+  // Whether memory is actually reaching the model. Every other row reports storage; without
+  // this one, "is it working?" was answered by writing a diagnostic script, which is not
+  // something a person should have to do. A store full of entries and an all-zero injection
+  // history is the failure this row exists to name.
+  try {
+    const last = store.lastInjection();
+    const verified = store.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord
+          WHERE h.status = 'verified' AND m.valid_to IS NULL`,
+      )
+      .get().n;
+    const pending = store.countPending(store.allScopeKeys(), {});
+    if (last === undefined) {
+      checks.push(
+        check(
+          'injection',
+          verified > 0 ? 'warn' : 'ok',
+          verified > 0
+            ? `${verified} verified entr${verified === 1 ? 'y' : 'ies'} but no prompt assembly recorded yet`
+            : 'nothing verified yet, so nothing is being injected',
+        ),
+      );
+    } else {
+      const when = new Date(last.ts).toISOString().replace('T', ' ').slice(0, 16);
+      const detail =
+        `${last.bytes} bytes, ${last.listed} entr${last.listed === 1 ? 'y' : 'ies'} listed` +
+        ` at ${when} (${last.source}) · ${verified} verified · ${pending} awaiting review`;
+      // Zero bytes with verified entries present means the section is not reaching the prompt,
+      // or every verified entry is outside the session's read scope. Either way it is a fault,
+      // not a quiet empty state.
+      checks.push(check('injection', last.bytes > 0 ? 'ok' : verified > 0 ? 'fail' : 'ok', detail));
+    }
+    // A candidate nobody can review is not a queue — it is a dead end. The capture layer
+    // records episodic session summaries, and review is limited to rule/semantic/procedural,
+    // so on a fresh store the Review tab stays empty forever and `Latest` never moves. Say so
+    // as a row instead of leaving it to be rediscovered by hand.
+    const stuck = store.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord
+          WHERE h.status = 'candidate' AND m.valid_to IS NULL
+            AND m.kind NOT IN (${REVIEWABLE_KINDS.map(() => '?').join(',')})`,
+      )
+      .get(...REVIEWABLE_KINDS).n;
+    if (stuck > 0) {
+      checks.push(
+        check(
+          'review queue',
+          'warn',
+          `${stuck} candidate${stuck === 1 ? '' : 's'} can never be reviewed: they are captured session summaries (episodic) and review covers ${REVIEWABLE_KINDS.join(', ')} only — so nothing here can be promoted into the prompt`,
+        ),
+      );
+    }
+  } catch (error) {
+    checks.push(check('injection', 'warn', `could not read: ${String(error?.message ?? error)}`));
+  }
 
   // Near-duplicates: two entries that say the same thing split the ranking, each
   // take an index line, and force a correction to be applied twice. The store can
