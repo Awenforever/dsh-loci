@@ -830,6 +830,32 @@ export class Store {
   }
 
   /**
+   * How many entries in these scopes are waiting for a human.
+   *
+   * This is what the injected section reports. Verified-only injection has a
+   * failure mode the user cannot see: a fact the model wrote at midnight is simply
+   * absent at 9 a.m., and "never saved" looks exactly like "saved but gated". One
+   * number in the prompt is enough to tell those apart, and it costs nothing when
+   * the queue is empty.
+   *
+   * @param scopeKeys - explicit scope keys (never a wildcard).
+   * @returns the count of candidate and disputed entries.
+   */
+  countPending(scopeKeys) {
+    if (scopeKeys.length === 0) return 0;
+    const marks = scopeKeys.map(() => '?').join(', ');
+    return Number(
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM memory m
+           WHERE m.status IN ('candidate', 'disputed') AND m.deleted_at IS NULL
+             AND m.scope_key IN (${marks})`,
+        )
+        .get(...scopeKeys)?.n ?? 0,
+    );
+  }
+
+  /**
    * Verified rules for the rules block, newest last.
    * @param options - `scopeKeys`, `now`, `limit`.
    */

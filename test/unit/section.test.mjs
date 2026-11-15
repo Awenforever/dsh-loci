@@ -30,7 +30,14 @@ test('candidates never reach the injected index', (t) => {
     body: '这条不应该出现在提示里。',
   });
   const rendered = renderIndexBody({ store, ...scopeOf(scopes), config: reader(), now: Date.now() });
-  assert.equal(rendered.text, '');
+  // The section is no longer empty: since v2.1 it carries a one-line count of what
+  // is waiting for review, because "never saved" and "saved but gated" looked
+  // identical from inside the conversation. What must still hold — and is the point
+  // of this test — is that the candidate's own text never reaches the prompt.
+  assert.doesNotMatch(rendered.text, /未经核实的候选/);
+  assert.doesNotMatch(rendered.text, /不应该出现在提示里/);
+  assert.doesNotMatch(rendered.text, /^Index —/m);
+  assert.match(rendered.text, /await review/);
 });
 
 test('rules come first and the index follows in stable order', (t) => {

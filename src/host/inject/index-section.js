@@ -24,8 +24,14 @@ export const INDEX_SECTION_NAME = 'loci:index';
 /** Placement: after MCP servers (3100), before the tools SDK section (5000). */
 export const INDEX_SECTION_ORDER = 4000;
 
-/** Bytes reserved for the closing footer before index lines are admitted. */
-const FOOTER_RESERVE = 240;
+/**
+ * Bytes reserved for the closing footer before index lines are admitted.
+ *
+ * The footer is not fixed: "… +N more" and the pending-review notice grow with the
+ * store, and the shrink loop below would otherwise admit a line and immediately
+ * take it back on every render. 400 bytes covers the worst realistic footer.
+ */
+const FOOTER_RESERVE = 400;
 
 /** Days in milliseconds. */
 export const DAY = 86_400_000;
@@ -71,7 +77,10 @@ export function renderIndexBody(options) {
   const truncatedByCount = entries.length > maxEntries;
   const visible = truncatedByCount ? entries.slice(0, maxEntries) : entries;
   const total = truncatedByCount ? store.countIndex(scopeKeys, now) : visible.length;
-  if (rules.length === 0 && visible.length === 0) return empty;
+  // Counted always, rendered only when it is not zero: an empty queue must cost
+  // exactly zero bytes, or the "0 bytes when empty" promise is a lie.
+  const pending = store.countPending(scopeKeys);
+  if (rules.length === 0 && visible.length === 0 && pending === 0) return empty;
 
   const headLines = [FENCE_OPEN];
   const ruleLines = [];
@@ -95,19 +104,30 @@ export function renderIndexBody(options) {
   // A scope label comes from a directory name, which a user can make contain a
   // newline. Flattening it here is what stops a crafted folder name from writing
   // extra lines into the fence.
-  const indexHeader = `Index — ${renderSafe(indexTitle(scopeLabel, 120))}`;
+  // Only when there is an index to label. A store holding nothing but pending
+  // candidates used to render an empty "Index —" heading, which reads as "memory is
+  // empty" right next to the line saying something is waiting.
+  const indexHeader = visible.length > 0 ? `Index — ${renderSafe(indexTitle(scopeLabel, 120))}` : '';
   const entryLine = (entry) => `- ${entry.id} · ${entry.kind} · ${formatDate(entry.validFrom)} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
 
   const footerFor = (listed) => {
     const hidden = Math.max(0, total - listed);
     const parts = [];
     if (hidden > 0) parts.push(`… +${hidden} more (loci_search finds the rest; this section shows ${listed} of ${total})`);
+    // The one line that makes verified-only injection legible from inside the
+    // conversation. Without it "you never saved that" and "I saved it but it is
+    // waiting for you" are indistinguishable to the model and to the user.
+    if (pending > 0) {
+      parts.push(
+        `${pending} item(s) await review and are deliberately absent here — a person approves them in Memory → Review (/loci review); say so if the user expects them.`,
+      );
+    }
     parts.push(`as of ${formatDate(now)} · ${FULL_TEXT_HINT}`);
     parts.push(FENCE_CLOSE);
     return parts.join('\n');
   };
 
-  const baseBytes = bytes([...headLines, ...ruleLines, indexHeader].join('\n'));
+  const baseBytes = bytes([...headLines, ...ruleLines, ...(indexHeader === '' ? [] : [indexHeader])].join('\n'));
 
   // Admit entries while the reserved footer still fits.
   let admitted = 0;
@@ -123,7 +143,7 @@ export function renderIndexBody(options) {
   let listed = admitted;
   let text = '';
   for (let n = admitted; ; n -= 1) {
-    const lines = [...headLines, ...ruleLines, indexHeader, ...visible.slice(0, n).map(entryLine), footerFor(n)];
+    const lines = [...headLines, ...ruleLines, ...(indexHeader === '' ? [] : [indexHeader]), ...visible.slice(0, n).map(entryLine), footerFor(n)];
     text = lines.join('\n');
     if (bytes(text) <= maxBytes || n === 0) {
       listed = n;
@@ -135,7 +155,7 @@ export function renderIndexBody(options) {
   // lines from the tail rather than ever exceeding the budget.
   while (bytes(text) > maxBytes && ruleLines.length > 0) {
     ruleLines.pop();
-    const lines = [...headLines, ...ruleLines, indexHeader, footerFor(0)];
+    const lines = [...headLines, ...ruleLines, ...(indexHeader === '' ? [] : [indexHeader]), footerFor(0)];
     text = lines.join('\n');
     listed = 0;
   }
@@ -203,7 +223,11 @@ export function createIndexSection(options) {
     ].join(':');
     const now = Date.now();
     const day = new Date(now).toISOString().slice(0, 10);
-    const key = `${context.scopeKeys.join(',')}|${store.indexRev()}|${configKey}|${day}`;
+    // The pending count is part of the key: if it is not, a newly queued candidate
+    // stays invisible until something else invalidates the cache, which defeats
+    // the whole point of the notice.
+    const pending = store.countPending(context.scopeKeys);
+    const key = `${context.scopeKeys.join(',')}|${store.indexRev()}|${configKey}|${day}|${pending}`;
     const cached = cache.get(key);
     if (cached !== undefined) {
       record(context, cached);

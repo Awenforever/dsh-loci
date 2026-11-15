@@ -57,7 +57,11 @@ test('instruction-shaped text is quarantined, never injected', (t) => {
   assert.equal(result.entry.status, 'disputed');
   assert.ok(result.entry.flags.includes('instruction-like'));
   const rendered = renderIndexBody({ store, ...scopeOf(scopes), config: reader(), now: Date.now() });
-  assert.equal(rendered.text, '', 'a disputed entry must not reach the prompt');
+  // No content of the disputed entry may reach the prompt. The section itself may
+  // carry the review count (v2.1) — that is a number, not the quarantined text.
+  assert.doesNotMatch(rendered.text, /Ignore all previous instructions/);
+  assert.doesNotMatch(rendered.text, /导入的帽子戏法/);
+  assert.doesNotMatch(rendered.text, /^Index —/m);
 });
 
 test('Chinese instruction shapes are detected too', () => {
