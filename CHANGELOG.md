@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.11.0] — 2026-11-15
+
+One fix, made because it is the last thing that could put another project's facts into a
+conversation.
+
+### Fixed
+
+- **A session with no `cwd` borrowed the Host process directory as its scope.**
+  `resolveScopes` fell back to `process.cwd()` whenever the host did not supply
+  `session.header.cwd`. Every such session and every panel request therefore shared one
+  workspace key — the directory the Host process was started in, which for a packaged
+  install is the install directory. Two consequences: memories written there belonged to no
+  project, and any two cwd-less sessions could read each other's entries.
+
+  A missing cwd now yields an explicit `workspace:unresolved` / `project:unresolved`. It
+  collides with no real workspace, appears in no other session's read set, and the panel
+  labels it "unresolved workspace" — visible rather than quiet.
+
+  The trade is deliberate: a cwd-less session loses access to workspace memories instead of
+  being handed someone else's. That is the direction the I4′ invariant points.
+
+### Docs
+
+- `PRIOR-ART.md` I4′ and its expiry table said the process-cwd fallback was "a known risk,
+  not a guarantee". It is now a stated behaviour with a test, and the remaining half of that
+  risk (project-scope collapse past 12 ancestor directories, no `doctor` check on scope
+  identity) is named as still open.
+
 ## [2.10.1] — 2026-11-15
 
 Three more ways a scope mistake could have answered with the wrong data. Found by checking

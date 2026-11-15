@@ -80,21 +80,31 @@ function pathKey(prefix, path) {
 
 /**
  * Build the scope identity of one session.
+ *
+ * When the host does not supply a cwd, the identity is **explicitly unresolved** rather
+ * than borrowed from `process.cwd()`. Borrowing it meant every cwd-less session and every
+ * panel request shared one scope keyed to wherever the Host process happened to be
+ * installed — a silent cross-project bucket, and the opposite of what the explicit-scope
+ * invariant promises. An unresolved key appears in no other session's read set, so the
+ * failure is visible (the panel labels it "unresolved workspace") instead of a quiet leak.
+ *
  * @param options - `sessionId`, `cwd`.
  * @returns `{session, workspace, project, global, labels, cwd, projectRoot}`.
  */
 export function resolveScopes({ sessionId, cwd }) {
-  const dir = typeof cwd === 'string' && cwd.length > 0 ? canonicalDir(cwd) : canonicalDir(process.cwd());
-  const projectRoot = findProjectRoot(dir);
+  const requested = typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined;
+  const dir = requested === undefined ? undefined : canonicalDir(requested);
+  const projectRoot = dir === undefined ? undefined : findProjectRoot(dir);
+  const unresolved = dir === undefined;
   return {
     session: `session:${sessionId ?? 'unknown'}`,
-    workspace: pathKey('workspace', dir),
-    project: pathKey('project', projectRoot),
+    workspace: unresolved ? 'workspace:unresolved' : pathKey('workspace', dir),
+    project: unresolved ? 'project:unresolved' : pathKey('project', projectRoot),
     global: 'global:',
     labels: {
       session: sessionId ? `session ${sessionId}` : 'session',
-      workspace: basename(dir) || dir,
-      project: basename(projectRoot) || projectRoot,
+      workspace: unresolved ? 'unresolved workspace' : basename(dir) || dir,
+      project: unresolved ? 'unresolved project' : basename(projectRoot) || projectRoot,
       global: 'global',
     },
     cwd: dir,

@@ -113,3 +113,21 @@ test('a foreign id cannot be revised, pinned, restored or merged through the too
   assert.equal(after.status, 'verified');
   assert.equal(after.pinned, false);
 });
+// 4. A missing cwd must not borrow the Host process directory.
+
+test('a session with no cwd gets an unresolved scope, not the process directory', async () => {
+  const { resolveScopes } = await import('../../src/host/scope.js');
+  const anonymous = resolveScopes({ sessionId: 'no-cwd' });
+  const fromProcess = resolveScopes({ sessionId: 'no-cwd', cwd: process.cwd() });
+
+  // Before the fix both were identical: the missing cwd fell back to `process.cwd()`, so
+  // every cwd-less session and every panel request shared one key — keyed to wherever the
+  // Host happened to be installed. That is a silent cross-project bucket.
+  assert.equal(anonymous.workspace, 'workspace:unresolved');
+  assert.equal(anonymous.project, 'project:unresolved');
+  assert.equal(anonymous.cwd, undefined);
+  assert.equal(anonymous.labels.workspace, 'unresolved workspace');
+  assert.notEqual(anonymous.workspace, fromProcess.workspace, 'an unresolved scope must not collide with the process directory');
+  // And an explicit cwd still resolves normally.
+  assert.notEqual(fromProcess.workspace, 'workspace:unresolved');
+});
