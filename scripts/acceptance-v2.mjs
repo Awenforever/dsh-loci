@@ -160,6 +160,27 @@ function measureCost() {
   return levels;
 }
 
+/**
+ * Does the index carry enough information for a model to pick ONE entry out of many?
+ *
+ * The first version of this experiment asked twelve questions against twelve summary
+ * titles, saw twelve fetches, and concluded the model over-fetches. That was wrong: twelve
+ * questions about twelve entries need twelve bodies. The fair version is one question
+ * against many candidates. These numbers are what a future re-run should compare against
+ * (see `docs/ACCEPTANCE.md` B.4 for the measured arms).
+ */
+function measureIndexSelectivity() {
+  const caseSingle = [{ title: '发布窗口固定在每周固定时段', relevant: true }];
+  for (let i = 0; i < 39; i += 1) {
+    caseSingle.push({ title: FACTS[i].title, relevant: false });
+  }
+  return {
+    note: 'measured with blind model arms; see docs/ACCEPTANCE.md B.4',
+    oneQuestionManyCandidates: { candidates: caseSingle.length, expected: 1 },
+    oneQuestionNothingRelevant: { candidates: caseSingle.length, expected: 0 },
+  };
+}
+
 const retrieval = await measureRetrieval();
 const cost = measureCost();
 

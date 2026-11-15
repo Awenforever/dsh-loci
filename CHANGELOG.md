@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.7.1] — 2026-11-15
+
+A correction, and a decision not to ship something.
+
+### Corrected
+
+2.7.0's acceptance note said the index does not scale — "arm C asked for 12/12 ids, so at 200
+entries the model pulls the whole store". **That was wrong, and the error was in the
+experiment.** Arm C asked **12 questions about 12 different entries**; fetching 12 bodies is
+the correct answer to 12 questions. Concluding "it over-fetches" from `questions == fetches`
+was a mistake in the arm's design, not a property of the product.
+
+The fair version — **one** question against many candidates:
+
+| Arm | Candidates | Result |
+|---|---|---|
+| D1 | 12 titles, 1 relevant | fetched **1**, the right one |
+| D2 | 40 titles, 1 relevant, plus a decoy sharing the query word | fetched **1**, the right one |
+| E | 40 titles, nothing relevant | answered `NOT_IN_MEMORY`, substituted nothing |
+
+### Not shipped, on purpose
+
+The work item was "make the index guide the model to converge". It already converges, so no
+steering text was added to the footer. Two arms tested a footer that explicitly said "do not
+batch-fetch titles that merely look plausible": it changed nothing. The footer is 83 bytes on
+every request, and this design's entire argument is that prompt bytes are the scarce
+resource — a sentence that changes no behaviour is pure cost.
+
+The lesson is worth more than the fix would have been: **a measurement that counts fetches
+against questions must keep those two numbers independent.** `docs/ACCEPTANCE.md` now carries
+the correction in place, rather than quietly deleting the wrong claim.
+
 ## [2.7.0] — 2026-11-15
 
 The acceptance was measuring less than it claimed. This release re-runs it properly and

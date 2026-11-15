@@ -104,7 +104,51 @@ Each arm answered in one turn with no tools.
 |---|---|---|---|
 | **A — no memory** | the 20 questions only | **0/20** | answered `UNKNOWN` to all 20 — it abstained rather than hallucinating |
 | **B — index only** | the 20 questions + 20 index lines whose titles *are* the facts | **20/20** | answered every question with the exact value |
-| **C — index + fetch** | 12 index lines whose titles are *summaries*; the values are only in bodies; allowed to request ids | asked for **12/12** ids | did not discriminate — requested the whole index |
+| **C — index + fetch** | 12 questions, 12 summary titles, values only in bodies | asked for 12/12 ids | correct: 12 questions need 12 bodies — see the correction below |
+| **D1 — one question, 12 candidates, one relevant** | one question + 12 summary titles | fetched **1/1**, the right one | no over-fetch |
+| **D2 — one question, 40 candidates, one relevant** | one question + 40 summary titles (including a decoy sharing the word 发布) | fetched **1/1**, the right one | no over-fetch at 40 |
+| **E — one question, 40 candidates, nothing relevant** | the same 40 titles, asking about something absent | answered `NOT_IN_MEMORY` | did not substitute a nearby entry |
+
+### Correction: arm C did not show what it first appeared to show
+
+The first write-up of this section said arm C revealed greedy fetching — "asked for 12/12
+ids, did not discriminate, pulls the whole index at 200 entries". **That was wrong, and the
+error was in the experiment, not the product.** Arm C asked **12 questions about 12
+different entries**; fetching 12 bodies is the *correct* answer to 12 questions. Concluding
+"it over-fetches" from `questions == fetches` was a design mistake in the arm.
+
+D1 and D2 are the fair version: **one** question, many candidates, exactly one relevant.
+Both fetched a single body, and D2 found it among 40 titles while ignoring a decoy that
+shares the query word (发布说明 vs 发布窗口).
+
+Two follow-up arms then tested whether the instruction text changed the behaviour, using a
+footer that explicitly said "do not batch-fetch titles that merely look plausible":
+
+| Variant | Result |
+|---|---|
+| current footer | fetched the needed ids |
+| steering footer | fetched the same ids |
+
+The instruction made no difference, so it was **not** added to the shipped footer. The
+footer is 83 bytes on every request; a sentence that changes no behaviour is pure prompt
+cost, and this repository's whole argument for the index shape is that prompt bytes are the
+scarce resource.
+
+### Decision: no code change, on purpose
+
+The work item that produced arms C–E was "make the index guide the model to converge
+instead of fetching everything". The evidence says it already converges:
+
+| Situation | Behaviour |
+|---|---|
+| one question, one matching title among 12 | fetches that one |
+| one question, one matching title among 40, with a decoy | fetches that one |
+| one question, no matching title among 40 | `NOT_IN_MEMORY`, no substitute |
+| N questions, N matching titles | fetches N — which is correct |
+
+The only case that looked like over-fetching was the one where the experiment asked N
+questions and counted N fetches. Shipping a fix for it would have been shipping a change
+justified by a badly designed measurement.
 
 Read honestly:
 
@@ -113,10 +157,9 @@ Read honestly:
 - **The abstention in arm A is a good sign.** The model did not invent values; a
   memory-less assistant says "I don't know" instead of confabulating. So the value here is
   recall, not anti-hallucination.
-- **Arm C is the warning.** When titles are summaries, a model facing 12 entries fetches all
-  12. That is fine at 12 and untenable at 200: the "index keeps the prompt small" argument
-  collapses if the model's response to ambiguity is to pull the whole store. Narrowing that
-  is a design problem, not a formatting problem.
+- **The index scales better than the first draft of this page claimed.** One question
+  against 40 candidate titles resolved to a single body. The scaling worry this section
+  raised was the author's, not the design's.
 
 ## B.5 What §B still does not measure
 
