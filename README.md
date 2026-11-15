@@ -1,4 +1,4 @@
-# dsh-loci · Loci 记忆宫殿
+# dsh-loci · Loci
 
 **A long-term memory for DeepSeek Harness where the prompt only ever sees the palace's index — every room is one lookup away.**
 
@@ -86,7 +86,7 @@ one of them.
 ## Where you see it
 
 - **Sidebar note** — a small card beside Settings, like the quota and advisor
-  cards, that reads like a page of notes rather than a dashboard: `更新于 <time>`
+  cards: a shadowed card in the sidebar footer with a status dot, a `updated <time>` stamp and numeric rows (verified / pending / disputed, index bytes against the budget, injected / opened / dead weight)
   over one short paragraph of what the agent currently understands in this
   project (a consensus, a lesson, a fact), plus one quiet line if something is
   waiting for your review. It answers "did it take that in?" — no counters.

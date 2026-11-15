@@ -78,8 +78,11 @@ test('the client half registers the sidebar mirror, the panel, and the settings 
 
   assert.equal(localeCalls.length, 1);
   assert.equal(localeCalls[0].ns, 'loci');
+  // English only, on purpose: a second dictionary is what made the product have a
+  // language at all, and the UI was showing Chinese purely because the browser locale
+  // resolved to zh.
+  assert.deepEqual(Object.keys(localeCalls[0].dict), ['en'], 'only the English dictionary is registered');
   for (const key of ['card.title', 'panel.feed', 'settings.budget', 'action.added']) {
-    assert.ok(localeCalls[0].dict.zh[key], `zh dictionary is missing ${key}`);
     assert.ok(localeCalls[0].dict.en[key], `en dictionary is missing ${key}`);
   }
 
@@ -113,11 +116,12 @@ test('the client half registers the sidebar mirror, the panel, and the settings 
   }
 });
 
-test('the bundle exposes localized display metadata', async () => {
-  const { readFileSync } = await import('node:fs');
+test('the bundle exposes English display metadata and no second language', async () => {
+  const { existsSync, readFileSync } = await import('node:fs');
   const en = JSON.parse(readFileSync(new URL('../../locale/en.json', import.meta.url), 'utf8'));
-  const zh = JSON.parse(readFileSync(new URL('../../locale/zh.json', import.meta.url), 'utf8'));
   assert.ok(en.meta.title.includes('Loci'));
-  assert.ok(zh.meta.title.includes('Loci'));
   assert.ok(en.meta.description.length > 20);
+  // The plugin ships one language. A `zh.json` here would put Chinese back into the
+  // marketplace listing and the settings sidebar without anyone editing client.js.
+  assert.equal(existsSync(new URL('../../locale/zh.json', import.meta.url)), false);
 });

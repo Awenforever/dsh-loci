@@ -4,6 +4,76 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.0.0] — 2026-11-15
+
+The sidebar card was not a card, and the plugin had a second language it did not need.
+
+### Changed — the card
+
+The screenshot that prompted this showed three plugin cards in a row: two with white
+rounded shells, a status dot, a version chip and numeric rows; one — this one — as bare
+text on the sidebar background, two sentences of prose and nothing clickable.
+
+The difference was measurable, not aesthetic. `dsh-ustc-quota`'s shell carries
+`box-shadow: 0 3px 12px`, `flex: 0 0 100%`, `order: 1`, `grid-column: 1 / -1`,
+`border-radius: 12px` and `font-variant-numeric: tabular-nums`. This card had none of them,
+so it sat in the same visual plane as the sidebar and looked like a note pasted over it.
+
+Now:
+
+- **Shell** — the same box model the neighbouring plugins use, so three cards in one column
+  read as three cards.
+- **Header** — title, a dim monospace version chip, a 5px status dot (brand / warn / error),
+  and a right-aligned `updated <time>` that truncates instead of wrapping.
+- **Numbers** — `Verified / Pending / Disputed` in a three-column grid, tabular figures,
+  amber for pending and red for disputed.
+- **Budget** — a thin bar of index bytes against `sectionMaxBytes`, turning amber past 85%.
+- **Usage** — `Injected / Opened / Dead` (the last one only when non-zero), which is the row
+  that makes schema v2's counters visible where a person will actually see them.
+- **Empty state** — one line and one instruction instead of two sentences of apology.
+
+This reverses the earlier "a page of notes, not a dashboard" stance *for this surface*. The
+audit had already called that stance out: an aesthetic refusal to interrupt, applied to the
+one place where a person must act. The panel keeps the prose; the card gets the numbers.
+
+### Changed — one language
+
+Chinese was not in the client because anyone chose it; the client shipped a full `ZH`
+dictionary, so a browser whose locale resolved to `zh` rendered the UI in Chinese. The
+English dictionary was already complete. The second dictionary was the only reason the
+product had a language at all.
+
+- `client.js`: the 128-line `ZH` dictionary is gone, the locale registration is `{ en: EN }`,
+  and four Chinese comments are rewritten.
+- `locale/zh.json`: deleted; `locale/en.json` is the only locale file.
+- `package.json` / `manifests`: no longer advertise a second language. `README.md` loses the
+  `记忆宫殿` gloss and the `更新于` label description; the Chinese *examples* of stored
+  content stay, because they demonstrate CJK retrieval.
+- `scripts/capture-panel.mjs`: its panel selector matched `记忆|Memory` and can only ever
+  match the latter now.
+
+Kept, deliberately: the Chinese regexes in `capture.js` (they match Chinese input) and in
+`sanitize.js` (they match Chinese prompt-injection phrasings). Deleting those would disable
+the features for the language most of the user's memories are written in. They are pattern
+data, not output.
+
+### Added
+
+- `test/unit/client-i18n.test.mjs` — no Chinese in `client.js`, no `ZH` dictionary, no
+  `locale/zh.json`, every `t()` key defined, and the card still has its shell/metric pieces.
+- `test/unit/english-only.test.mjs` — no Chinese in emitted strings under `src/` outside a
+  two-file allowlist, and the allowlisted files must still contain their patterns (a guard
+  that silently allows a file would hide the deletion it exists to catch).
+- `scripts/check-manifest.mjs` now **fails if `locale/zh.json` reappears**, so the language
+  cannot come back in a version that never touched `client.js`.
+
+### Still Chinese, on purpose
+
+`README.zh.md`, `docs/*.md`, and the `titleZh`/`descriptionZh` fields in
+`marketplace/entry.json` are documentation and storefront metadata, not output the plugin
+emits at runtime. They were left alone rather than deleted; if they should go too, that is a
+separate decision about the deliverable, not about the product's language.
+
 ## [2.11.0] — 2026-11-15
 
 One fix, made because it is the last thing that could put another project's facts into a

@@ -5,7 +5,7 @@
  *
  * - a **sidebar mirror** (`sidebar.footer.action`): a flat, dense card that
  *   shows what memory changed today and last week, with the last few changes
- *   as one-liners. It is the "副屏" — glanceable, never modal;
+ *   as one-liners. It is the sidebar mirror — glanceable, never modal;
  * - a **panel** (`sidebar.panellist` + `main`): the full view, with a feed,
  *   the exact injected index, search, the review queue and statistics.
  *
@@ -34,8 +34,16 @@ window.__ModuleLoader__.load({
         'Layered long-term memory: the prompt holds a stable index, full text is one lookup away, and only verified facts are injected.',
 
       'card.title': 'Memory',
-      'card.empty': 'Nothing understood yet',
-      'card.emptyHint': 'Confirm a fact and it appears here',
+      'card.empty': 'Nothing saved yet',
+      'card.metrics': 'Memory at a glance',
+      'card.emptyHint': 'Ask the agent to remember something, then confirm it here.',
+      'card.verified': 'Verified',
+      'card.pending': 'Pending',
+      'card.disputed': 'Disputed',
+      'card.injected': 'Injected',
+      'card.opened': 'Opened',
+      'card.dead': 'Dead',
+      'card.pendingHint': '{n} item(s) waiting for you in Review.',
       'card.updated': 'updated',
       'card.pending': '{n} still need your review',
       'card.pinned': 'pinned',
@@ -157,151 +165,35 @@ window.__ModuleLoader__.load({
       'panel.version': 'version',
     };
 
-    const ZH = {
-      'meta.title': 'Loci 记忆宫殿',
-      'meta.description':
-        '分层长期记忆：提示词里只放稳定索引，全文按需一次取回；只有已核实的记忆才会被注入。',
-
-      'card.title': '记忆',
-      'card.empty': '还没有真正记下的东西',
-      'card.emptyHint': '你确认过的事实会出现在这里',
-      'card.updated': '更新于',
-      'card.pending': '另有 {n} 条我拿不准，等你看一眼',
-      'card.pinned': '置顶',
-      'card.open': '打开记忆',
-      'card.check': '检查更新',
-      'card.upToDate': '已是最新',
-      'card.updateTo': '有新版本',
-      'card.checkOff': '更新检查已关闭',
-      'card.checking': '检查中…',
-      'card.unknown': '无法检查版本',
-      'card.unpublished': '尚未发布',
-
-      'prose.agreed': '已定：',
-      'prose.lesson': '经验：',
-
-      'kind.rule': '共识',
-      'kind.procedural': '经验',
-      'kind.semantic': '事实',
-      'kind.episodic': '事件',
-      'kind.working': '草稿',
-
-      'since.now': '刚才',
-      'since.minutes': '{n} 分钟前',
-      'since.hours': '{n} 小时前',
-      'since.yesterday': '昨天',
-      'since.days': '{n} 天前',
-
-      'action.added': '新增',
-      'action.revised': '更正',
-      'action.verified': '核实',
-      'action.disputed': '存疑',
-      'action.pinned': '置顶',
-      'action.unpinned': '取消置顶',
-      'action.deleted': '删除',
-      'action.purged': '彻底删除',
-      'action.restored': '恢复',
-      'action.imported': '导入',
-      'action.maintained': '维护',
-
-      'settings.title': 'Loci',
-      'settings.intro': '给 agent 的长期记忆。标注「即时」的改动立即生效。',
-      'settings.unavailable': '当前缺少设置服务，以下显示实际生效的配置。',
-      'settings.saved': '已保存',
-      'settings.rejected': '宿主拒绝写入',
-      'settings.failed': '写入失败',
-      'settings.budget': '索引预算',
-      'settings.budgetHint': '整段注入的字节上限',
-      'settings.scope': '新事实的默认作用域',
-      'settings.capture': '会话捕获',
-      'settings.assist': '首轮辅助召回',
-      'settings.maintenance': '后台维护',
-      'settings.secret': '记忆中的密钥',
-      'settings.vector': '向量通道',
-      'settings.diagnostics': '诊断',
-      'settings.danger': '清空记忆',
-      'settings.dangerHint': '输入确认短语才会执行。条目为软删除：历史仍可读、可导出。',
-      'settings.dangerPhrase': 'forget everything',
-      'settings.dangerRun': '删除全部记忆',
-      'settings.dangerBusy': '删除中…',
-      'settings.dangerDone': '已删除 {n} 条。',
-      'off': '关闭',
-      'captureRules': '仅规则',
-      'secretRedact': '脱敏',
-      'secretReject': '拒绝写入',
-      'vectorOff': '关闭（仅词法）',
-      'vectorHttp': 'HTTP 端点',
-
-      'panel.title': '记忆',
-      'panel.feed': '动态',
-      'panel.index': '索引',
-      'panel.search': '检索',
-      'panel.review': '待审',
-      'panel.stats': '统计',
-      'panel.refresh': '刷新',
-      'panel.loading': '加载中…',
-      'panel.empty': '这里还没有内容。',
-      'panel.feedHint': '记住了什么、更正了什么、核实或删除了什么。最新的在前。',
-      'panel.indexHint': '与模型系统提示里完全一致的那一段，以及它的字节开销。',
-      'panel.bytes': '字节',
-      'panel.listed': '已列出',
-      'panel.hidden': '未列出',
-      'panel.searchPlaceholder': '检索标题与正文…',
-      'panel.searchEmpty': '没有匹配。',
-      'panel.more': '加载更多',
-      'panel.total': '总数',
-      'panel.verify': '核实',
-      'panel.dispute': '标记争议',
-      'panel.delete': '删除',
-      'panel.restore': '恢复',
-      'panel.pin': '置顶',
-      'panel.unpin': '取消置顶',
-      'panel.back': '返回',
-      'panel.history': '历史',
-      'panel.evidence': '证据',
-      'panel.source': '出处',
-      'panel.lesson': '教训',
-      'panel.lesson.pattern': '问题形态',
-      'panel.lesson.fix': '做法',
-      'panel.lesson.prevents': '不做会怎样',
-      'panel.lesson.when': '适用场景',
-      'panel.relations': '关联',
-      'panel.candidates': '候选',
-      'panel.disputed': '争议',
-      'panel.noCandidates': '没有待审条目。',
-      'panel.reviewHint': '这里只列可能被注入的条目；过去会话的摘要属于历史，不是主张。',
-      'panel.reject': '驳回',
-      'panel.digestOf': '同一批次提出 {n} 条',
-      'panel.verifyGroup': '核实这 {n} 条',
-      'panel.verifyAll': '全部核实（{n}）',
-      'panel.actionFailed': '操作失败',
-      'panel.injections': '最近注入',
-      'panel.deadWeight': '注入了但从未被打开',
-      'panel.injected': '次注入',
-      'panel.opened': '次打开',
-      'panel.store': '存储',
-      'panel.confirmDelete': '软删除这条记忆？',
-      'panel.error': '请求失败',
-      'panel.updated': '更新于',
-      'panel.version': '版本',
-    };
-
     const CSS = `
 .loci-root { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); font-size: 13px; }
-.loci-card-root { display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); border-radius: 8px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.loci-card-root { display: flex; flex-direction: column; gap: 5px; flex: 0 0 100%; order: 1; grid-column: 1 / -1; width: 100%; min-width: 0; box-sizing: border-box; margin: 0 0 6px; padding: 10px 9px 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); box-shadow: 0 3px 12px rgba(0, 0, 0, .16); cursor: pointer; text-align: left; font: inherit; color: var(--dsw-alias-label-primary); font-size: 11px; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .loci-card-root:hover { background: var(--dsw-alias-bg-layer-2); }
-.loci-card-root.is-rail { padding: 6px; align-items: center; justify-content: center; }
-.loci-card-head { display: flex; align-items: center; gap: 6px; width: 100%; }
-.loci-card-title { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
-.loci-card-grow { flex: 1 1 auto; }
-.loci-card-ver { font-size: 10px; color: var(--dsw-alias-label-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.loci-card-root.is-rail { flex: 0 0 auto; padding: 6px; align-items: center; justify-content: center; }
+.loci-card-head { display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; }
+.loci-card-title { font-size: 13px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.loci-card-ver { flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 8.5px; line-height: 1.2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; white-space: nowrap; }
+.loci-card-ver:hover { color: var(--dsw-alias-label-primary); }
+.loci-card-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
+.loci-card-dot.is-warn { background: var(--dsw-alias-state-warn-primary); }
+.loci-card-dot.is-error { background: var(--dsw-alias-state-error-primary); }
+.loci-card-meta { flex: 1 1 auto; min-width: 0; font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .loci-card-mark { display: flex; align-items: center; color: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
-.loci-card-note { display: flex; flex-direction: column; gap: 5px; }
-.loci-card-stamp { font-size: 10.5px; color: var(--dsw-alias-label-secondary); letter-spacing: .01em; }
-.loci-card-prose { margin: 0; font-size: 12px; line-height: 1.62; color: var(--dsw-alias-label-primary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.loci-card-hint { font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin-top: 1px; }
-.loci-card-empty { font-size: 11px; color: var(--dsw-alias-label-secondary); }
-.loci-card-line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.loci-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 8px; width: 100%; }
+.loci-card-metric { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.loci-card-metric-label { font-size: 8px; color: var(--dsw-alias-label-secondary); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loci-card-metric-value { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.loci-card-metric-value.is-warn { color: var(--dsw-alias-state-warn-primary); }
+.loci-card-metric-value.is-error { color: var(--dsw-alias-state-error-primary); }
+.loci-card-barline { display: flex; align-items: center; gap: 6px; width: 100%; }
+.loci-card-bar { flex: 1 1 auto; min-width: 20px; height: 4px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2); overflow: hidden; }
+.loci-card-bar-fill { height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary); }
+.loci-card-bar-fill.is-warn { background: var(--dsw-alias-state-warn-primary); }
+.loci-card-bar-label { font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.loci-card-foot { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 8.5px; color: var(--dsw-alias-label-secondary); }
+.loci-card-foot-grow { flex: 1 1 auto; }
+.loci-card-empty { font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
+.loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
@@ -420,7 +312,7 @@ window.__ModuleLoader__.load({
      *
      * The card is a page of notes, so this reads as prose rather than a list: one
      * clause per entry, joined with 。or ， and cut when it stops fitting. Consensus
-     * items lead with 已定 and a fact leads with its own subject, because "we
+     * items lead with the agreement verb and a fact leads with its own subject, because "we
      * agreed" and "it happens to be true" are different kinds of knowing.
      */
     function proseOf(notes, t) {
@@ -452,7 +344,7 @@ window.__ModuleLoader__.load({
     /**
      * How long ago something was understood, in words rather than numbers.
      *
-     * "昨天" and "刚才" are the whole point of the card: they are what makes a
+     * "yesterday" and "just now" are the whole point of the card: they are what makes a
      * reader believe the memory is alive. A bare timestamp makes them do the
      * arithmetic instead.
      */
@@ -503,41 +395,35 @@ window.__ModuleLoader__.load({
     }
 
     /** The small version line shared by the card and the panel footer. */
-    function VersionLine({ t, update, onCheck, checking }) {
-      const version = typeof update?.version === 'string' ? update.version.replace(/^v/i, '') : null;
+    function VersionLabel({ t, update, onCheck, checking }) {
+      // A chip, not a sentence. The old label said "update check is off" inline, which
+      // is why the card header read like body copy; the state now lives in the tooltip.
+      const version = update?.version;
       const hasUpdate = update?.updateAvailable === true;
-      const unknown = update !== undefined && update.status === 'unavailable';
-      // The check is opt-in, so "off" is a normal state, not a failure: it must read
-      // as switched off rather than as a button that does nothing.
-      const checkDisabled = update?.checkEnabled === false;
-      const text = hasUpdate
-        ? `${t('card.updateTo')}${update.latestVersion ? ` · v${update.latestVersion}` : ''}`
-        : unknown
+      const note = checking
+        ? t('card.checking')
+        : update === undefined || update === null
           ? t('card.unknown')
-          : checkDisabled
-            ? t('card.checkOff')
-            : update?.status === 'ok'
-              ? t('card.upToDate')
-              : t('card.check');
+          : hasUpdate
+            ? t('card.updateTo')
+            : update.status === 'disabled'
+              ? t('card.checkOff')
+              : t('card.upToDate');
       return h(
-        'span',
-        { className: 'loci-card-line', style: { gap: '5px' } },
-        version ? h('span', { className: 'loci-card-ver' }, `v${version}`) : null,
-        h(
-          'button',
-          {
-            type: 'button',
-            className: 'loci-btn is-quiet',
-            title: text,
-            disabled: checking === true || checkDisabled,
-            onClick: (event) => {
-              event.stopPropagation();
-              onCheck?.();
-            },
+        'button',
+        {
+          type: 'button',
+          className: 'loci-card-ver',
+          title: note,
+          'aria-label': note,
+          disabled: checking,
+          onClick: (event) => {
+            event.stopPropagation();
+            onCheck?.();
           },
-          checking === true ? t('card.checking') : text,
-        ),
-        hasUpdate ? h('span', { className: 'loci-dot' }) : null,
+        },
+        version ? `v${version}` : t('card.unpublished'),
+        hasUpdate ? h('span', { className: 'loci-card-dot is-error', 'aria-hidden': true }) : null,
       );
     }
 
@@ -547,10 +433,12 @@ window.__ModuleLoader__.load({
       const t = props?.t ?? ((key) => key);
       const wide = props?.wide !== false;
       const open = props?.openPanel;
-      // The card asks "what does it know", not "what happened": a page of notes,
-      // not a dashboard. No counters — a number tells you something changed, a
-      // sentence tells you what was understood.
-      const knowledge = useJson('/knowledge?limit=4', { intervalMs: 30_000 });
+      // A compact readout, not a note: the counts are the reason a person looks at this
+      // strip at all. The earlier version showed one prose sentence and no numbers, which
+      // read as bare text inside the sidebar rather than as a card — and the audit's own
+      // "no dashboard" objection was about refusing to interrupt, not about hiding data.
+      const stats = useJson('/stats', { intervalMs: 30_000 });
+      const config = useJson('/config');
       const update = useJson('/update');
       const [checking, setChecking] = useState(false);
       const [fresh, setFresh] = useState(undefined);
@@ -567,9 +455,19 @@ window.__ModuleLoader__.load({
         }
       }, []);
 
-      const data = knowledge.data;
-      const notes = data?.items ?? [];
-      const pending = Number(data?.pending ?? 0);
+      const data = stats.data;
+      const byStatus = data?.byStatus ?? {};
+      const verified = Number(byStatus.verified ?? 0);
+      const pending = Number(data?.pendingCandidates ?? byStatus.candidate ?? 0);
+      const disputed = Number(data?.disputed ?? byStatus.disputed ?? 0);
+      const entries = Number(data?.heads ?? 0);
+      const injection = data?.lastInjection ?? null;
+      const indexBytes = Number(injection?.bytes ?? 0);
+      const budget = Number(config.data?.config?.sectionMaxBytes ?? 0);
+      const usage = Array.isArray(data?.usage) ? data.usage : [];
+      const injected = usage.reduce((total, row) => total + Number(row.injections ?? 0), 0);
+      const opened = usage.reduce((total, row) => total + Number(row.reads ?? 0), 0);
+      const dead = usage.filter((row) => Number(row.injections ?? 0) > 0 && Number(row.reads ?? 0) === 0).length;
 
       if (!wide) {
         return h(
@@ -587,6 +485,16 @@ window.__ModuleLoader__.load({
           ),
         );
       }
+
+      const dotClass = stats.error !== undefined ? 'is-error' : pending > 0 || disputed > 0 ? 'is-warn' : '';
+      const stamp = data === undefined ? '' : stampOf(injection?.ts ?? data.generatedAt ?? Date.now());
+      const metric = (label, value, tone) =>
+        h(
+          'div',
+          { className: 'loci-card-metric' },
+          h('span', { className: 'loci-card-metric-label' }, label),
+          h('span', { className: `loci-card-metric-value${tone ? ` ${tone}` : ''}` }, String(value)),
+        );
 
       return h(
         'div',
@@ -616,34 +524,56 @@ window.__ModuleLoader__.load({
             ),
           ),
           h('span', { className: 'loci-card-title' }, t('card.title')),
-          h('span', { className: 'loci-card-grow' }),
-          h(VersionLine, { t, update: fresh ?? update.data, onCheck: check, checking }),
+          h(VersionLabel, { t, update: fresh ?? update.data, onCheck: check, checking }),
+          h('span', { className: `loci-card-dot ${dotClass}`.trim(), 'aria-hidden': true }),
+          h('span', { className: 'loci-card-meta' }, stamp ? `${t('card.updated')} ${stamp}` : ''),
         ),
-        data === undefined
-          ? h('div', { className: 'loci-card-empty' }, knowledge.error ?? t('panel.loading'))
-          : notes.length === 0
-            ? h(
-                'div',
-                null,
-                h('div', { className: 'loci-card-empty' }, t('card.empty')),
-                h('div', { className: 'loci-card-hint' }, t('card.emptyHint')),
-              )
-            : h(
-                'div',
-                { className: 'loci-card-note' },
-                h(
+        stats.error !== undefined
+          ? h('div', { className: 'loci-card-empty' }, stats.error)
+          : data === undefined
+            ? h('div', { className: 'loci-card-empty' }, t('panel.loading'))
+            : entries === 0 && pending === 0 && disputed === 0
+              ? h(
                   'div',
-                  { className: 'loci-card-stamp' },
-                  `${t('card.updated')} ${stampOf(notes[0]?.at ?? data.generatedAt)}`,
+                  null,
+                  h('div', { className: 'loci-card-empty' }, t('card.empty')),
+                  h('div', { className: 'loci-card-hint' }, t('card.emptyHint')),
+                )
+              : h(
+                  'div',
+                  { className: 'loci-card-grid' },
+                  metric(t('card.verified'), verified),
+                  metric(t('card.pending'), pending, pending > 0 ? 'is-warn' : ''),
+                  metric(t('card.disputed'), disputed, disputed > 0 ? 'is-error' : ''),
                 ),
-                h('p', { className: 'loci-card-prose' }, proseOf(notes, t)),
-                pending > 0
-                  ? h('div', { className: 'loci-card-hint' }, t('card.pending').replace('{n}', String(pending)))
-                  : null,
+        data !== undefined && entries > 0 && budget > 0
+          ? h(
+              'div',
+              { className: 'loci-card-barline' },
+              h(
+                'div',
+                { className: 'loci-card-bar', role: 'presentation' },
+                h('div', {
+                  className: `loci-card-bar-fill${indexBytes / budget > 0.85 ? ' is-warn' : ''}`,
+                  style: { width: `${Math.min(100, Math.round((indexBytes / budget) * 100))}%` },
+                }),
               ),
+              h('span', { className: 'loci-card-bar-label' }, `${indexBytes} / ${budget} B`),
+            )
+          : null,
+        data !== undefined && injected > 0
+          ? h(
+              'div',
+              { className: 'loci-card-foot' },
+              h('span', null, `${t('card.injected')} ${injected}`),
+              h('span', null, `${t('card.opened')} ${opened}`),
+              dead > 0 ? h('span', null, `${t('card.dead')} ${dead}`) : null,
+              h('span', { className: 'loci-card-foot-grow' }),
+            )
+          : null,
+        pending > 0 ? h('div', { className: 'loci-card-hint' }, t('card.pendingHint').replace('{n}', String(pending))) : null,
       );
     }
-
     // ---------------------------------------------------------------- panel
 
     function FeedTab({ t, onOpen }) {
@@ -1434,11 +1364,11 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      ctx.effect(() => ctx.locale.register(NS, { zh: ZH, en: EN }), 'dsh-loci: locale dictionaries');
+      ctx.effect(() => ctx.locale.register(NS, { en: EN }), 'dsh-loci: locale dictionaries');
       const bind = ctx.locale.bind(NS);
       const t = tOf(bind);
 
-      // The "副屏": a card beside Settings, always visible while the sidebar is.
+      // The sidebar mirror: a card beside Settings, always visible while the sidebar is.
       ctx.slots.inject('sidebar.footer.action', () =>
         ctx.slots.register(
           {

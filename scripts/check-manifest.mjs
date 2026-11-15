@@ -30,15 +30,18 @@ else if (!manifest.dshReleases.some((row) => row.dsh === '0.2.2-rc.1' && row.sta
 }
 
 // 3. Every runtime file the bundle declares must exist.
-for (const path of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json', 'locale/zh.json']) {
+// One language, deliberately: a second locale file is what made the UI follow the browser
+// language, so `locale/zh.json` is not merely absent — its presence would be a regression.
+for (const path of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/en.json']) {
   if (!existsSync(join(root, path))) problems.push(`missing runtime file: ${path}`);
 }
+if (existsSync(join(root, 'locale/zh.json'))) problems.push('locale/zh.json must not exist: the plugin ships English only');
 if (manifest.dsh?.bundle?.patch !== './cordis.patch.yml') problems.push('dsh.bundle.patch must point at cordis.patch.yml');
 if (manifest.dsh?.client?.platform !== 'web') problems.push('dsh.client.platform must be web');
 if (!manifest.exports?.['./client']) problems.push('the ./client export is required for the UI half');
 
 // 4. Display metadata: the plugin manager reads these without activating the plugin.
-for (const locale of ['en', 'zh']) {
+for (const locale of ['en']) {
   try {
     const data = JSON.parse(read(`locale/${locale}.json`));
     if (typeof data?.meta?.title !== 'string' || data.meta.title.length < 3) problems.push(`locale/${locale}.json lacks meta.title`);

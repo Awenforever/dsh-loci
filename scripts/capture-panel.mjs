@@ -66,7 +66,7 @@ await wait(1200);
 const opened = await evaluate(`
   (() => {
     const nodes = [...document.querySelectorAll('button, [role="button"], a')];
-    const target = nodes.find((node) => /^(记忆|Memory)$/i.test((node.getAttribute('aria-label') || node.textContent || '').trim()));
+    const target = nodes.find((node) => /^(Memory)$/i.test((node.getAttribute('aria-label') || node.textContent || '').trim()));
     if (target === undefined) return false;
     target.click();
     return true;

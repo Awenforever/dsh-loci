@@ -41,7 +41,7 @@
     "0 bytes injected on an empty store; a hard 3,584-byte budget afterwards",
     "the index never reorders on write, so the prompt prefix survives",
     "loci_search returns total + cursor: a broad question can list everything",
-    "CJK bigram retrieval — 路径断言 and 迁移 both match",
+    "CJK bigram retrieval — a two-character phrase matches inside a longer sentence",
     "bi-temporal history: edits close a revision instead of deleting it",
     "only verified facts are injected, and only a person can verify",
     "no model call and no network in the default path"
