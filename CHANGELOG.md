@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.4.1] — 2026-11-15
+
+Three fixes from an independent boundary audit. All three were verified by running the
+code, not by reading it.
+
+### Fixed
+
+- **The CLI bypassed the hard-delete gate.** `scripts/cli.mjs` constructed the store
+  with `live: () => true`, so every gate that reads a live value evaluated to open:
+  with `allowHardDelete: false` the store refused `purge` and the command deleted
+  anyway, `--allow-hard-delete` was decorative, and a comment directly above the code
+  said the opposite. Measured before and after. `test/integration/cli-gate.test.mjs`
+  now runs the real command line, which is the surface that broke — the store-level
+  test passed throughout.
+
+- **The panel write route accepted a caller-supplied `status`.** `POST /api/loci/write`
+  forwarded `status` verbatim and defaulted it to `'verified'`, which also skipped the
+  instruction-like quarantine: instruction-shaped text sent through the panel landed as
+  `verified` instead of `disputed`. The field is gone; every write goes through the
+  store's derivation like the rest of the system.
+
+- **`SECURITY.md` claimed a self-test probe that did not exist.** The T2 row said "a
+  self-test probe keeps this honest" and the string `self-test` appeared nowhere else
+  in the repository. Rather than delete the sentence, `loci doctor` now runs the probe:
+  it renders hostile text (`{{…}}`, a closing fence, a script tag, bare angle brackets)
+  and fails if anything survives, and it checks that a known instruction shape is still
+  detected.
+
+### Note
+
+The audit also found that the acceptance numbers are from **v1.0.0** while the tree is
+2.4.x, and that the acceptance question contains the entry title verbatim — so the
+"98% recall" figure measures lookup, not memory effect. That is a measurement problem,
+not a bug, and it is not addressed in this patch; it needs a re-run, not an edit.
+
 ## [2.4.0] — 2026-11-15
 
 Three items from `docs/PRIOR-ART.md` — the systematic pass over what the field does

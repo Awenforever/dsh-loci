@@ -10,7 +10,7 @@ file sandbox, approval policy) are the Harness's and are assumed to work.
 | # | Threat | Consequence if unhandled | Control |
 |---|---|---|---|
 | T1 | Stored text reaches the prompt as instructions | Persistent prompt injection across sessions | `verified`-only injection; instruction-shaped text is quarantined as `disputed`; `renderSafe` escapes markup; section registered with `interpolate:false` |
-| T2 | Stored text breaks prompt assembly | Every later request throws | `interpolate:false` plus `{{`/`}}` neutralization at render time; a self-test probe keeps this honest |
+| T2 | Stored text breaks prompt assembly | Every later request throws | `interpolate:false` plus `{{`/`}}` neutralization at render time; `loci doctor` runs a live probe that renders hostile text and fails if any of it survives |
 | T3 | A credential is written into memory | Secret in a plaintext database and in every future prompt | nine high-confidence patterns + entropy check; default `redact`, optional `reject` |
 | T4 | An external agent or page writes memory | Poisoned long-term memory | tools are model-facing only through the Host; the MCP facade is read-only by default and can only create candidates; imported entries are candidates |
 | T5 | Cross-project leakage | Project A's facts answer in project B | explicit scope-key sets on every read; `global` requires an explicit scope; tested |

@@ -230,14 +230,21 @@ export function registerApiRoutes(ctx, deps) {
       pinned: body.pinned === true,
       force: body.force === true,
     };
+    // No `status` passthrough, on purpose.
+    //
+    // The store derives trust from `trustSource` and the content, and passing a
+    // caller-supplied status here did two bad things: it let any same-origin script
+    // assert a status directly, and `?? 'verified'` skipped the instruction-like
+    // quarantine, so a panel write of instruction-shaped text landed as verified
+    // instead of disputed. `trustSource: 'user'` above already means "a person
+    // asserted this", which is what made the entry verified in the first place.
     if (typeof body.id === 'string' && body.id.length > 0) {
       return json(store.update(body.id, {
         ...common,
         expectedRevision: Number.isSafeInteger(body.expectedRevision) ? body.expectedRevision : undefined,
-        status: body.status,
       }));
     }
-    return json(store.write({ ...common, status: body.status ?? 'verified' }));
+    return json(store.write(common));
   });
 
   route('/api/loci/verify', ['POST'], async (request) => {

@@ -315,7 +315,13 @@ switch (command) {
       ...(argv.includes('--allow-hard-delete') ? { allowHardDelete: true } : {}),
     });
     ensureMemoryRoot(memoryRoot);
-    const store = new Store({ memoryRoot, paths, config, live: () => true, pluginVersion: PLUGIN_VERSION });
+    // No `live` override here: the store's default reader is `(key) => config[key]`,
+    // which is exactly what this command decided above. Passing `() => true` made
+    // every gate that reads a live value — hard delete included — evaluate to open,
+    // so `--allow-hard-delete` was decorative and a config that forbade purging did
+    // not stop it. The comment above this block was right; the code underneath it was
+    // not.
+    const store = new Store({ memoryRoot, paths, config, pluginVersion: PLUGIN_VERSION });
     try {
       const result = store.forget(id, { mode: 'purge', confirm, actor: 'cli' });
       emit(result, `purged ${result.id}`);
