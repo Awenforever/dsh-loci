@@ -14,6 +14,8 @@
  * @module dsh-loci/capture
  */
 
+import { effectiveWriteScope } from '../scope.js';
+
 /** Longest text kept per buffered message. */
 const MESSAGE_CHAR_CAP = 4000;
 
@@ -332,9 +334,30 @@ export class Capture {
     return written;
   }
 
+  /**
+   * Where an auto-captured summary belongs.
+   *
+   * These follow the same boundary as an explicit write: a session summary is about one
+   * conversation, so `session` and `project` both keep it local. It used to be pinned to
+   * `workspace`, which put one product's conversation summaries in another product's bucket —
+   * harmless for the prompt (captures are candidates and never injected) but wrong in the
+   * panel and in the export, where they read as shared facts.
+   *
+   * @returns `{key, label}` for the effective scope of this session.
+   */
+  #scopeFor(cwd, sessionId) {
+    const scopes = this.resolveScopes({ sessionId, cwd });
+    const override = this.store?.getSessionScope?.(sessionId);
+    const chosen = effectiveWriteScope(scopes, {
+      override,
+      configured: this.config?.('defaultScope'),
+    });
+    return { key: chosen.key, label: chosen.label };
+  }
+
   /** Workspace scope key for a buffer's directory. */
   #workspaceKey(cwd, sessionId) {
-    return this.resolveScopes({ sessionId, cwd }).workspace;
+    return this.#scopeFor(cwd, sessionId).key;
   }
 
   /** Workspace display label for a buffer's directory. */

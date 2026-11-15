@@ -30,8 +30,16 @@ export const HAS_CONFIG_SCHEMA = z !== null && typeof z?.object === 'function';
 export const DEFAULTS = Object.freeze({
   /** Explicit Harness home override; empty means `$DSH_HOME` then `~/.dsh`. */
   home: '',
-  /** Scope a `loci_write` without an explicit scope lands in. */
-  defaultScope: 'workspace',
+  /**
+   * Scope a `loci_write` without an explicit scope lands in.
+   *
+   * `auto` is the default and means "the project if this directory really is inside one,
+   * otherwise this conversation". It used to be `workspace`, which is right only when one
+   * directory holds one project; on a directory that carries several independent repositories
+   * every session reports the same cwd, so `workspace` merged them into one bucket and put one
+   * product's rules in front of another product's session.
+   */
+  defaultScope: 'auto',
   /**
    * Hard byte budget for the whole injected section (header + rules + index).
    * Calibrated on a real Host: a 5,039-byte mixed-CJK section measured ~2,100
@@ -127,7 +135,7 @@ export const DEFAULTS = Object.freeze({
  * guards cannot drift apart.
  */
 export const ENUMS = Object.freeze({
-  defaultScope: ['workspace', 'project', 'global'],
+  defaultScope: ['auto', 'session', 'workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
   captureMode: ['rules', 'off'],
   extractMode: ['off', 'on', 'turn', 'session'],

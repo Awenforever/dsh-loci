@@ -249,6 +249,10 @@ window.__ModuleLoader__.load({
 .loci-pill.is-disputed { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
 .loci-pill.is-deleted { color: var(--dsw-alias-state-idle-primary); }
 .loci-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.loci-scope { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.loci-select { font: inherit; font-size: 12px; line-height: 18px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; max-width: 220px; }
+.loci-select:hover { border-color: var(--dsw-alias-border-l4); color: var(--dsw-alias-label-primary); }
+.loci-select:disabled { opacity: .5; cursor: default; }
 .loci-legend-item { display: inline-flex; align-items: center; gap: 5px; }
 .loci-legend-key { font-weight: 500; color: var(--dsw-alias-label-primary); }
 .loci-tag { font-size: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 4px; padding: 0 5px; color: var(--dsw-alias-label-secondary); }
@@ -1201,6 +1205,62 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * Where this conversation's memory is saved.
+     *
+     * The default cannot be guessed well: one workspace directory may hold several independent
+     * repositories and every session opened there reports the same cwd, so "the directory" is
+     * neither the project nor the conversation. The automatic rule therefore writes to the
+     * project when the directory really is inside one and to the conversation otherwise — and
+     * this control exists so a person can say otherwise for a single conversation.
+     *
+     * The choices come from the Host, not from a local list, so the panel cannot offer a mode
+     * the resolver does not know.
+     */
+    function ScopeSelect({ t }) {
+      const { data, reload } = useJson('/scope');
+      const [saving, setSaving] = useState(false);
+      const choices = data?.choices ?? [];
+      const change = async (event) => {
+        // The automatic option carries the scope it resolved to in its value (two "automatic"
+        // options would otherwise be indistinguishable), so strip that back to `auto`.
+        const raw = event.target.value;
+        const mode = raw.startsWith('auto:') ? 'auto' : raw;
+        setSaving(true);
+        try {
+          await apiFetch('/scope', { method: 'POST', body: JSON.stringify({ mode }) });
+          reload();
+        } catch (failure) {
+          window.console?.warn?.('loci: cannot set memory boundary', failure);
+        } finally {
+          setSaving(false);
+        }
+      };
+      if (data === undefined || choices.length === 0) return null;
+      const current = data.mode === 'auto' ? `auto:${data.effective}` : data.mode;
+      return h(
+        'span',
+        { className: 'loci-scope' },
+        h(
+          'select',
+          {
+            className: 'loci-select',
+            value: current,
+            disabled: saving || data.sessionId === null,
+            title: data.reason,
+            onChange: change,
+          },
+          // "Automatic" carries the answer it resolved to, because "automatic" alone does not
+          // tell anyone where the memory actually goes.
+          choices.map((choice) => {
+            const value = choice.value === 'auto' ? `auto:${data.effective}` : choice.value;
+            const label = choice.value === 'auto' ? `${choice.label} — ${data.effective}` : choice.label;
+            return h('option', { key: choice.value, value }, label);
+          }),
+        ),
+      );
+    }
+
     function MemoryPanel({ t }) {
       const [tab, setTab] = useState(() => {
         // "N item(s) waiting for you in Review" in the card is a way in, not a remark.
@@ -1229,6 +1289,7 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'loci-bar' },
           h('span', { className: 'loci-title' }, t('panel.title')),
+          h(ScopeSelect, { t }),
           h('span', { className: 'loci-grow' }),
           selected === undefined ? h(Tabs, { value: tab, onChange: setTab, tabs }) : null,
         ),

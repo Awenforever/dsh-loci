@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -170,10 +170,22 @@ CREATE TABLE IF NOT EXISTS request_stat (
   section_bytes  INTEGER NOT NULL,
   entries_listed INTEGER NOT NULL,
   entries_hidden INTEGER NOT NULL,
-  source         TEXT
+  source         TEXT,
+  cwd            TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_request_stat_ts ON request_stat (ts DESC);
 CREATE INDEX IF NOT EXISTS ix_request_stat_source ON request_stat (source);
+
+-- session_scope (v5) remembers the memory boundary a person chose for one conversation.
+-- The default cannot be inferred well: one workspace directory may hold several independent
+-- repositories, and every session opened there reports the same cwd, so "the directory" is
+-- neither the project nor the conversation. When a person picks a boundary, it has to survive
+-- the next turn, which means it lives in the database rather than in the panel's state.
+CREATE TABLE IF NOT EXISTS session_scope (
+  session_id TEXT PRIMARY KEY,
+  mode       TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (
   tokens,

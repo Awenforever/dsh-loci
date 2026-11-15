@@ -8,7 +8,7 @@
  * list/search default to every scope; the agent's tools never do.
  * @module dsh-loci/api
  */
-import { readScopeKeys, resolveScopes } from '../scope.js';
+import { readScopeKeys, resolveScopes, effectiveWriteScope, scopeChoices, SCOPE_KINDS } from '../scope.js';
 import { search } from '../store/search.js';
 import { exportMarkdown, importMarkdown } from '../store/export.js';
 import { renderIndexBody } from '../inject/index-section.js';
@@ -107,6 +107,70 @@ export function registerApiRoutes(ctx, deps) {
       // Which entries spend prompt bytes and are never opened. Aggregate request
       // stats cannot answer this, which is why schema v2 added per-entry counters.
       usage: store.usageReport({ scopeKeys, limit: 50 }),
+    });
+  });
+
+  // The memory boundary of the conversation the panel is describing.
+  //
+  // The panel is global chrome with no session id of its own, so it acts on whichever
+  // conversation the Host last assembled a prompt for (the same signal the sidebar card uses).
+  // GET returns the choice in force and where it actually lands; POST stores it.
+  route('/api/loci/scope', ['GET', 'POST'], async (request) => {
+    // One registration handling both verbs on purpose: `connection.fetch.register` is keyed by
+    // path, so registering the same path twice would be at best redundant and at worst a
+    // duplicate-registration error at load time.
+    if (request.method !== 'POST') {
+      const active = store.activeSession();
+      const sessionId = active?.sessionId;
+      const scopes = resolveScopes({ sessionId, cwd: active?.cwd });
+      const override = store.getSessionScope(sessionId);
+      const chosen = effectiveWriteScope(scopes, { override, configured: config.defaultScope });
+      return json({
+        sessionId: sessionId ?? null,
+        mode: chosen.mode,
+        override: override ?? null,
+        effective: chosen.scope,
+        reason: chosen.reason,
+        projectRootFound: scopes.projectRootFound,
+        // True when this conversation's directory was never recorded (rows written before
+        // schema v5). The labels are then a placeholder until the next request; the effective
+        // scope is still correct, because it does not depend on knowing the directory.
+        directoryKnown: scopes.cwd !== undefined,
+        labels: {
+          session: scopes.labels.session,
+          project: scopes.labels.project,
+          workspace: scopes.labels.workspace,
+          global: scopes.labels.global,
+        },
+        canProject: scopes.projectRootFound,
+        choices: scopeChoices(),
+      });
+    }
+
+    const parsed = await readJson(request);
+    if (parsed.error !== undefined) return parsed.error;
+    const body = parsed.value;
+    const active = store.activeSession();
+    if (active === undefined) return json({ error: 'no active conversation yet' }, 409);
+    const mode = body.mode;
+    if (mode !== undefined && mode !== 'auto' && !SCOPE_KINDS.includes(mode)) {
+      return json({ error: 'mode must be one of auto, session, workspace, project, global' }, 400);
+    }
+    const stored = store.setSessionScope(active.sessionId, mode);
+    // Say what the choice resolves to, so a person who picked "project" on a directory that
+    // is not inside one is told, instead of the wrong scope being applied silently.
+    const scopes = resolveScopes({ sessionId: active.sessionId, cwd: active.cwd });
+    const chosen = effectiveWriteScope(scopes, {
+      override: stored,
+      configured: config.defaultScope,
+    });
+    return json({
+      sessionId: active.sessionId,
+      mode: chosen.mode,
+      override: stored ?? null,
+      effective: chosen.scope,
+      reason: chosen.reason,
+      projectRootFound: scopes.projectRootFound,
     });
   });
 

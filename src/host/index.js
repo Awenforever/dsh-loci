@@ -23,7 +23,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '3.7.0';
+export const VERSION = '3.8.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -151,6 +151,9 @@ export function apply(ctx, rawConfig = {}) {
       return {
         sessionId: session.id,
         scopeKey: scopes.workspace,
+        // Recorded so a surface outside the session (the panel's memory-boundary selector)
+        // can resolve the same scopes: a scope key is a hash and cannot be reversed.
+        cwd: scopes.cwd,
         scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
         scopeLabel: `workspace:${scopes.labels.workspace}`,
       };
@@ -256,6 +259,7 @@ export function apply(ctx, rawConfig = {}) {
               store.recordInjection({
                 sessionId: session.id,
                 scopeKey: scopes.workspace,
+                cwd: scopes.cwd,
                 bytes: assist.bytes,
                 listed: assist.ids.length,
                 hidden: 0,

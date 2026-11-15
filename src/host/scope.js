@@ -44,27 +44,43 @@ export function canonicalDir(dir) {
 }
 
 /**
- * Find the project root: the nearest ancestor holding a `.git` entry, else the
- * canonical directory itself. Worktrees therefore share one project scope.
+ * Find the project root: the nearest ancestor holding a `.git` entry.
+ *
+ * Returns the directory itself when nothing is found, which keeps `project` equal to
+ * `workspace` for a plain directory. That collapse is why {@link findProjectRootInfo} exists:
+ * a caller deciding *where to write* needs to know whether a real project boundary was found,
+ * and "the path we started from" is not one.
+ *
  * @param cwd - session working directory.
  * @returns the canonical project root.
  */
 export function findProjectRoot(cwd) {
+  return findProjectRootInfo(cwd).root;
+}
+
+/**
+ * Find the project root and say whether a `.git` entry was actually found.
+ * @param cwd - session working directory.
+ * @returns `{root, found}`.
+ */
+export function findProjectRootInfo(cwd) {
   const start = canonicalDir(cwd);
   const cached = projectRootCache.get(start);
   if (cached !== undefined) return cached;
   let current = start;
   for (let depth = 0; depth < MAX_ROOT_DEPTH; depth += 1) {
     if (existsSync(join(current, '.git'))) {
-      projectRootCache.set(start, current);
-      return current;
+      const answer = { root: current, found: true };
+      projectRootCache.set(start, answer);
+      return answer;
     }
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  projectRootCache.set(start, start);
-  return start;
+  const answer = { root: start, found: false };
+  projectRootCache.set(start, answer);
+  return answer;
 }
 
 /**
@@ -94,7 +110,8 @@ function pathKey(prefix, path) {
 export function resolveScopes({ sessionId, cwd }) {
   const requested = typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined;
   const dir = requested === undefined ? undefined : canonicalDir(requested);
-  const projectRoot = dir === undefined ? undefined : findProjectRoot(dir);
+  const info = dir === undefined ? undefined : findProjectRootInfo(dir);
+  const projectRoot = info?.root;
   const unresolved = dir === undefined;
   return {
     session: `session:${sessionId ?? 'unknown'}`,
@@ -109,7 +126,68 @@ export function resolveScopes({ sessionId, cwd }) {
     },
     cwd: dir,
     projectRoot,
+    projectRootFound: info?.found === true,
   };
+}
+
+/**
+ * Where a write lands when the caller did not name a scope.
+ *
+ * `auto` means "the project if this directory is really inside one, otherwise this
+ * conversation". The old rule was always `workspace`, which is right only when a workspace
+ * holds one project — on a machine where one directory carries several independent
+ * repositories, it merges every product's facts into one bucket and puts a release rule in
+ * front of an unrelated session. Falling back to `session` keeps an unresolvable directory
+ * from silently leaking across conversations; sharing is then an explicit choice.
+ *
+ * @param scopes - identity from {@link resolveScopes}.
+ * @param options - `override` (a per-session choice) and `configured` (`config.defaultScope`).
+ * @returns `{mode, scope, key, label, reason}`.
+ */
+export function effectiveWriteScope(scopes, options = {}) {
+  const requested = [options.override, options.configured].find(
+    (value) => typeof value === 'string' && value.length > 0,
+  );
+  const mode =
+    requested === undefined || requested === 'auto'
+      ? scopes.projectRootFound
+        ? 'project'
+        : 'session'
+      : SCOPE_KINDS.includes(requested)
+        ? requested
+        : 'auto';
+  const scope = mode === 'auto' ? (scopes.projectRootFound ? 'project' : 'session') : mode;
+  // A caller may hand in a partial identity (tests, older wiring). Landing on a scope with no
+  // key would write with `undefined` and vanish without an error, so fall back to the one key
+  // that has always existed.
+  const resolvedScope = typeof scopes[scope] === 'string' ? scope : 'workspace';
+  const reason =
+    requested === undefined || requested === 'auto'
+      ? scopes.projectRootFound
+        ? 'auto: this directory is inside a project'
+        : 'auto: no project found, so this stays in this conversation'
+      : `chosen for this conversation: ${resolvedScope}`;
+  return {
+    mode: requested ?? 'auto',
+    scope: resolvedScope,
+    key: scopes[resolvedScope],
+    label: scopes.labels?.[resolvedScope],
+    reason,
+  };
+}
+
+/**
+ * The modes a person can choose for one conversation, with the labels the panel shows.
+ * @returns ordered `{value, label}` pairs.
+ */
+export function scopeChoices() {
+  return [
+    { value: 'auto', label: 'Automatic' },
+    { value: 'project', label: 'This project' },
+    { value: 'session', label: 'This conversation only' },
+    { value: 'workspace', label: 'Whole workspace' },
+    { value: 'global', label: 'Everywhere (global)' },
+  ];
 }
 
 /**
@@ -138,7 +216,9 @@ export function readScopeKeys(scopes, options = {}) {
     if (includeGlobal && options.scope !== 'global') keys.push(scopes.global);
     return keys;
   }
-  const keys = [scopes.session, scopes.workspace, scopes.project];
+  // Deduplicated: a directory that is not inside a repository maps `project` to the same key
+  // as `workspace`, and a repeated key makes every count downstream report double.
+  const keys = [...new Set([scopes.session, scopes.workspace, scopes.project])];
   if (includeGlobal) keys.push(scopes.global);
   return keys;
 }

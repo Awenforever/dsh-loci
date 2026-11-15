@@ -7,7 +7,7 @@
  * forget, inspect — and the panel/MCP surfaces reuse the same store methods.
  * @module dsh-loci/tools
  */
-import { readScopeKeys, resolveScopes, selectScope } from '../scope.js';
+import { readScopeKeys, resolveScopes, selectScope, effectiveWriteScope } from '../scope.js';
 import { search } from '../store/search.js';
 import { indexTitle, renderSafe } from '../inject/sanitize.js';
 import { MemoryNotFoundError, MemoryRejectedError, RevisionConflictError } from '../store/store.js';
@@ -241,7 +241,17 @@ export function createTools(deps) {
         return { op, entry: store.get(id).entry, warnings: [], possibleDuplicates: [] };
       }
 
-      const scopeKind = oneOf(args, 'scope', SCOPES, config('defaultScope'));
+      // Where this write lands, when the model did not say. An explicit `scope` argument
+      // wins; otherwise the boundary a person chose for this conversation; otherwise the
+      // automatic rule, which is "the project if this directory really is inside one, else
+      // this conversation". The old rule was always `workspace`, which merges every product
+      // in a shared directory into one bucket.
+      const override = store.getSessionScope(context.sessionId);
+      const fallback = effectiveWriteScope(context.scopes, {
+        override,
+        configured: config('defaultScope'),
+      });
+      const scopeKind = oneOf(args, 'scope', SCOPES, fallback.scope);
       const selected = selectScope(context.scopes, scopeKind);
       const kind = oneOf(args, 'kind', KINDS, 'semantic');
       const title = str(args, 'title', { fallback: undefined });

@@ -13,7 +13,16 @@ function makeCapture(store) {
   return new Capture({
     store,
     config: (key) => ({ ...DEFAULTS, summaryOnDispose: true })[key],
-    resolveScopes: () => ({ workspace: 'workspace:test', labels: { workspace: 'test' } }),
+    // A complete identity, because a write lands in whichever scope is effective for this
+    // session: `session` here, since the stub reports no project root.
+    resolveScopes: () => ({
+      session: 'session:a4',
+      workspace: 'workspace:test',
+      project: 'project:test',
+      global: 'global:',
+      labels: { session: 'session a4', workspace: 'test', project: 'test', global: 'global' },
+      projectRootFound: false,
+    }),
     now: () => 1_700_000_000_000,
   });
 }

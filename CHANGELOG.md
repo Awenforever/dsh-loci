@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.8.0] — 2026-11-16
+
+Memory now has an explicit boundary per conversation, and stops sharing by default.
+
+### Changed
+
+- **A write with no explicit scope no longer lands in the whole workspace.** The old rule was
+  `workspace`, which is right only when one directory holds one project. On `invictus` the
+  directory `default-workspace` carries six independent repositories
+  (`alicat-flow-console`, `codex-advisor`, `dsh-loci`, `dsh-multiview`, `ustc-quota-plugin`,
+  `winmedic-skill`) and is not itself a repository, so every session opened there reported the
+  same cwd and shared one bucket. Measured before the change: five sessions had injected
+  182,868 bytes together, the gas-flow-control session carried 13,243 of them over 41 calls,
+  and a fact written by a throwaway test session reached `inject_count` 326.
+
+  The new rule is `auto`: **the project when the directory really is inside one, otherwise
+  this conversation.** Switching the default to `project` alone would not have helped — the
+  project search finds nothing here, which is exactly why the fallback is `session` and not
+  `workspace`.
+
+- **The read set is unchanged**: session + workspace + project + global. Nothing already
+  stored became invisible; what changed is where new writes go.
+
+### Added
+
+- **A memory-boundary selector in the panel**, next to the title. It reports the mode in force
+  and, for `Automatic`, the scope it resolved to — because "Automatic" alone does not tell
+  anyone where the memory actually goes. Choices: automatic, this project, this conversation
+  only, whole workspace, everywhere. The choice is stored per session and survives restarts.
+
+- `GET`/`POST /api/loci/scope`. The panel is global chrome with no session of its own, so both
+  act on the conversation the Host last assembled a prompt for.
+
+### Schema v5
+
+- `session_scope(session_id, mode, updated_at)` — the remembered choice. `auto` is stored as
+  the absence of a row, so a future default change is not masked by a stale "auto" row.
+- `request_stat.cwd` — the directory each assembly served. A scope key is a hash and cannot be
+  reversed, so without this a surface outside the session could not resolve the same scopes.
+  Rows written before v5 have `NULL` and report `directoryKnown: false` until the next request.
+
+### Fixed
+
+- `readScopeKeys` no longer repeats a key. A non-repository directory maps `project` and
+  `workspace` onto the same path, and a repeated key made every downstream count report double.
+- Auto-captured episodic summaries follow the same boundary as an explicit write. They were
+  pinned to `workspace`, which put one product's conversation summaries in another product's
+  bucket — harmless for the prompt (captures are candidates and never injected) but wrong in
+  the panel and the export, where they read as shared facts.
+
+### Note
+
+The automatic rule is a judgement, not a measurement: "this directory is inside a repository"
+is evidence of a project boundary, and its absence is *not* evidence that everything belongs
+together. When the evidence is missing the fallback is the narrow scope, and widening it is one
+click.
+
 ## [3.7.0] — 2026-11-16
 
 The panel was unreadable, and one of its views had been blank since a bad patch.

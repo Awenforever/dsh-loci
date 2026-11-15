@@ -49,6 +49,12 @@ function rewind(db, target) {
     const requestColumns = () => db.prepare('PRAGMA table_info(request_stat)').all().map((row) => row.name);
     if (requestColumns().includes('source')) db.exec('ALTER TABLE request_stat DROP COLUMN source');
   }
+  if (target < 5) {
+    // v5 added the per-conversation memory boundary and the recorded directory.
+    db.exec('DROP TABLE IF EXISTS session_scope');
+    const columns5 = () => db.prepare('PRAGMA table_info(request_stat)').all().map((row) => row.name);
+    if (columns5().includes('cwd')) db.exec('ALTER TABLE request_stat DROP COLUMN cwd');
+  }
   db.exec(`PRAGMA user_version = ${target}`);
   db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(target));
 }
@@ -124,7 +130,7 @@ test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', 
   }
 });
 
-test('the shipped migration chain v1->v4 keeps every row and adds every shape', (t) => {
+test('the shipped migration chain v1->v5 keeps every row and adds every shape', (t) => {
   const home = mkdtempSync(join(tmpdir(), 'loci-migrate-shipped-'));
   const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
   const paths = layout(root);
@@ -153,7 +159,10 @@ test('the shipped migration chain v1->v4 keeps every row and adds every shape', 
 
     // Ship migrations only: this is the path a real upgrade takes.
     const result = migrate(db, { target: SCHEMA_VERSION, backupDir: paths.backups });
-    assert.deepEqual(result.steps, ['v1->v2', 'v2->v3', 'v3->v4']);
+    // Derived from SCHEMA_VERSION so adding a migration does not mean editing this list:
+    // the assertion is "every step ran in order, none was skipped".
+    const expectedSteps = Array.from({ length: SCHEMA_VERSION - 1 }, (_, index) => `v${index + 1}->v${index + 2}`);
+    assert.deepEqual(result.steps, expectedSteps);
     assert.equal(databaseVersion(db), SCHEMA_VERSION);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'memory_usage'").get().n,

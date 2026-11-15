@@ -967,6 +967,67 @@ export class Store {
     return keys;
   }
 
+  /**
+   * The session the most recent prompt assembly served, and the scope key it used.
+   *
+   * Surfaces outside the session (the panel, the sidebar card) have no session id of their
+   * own, but they do need to act on "this conversation" — for the memory-boundary selector
+   * that means knowing which conversation to save the choice against.
+   *
+   * @returns `{sessionId, scopeKey}`, or `undefined` before the first assembly.
+   */
+  activeSession() {
+    const row = this.db
+      .prepare(
+        `SELECT session_id, scope_key, cwd FROM request_stat
+          WHERE source = 'section' AND scope_key IS NOT NULL
+          ORDER BY ts DESC, id DESC LIMIT 1`,
+      )
+      .get();
+    if (row === undefined || typeof row.session_id !== 'string') return undefined;
+    return {
+      sessionId: row.session_id,
+      scopeKey: row.scope_key,
+      cwd: typeof row.cwd === 'string' ? row.cwd : undefined,
+    };
+  }
+
+  /**
+   * The memory boundary a person chose for one conversation, if any.
+   * @param sessionId - the session.
+   * @returns the stored mode, or `undefined`.
+   */
+  getSessionScope(sessionId) {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined;
+    const row = this.db.prepare('SELECT mode FROM session_scope WHERE session_id = ?').get(sessionId);
+    return typeof row?.mode === 'string' ? row.mode : undefined;
+  }
+
+  /**
+   * Remember (or clear) one conversation's memory boundary.
+   *
+   * `auto` is not stored: it means "no choice", and keeping a row that says so would let a
+   * future default change go unnoticed. Passing `undefined`/`auto` deletes the row.
+   *
+   * @param sessionId - the session.
+   * @param mode - one of the write modes, or `auto` to forget the choice.
+   * @returns the mode now in force, or `undefined` when the row was removed.
+   */
+  setSessionScope(sessionId, mode) {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined;
+    if (mode === undefined || mode === 'auto') {
+      this.db.prepare('DELETE FROM session_scope WHERE session_id = ?').run(sessionId);
+      return undefined;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO session_scope (session_id, mode, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at`,
+      )
+      .run(sessionId, mode, this.now());
+    return mode;
+  }
+
   allScopeKeys() {
     return this.db
       .prepare('SELECT DISTINCT m.scope_key AS key FROM memory m JOIN memory_head h ON h.ord = m.ord')
@@ -1202,7 +1263,7 @@ export class Store {
 
   /**
    * Record one injected section, so the cost of each request is queryable.
-   * @param row - `sessionId`, `scopeKey`, `bytes`, `listed`, `hidden`, `ids`, `source`, `ts`.
+   * @param row - `sessionId`, `scopeKey`, `bytes`, `listed`, `hidden`, `ids`, `source`, `ts`, `cwd`.
    */
   recordInjection(row) {
     // `source` separates the two injection surfaces. The index runs every request; the
@@ -1210,11 +1271,23 @@ export class Store {
     // nothing at all — so the one conditional path in the product was also the one with
     // no answer to "why did this appear".
     const source = typeof row.source === 'string' && row.source.length > 0 ? row.source : 'section';
+    // `cwd` (v5) is what lets a surface outside the session answer "where does this
+    // conversation's memory go?" — the scope key is a hash, so it cannot be turned back into
+    // a directory, and the panel has no session handle of its own.
     this.db
       .prepare(
-        'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source, cwd) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(row.ts ?? this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden, source);
+      .run(
+        row.ts ?? this.now(),
+        row.sessionId ?? null,
+        row.scopeKey ?? null,
+        row.bytes,
+        row.listed,
+        row.hidden,
+        source,
+        typeof row.cwd === 'string' ? row.cwd : null,
+      );
     // Per-entry counters, so "which line earns its bytes" stays answerable after the
     // aggregate rows rotate out. A listed entry never fetched by id is the dead
     // weight this product exists to find.

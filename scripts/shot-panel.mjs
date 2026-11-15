@@ -54,6 +54,13 @@ const feed = `
   <div class="loci-root" style="height:470px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-base);overflow:hidden">
     <div class="loci-bar">
       <span class="loci-title">Memory</span>
+      <span class="loci-scope"><select class="loci-select" title="auto: no project found, so this stays in this conversation">
+        <option>Automatic — session</option>
+        <option>This project</option>
+        <option>This conversation only</option>
+        <option>Whole workspace</option>
+        <option>Everywhere (global)</option>
+      </select></span>
       <span class="loci-grow"></span>
       <div class="loci-tabs">
         <button class="loci-tab is-active">Feed</button><button class="loci-tab">Index</button>

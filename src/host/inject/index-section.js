@@ -205,6 +205,7 @@ export function createIndexSection(options) {
       store.recordInjection({
         sessionId: context.sessionId,
         scopeKey: context.scopeKey,
+        cwd: context.cwd,
         bytes: rendered.bytes,
         listed: rendered.listed,
         hidden: rendered.hidden,

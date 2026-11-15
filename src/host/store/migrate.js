@@ -61,6 +61,25 @@ export const SHIPPED_MIGRATIONS = [
       db.exec("UPDATE request_stat SET source = 'section' WHERE source IS NULL");
     },
   },
+  {
+    from: 4,
+    to: 5,
+    // A table and a nullable column, no backfill.
+    //
+    // `session_scope` remembers the memory boundary a person chose for one conversation.
+    // `request_stat.cwd` lets a surface outside the session (the panel) answer "where does
+    // this conversation's memory go?" — a scope key is a hash, so it cannot be turned back
+    // into a directory, and the panel has no session handle. Existing rows keep NULL and
+    // simply have no recorded directory, which the resolver treats as "cannot infer".
+    up(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS session_scope (
+  session_id TEXT PRIMARY KEY,
+  mode       TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+)`);
+      db.exec('ALTER TABLE request_stat ADD COLUMN cwd TEXT');
+    },
+  },
 ];
 
 /**
