@@ -955,6 +955,7 @@ window.__ModuleLoader__.load({
       // Only the kinds that could actually reach the prompt are reviewable. An
       // episodic session summary is history: it is never injected, so parking it
       // here forever is how the queue became a wall nobody reads.
+      // The same three kinds the store counts as pending, so the badge and the list agree.
       const reviewable = 'kinds=rule,semantic,procedural';
       const candidates = useJson(`/list?status=candidate&limit=50&${reviewable}`);
       const disputed = useJson(`/list?status=disputed&limit=50&${reviewable}`);

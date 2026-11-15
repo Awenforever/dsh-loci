@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.2.0] — 2026-11-15
+
+The sidebar was sending people to an empty room. Found in the live store, not in a test.
+
+### Fixed
+
+- **"N item(s) waiting for you in Review" counted rows Review hides.** The card read
+  `stats.pendingCandidates`, which counted every candidate and disputed row in scope; the
+  Review tab lists only the kinds that can reach the prompt (`rule`, `semantic`,
+  `procedural`). Episodic session summaries are candidates *by design* — they are history,
+  not claims — so on a normal day the entire count was composed of rows Review deliberately
+  excludes.
+
+  Live evidence, after one afternoon of use: **3 pending rows, all `episodic`**, and the
+  sidebar offering to review them somewhere it would not. The count is now `0` and Review
+  shows `0`.
+
+  `REVIEWABLE_KINDS` is one exported list. `countPending`, `stats.pendingCandidates`,
+  `stats.disputed` and the panel's request all use it, so the badge and the list cannot drift
+  apart again. `byStatus` stays complete — that is a data view, not a to-do.
+
+- **`stats.pendingCandidates` ignored `valid_to`** while `countPending` honoured it, so a
+  candidate closed by maintenance stayed in the badge. Both now exclude expired rows.
+
+### Why this matters beyond the cosmetic
+
+The card was telling the user to do something that could not be done, which reads as "the
+tool is broken" rather than "there is nothing to do". A number with a door is a promise.
+
+### Not fixed, recorded
+
+Episodic summaries still accumulate as candidates and are only removed by the 30-day
+candidate TTL. They are visible in the Feed tab, which is where history belongs, but nothing
+says so. That is part of R24 (the panel explains almost nothing about itself).
+
 ## [3.1.0] — 2026-11-15
 
 Four things from looking at the live sidebar and panel.

@@ -118,6 +118,13 @@ function tierOf(kind, pinned) {
 /** Statuses that may be injected or returned by default. */
 export const INJECTABLE_STATUSES = Object.freeze(['verified']);
 
+/**
+ * The kinds a person can review. Everything else — episodic summaries, working notes — is
+ * either history or scratch, and Review hides it. One list, used by the counter and the UI,
+ * so the number and the list cannot drift apart again.
+ */
+export const REVIEWABLE_KINDS = Object.freeze(['rule', 'semantic', 'procedural']);
+
 /** The phrase a caller must echo before the whole store is forgotten. */
 export const CONFIRM_ALL = 'forget everything';
 
@@ -877,18 +884,25 @@ export class Store {
    * @param scopeKeys - explicit scope keys (never a wildcard).
    * @returns the count of candidate and disputed entries.
    */
-  countPending(scopeKeys, now = this.now()) {
+  countPending(scopeKeys, options = {}) {
     if (scopeKeys.length === 0) return 0;
+    const now = options.now ?? this.now();
+    // Only rows a person can actually act on. Episodic summaries are candidates by design —
+    // they are history, not claims, and Review hides them — so counting them made the
+    // sidebar announce work with nowhere to do it.
+    const kinds = Array.isArray(options.kinds) && options.kinds.length > 0 ? options.kinds : REVIEWABLE_KINDS;
     const marks = scopeKeys.map(() => '?').join(', ');
+    const kindMarks = kinds.map(() => '?').join(', ');
     return Number(
       this.db
         .prepare(
           `SELECT COUNT(*) AS n FROM memory m
            WHERE m.status IN ('candidate', 'disputed') AND m.deleted_at IS NULL
              AND (m.valid_to IS NULL OR m.valid_to > ?)
+             AND m.kind IN (${kindMarks})
              AND m.scope_key IN (${marks})`,
         )
-        .get(now, ...scopeKeys)?.n ?? 0,
+        .get(now, ...kinds, ...scopeKeys)?.n ?? 0,
     );
   }
 
@@ -1095,18 +1109,28 @@ export class Store {
       .all(...keys)) {
       byScope[row.scope] = Number(row.n);
     }
+    // "Pending" and "disputed" are questions for a person, so they count only the kinds a
+    // person can act on. Episodic summaries are candidates by design and Review hides them;
+    // counting them here made the sidebar announce work with nowhere to do it. The byStatus
+    // view below stays complete, because that is data rather than a to-do.
+    const kindMarks = REVIEWABLE_KINDS.map(() => '?').join(', ');
     const pending = Number(
       this.db
         .prepare(
           `SELECT COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord
-           WHERE h.status = 'candidate' AND m.deleted_at IS NULL${marks}`,
+           WHERE h.status = 'candidate' AND m.deleted_at IS NULL AND m.kind IN (${kindMarks})
+             AND (m.valid_to IS NULL OR m.valid_to > ?)${marks}`,
         )
-        .get(...keys)?.n ?? 0,
+        .get(...REVIEWABLE_KINDS, this.now(), ...keys)?.n ?? 0,
     );
     const disputed = Number(
       this.db
-        .prepare(`SELECT COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord WHERE h.status = 'disputed'${marks}`)
-        .get(...keys)?.n ?? 0,
+        .prepare(
+          `SELECT COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord
+           WHERE h.status = 'disputed' AND m.kind IN (${kindMarks})
+             AND (m.valid_to IS NULL OR m.valid_to > ?)${marks}`,
+        )
+        .get(...REVIEWABLE_KINDS, this.now(), ...keys)?.n ?? 0,
     );
     const lastInjection = this.db
       .prepare('SELECT ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source FROM request_stat ORDER BY id DESC LIMIT 1')
