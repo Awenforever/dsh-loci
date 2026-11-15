@@ -9,7 +9,7 @@
 
 # A. v1.0.0 (historical)
 
-Everything below was measured on **v1.0.0**. The tree is 2.6.x: schema v3, auto-verified
+Everything below was measured on **v1.0.0**. The tree is 2.8.x: schema v4, auto-verified
 capture, the pending-review notice, lesson fields, the review-kind filter and the two-part
 quote gate all landed afterwards. Treat this as a record of what was true then.
 

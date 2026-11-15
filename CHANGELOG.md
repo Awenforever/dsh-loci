@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.8.0] — 2026-11-15
+
+Two real defects, both found by measuring rather than reading: search returned nothing for
+normal questions, and the one conditional injection path recorded nothing at all.
+
+### Fixed
+
+- **`loci_search` returned nothing for sentences.** A CJK run is matched as an FTS5 phrase,
+  which requires it to appear contiguously — so one word the store had never seen zeroed the
+  whole query. Measured: `回滚窗口` found the entry, `回滚窗口多久？` found nothing. People
+  type sentences, so this made the tool useless for its main use.
+  Two changes: the run's bigrams are also offered as individual OR terms, and admission now
+  accepts a **contiguous** stretch of ≥3 characters instead of requiring the whole run.
+  A 2-character stretch needs to be a non-hub token *in the title*, which keeps the original
+  false positive out — `完全无关的问题` used to be admitted by an entry whose body happened to
+  contain `问题`.
+
+  Effect on `scripts/acceptance-v2.mjs`, same 30 facts, same questions, no corpus change:
+  **lexical top-1 went 0/30 → 8/30, top-3 0/30 → 9/30.** The remaining 21 misses share no
+  bigram at all with their target — a genuine vocabulary gap that no lexical method closes,
+  which is why the index is the primary channel.
+
+- **`recallAssist` recorded nothing.** The only conditional injection in the product wrote no
+  `request_stat` row, bumped no per-entry counter, put no ids in the audit line, and did not
+  even pass a session id to its own search — so the panel could not answer "why did this
+  entry appear in that session", which is the project's own R4 rule. `renderAssistBlock` now
+  returns `{text, ids, bytes}`, and the injection is recorded with `source: 'assist'`, its
+  ids, and the usual per-entry counters. Recording failures are caught: a logging problem
+  must never break the turn it is recording.
+
+### Schema
+
+- **v4** adds `request_stat.source` (`section` | `assist`), with the migration marking
+  existing rows `section` — which is what they were, since nothing but the index wrote to
+  that table before. `ALTER TABLE … DROP COLUMN` re-parses the stored statement, so the
+  column's comment lives outside the `CREATE TABLE` body.
+
 ## [2.7.1] — 2026-11-15
 
 A correction, and a decision not to ship something.

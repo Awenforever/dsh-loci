@@ -41,6 +41,14 @@ function rewind(db, target) {
     }
   }
   if (target < 2) db.exec('DROP TABLE IF EXISTS memory_usage');
+  if (target < 4) {
+    // v4 added the injection surface. Dropping it here is the whole point of `rewind`:
+    // the "old" database must not already contain what the migration is supposed to add,
+    // or the migration fails with "duplicate column name" and the test proves nothing.
+    db.exec('DROP INDEX IF EXISTS ix_request_stat_source');
+    const requestColumns = () => db.prepare('PRAGMA table_info(request_stat)').all().map((row) => row.name);
+    if (requestColumns().includes('source')) db.exec('ALTER TABLE request_stat DROP COLUMN source');
+  }
   db.exec(`PRAGMA user_version = ${target}`);
   db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(target));
 }
@@ -116,7 +124,7 @@ test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', 
   }
 });
 
-test('the shipped migration chain v1->v3 keeps every row and adds both shapes', (t) => {
+test('the shipped migration chain v1->v4 keeps every row and adds every shape', (t) => {
   const home = mkdtempSync(join(tmpdir(), 'loci-migrate-shipped-'));
   const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
   const paths = layout(root);
@@ -145,7 +153,7 @@ test('the shipped migration chain v1->v3 keeps every row and adds both shapes', 
 
     // Ship migrations only: this is the path a real upgrade takes.
     const result = migrate(db, { target: SCHEMA_VERSION, backupDir: paths.backups });
-    assert.deepEqual(result.steps, ['v1->v2', 'v2->v3']);
+    assert.deepEqual(result.steps, ['v1->v2', 'v2->v3', 'v3->v4']);
     assert.equal(databaseVersion(db), SCHEMA_VERSION);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'memory_usage'").get().n,

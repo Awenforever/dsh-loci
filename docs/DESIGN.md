@@ -165,6 +165,10 @@ Query construction:
 
 - CJK run of 3+ chars → FTS5 **phrase** of its consecutive bigrams
   (`"路径 径断 断言"`), which behaves like a substring match;
+- **and** each of its bigrams as an individual OR term. The phrase is precise but requires
+  the run to appear contiguously, so a single word the store has never seen used to zero
+  the whole query: `回滚窗口` found the entry, `回滚窗口多久？` found nothing. People type
+  sentences, so both forms are offered — the phrase for precision, the bigrams for recall;
 - 1–2 char CJK → the single bigram;
 - Latin → prefix query (`pnpm*`);
 - terms are OR-ed; tokens whose document frequency exceeds 15% are dropped as hub
@@ -173,6 +177,30 @@ Query construction:
 A one-character CJK query has no index token; it falls back to a bounded `LIKE` scan
 inside the scope. That is the only non-indexed path, and it is bounded by
 `CHANNEL_LIMIT`.
+
+### 4.1.1 Admission
+
+Candidate generation is deliberately loose; admission is where precision is decided, in
+process, so the FTS expression never has to be fragile.
+
+When the query contains a CJK run, an entry is admitted on `lexical` terms only if a
+**contiguous stretch of the run** appears in it:
+
+| Longest contiguous stretch | Admitted? |
+|---|---|
+| the whole run | yes |
+| ≥3 characters | yes |
+| 2 characters, a non-hub token, **in the title** | yes |
+| 2 characters anywhere else | no |
+| words present but not contiguously | no |
+
+Two failure modes bracket the rule. All-or-nothing rejected `回滚窗口多久？` for a
+6-character entry match, because `多久` is in no document — so any sentence with one
+unfamiliar word returned nothing, which is what `scripts/acceptance-v2.mjs` measured as
+0/30 before the change and 8/30 after. Plain token coverage admits a note holding two of
+the words in different clauses, which is the false positive the run rule existed to stop.
+The title requirement handles the weak case: `完全无关的问题` was admitted by an entry whose
+*body* happened to contain `问题`, and no title did.
 
 ### 4.2 Channels and fusion
 

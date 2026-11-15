@@ -49,6 +49,18 @@ export const SHIPPED_MIGRATIONS = [
       db.exec(MEMORY_LESSON_DDL);
     },
   },
+  {
+    from: 3,
+    to: 4,
+    // One nullable column recording which surface injected a row. Existing rows get
+    // NULL and are read as `section`, which is what they were: nothing but the index
+    // wrote to this table before the assist started recording itself.
+    up(db) {
+      db.exec('ALTER TABLE request_stat ADD COLUMN source TEXT');
+      db.exec('CREATE INDEX IF NOT EXISTS ix_request_stat_source ON request_stat (source)');
+      db.exec("UPDATE request_stat SET source = 'section' WHERE source IS NULL");
+    },
+  },
 ];
 
 /**

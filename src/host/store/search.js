@@ -241,22 +241,69 @@ export function lexicalDetail(row, plan) {
     }
   }
   let runHit = false;
+  let runSpan = 0;
+  let runSpanHub = true;
+  let runSpanInTitle = false;
+  const isHub = typeof plan.hub === 'function' ? plan.hub : () => false;
   for (const run of runs) {
-    let all = true;
+    // Longest contiguous stretch of the run whose bigrams are all present. All-or-nothing
+    // was the old rule, and it made a sentence with one unseen word return nothing:
+    // "回滚窗口" found the entry, "回滚窗口多久？" did not, because 多久 appears in no
+    // document. Requiring a *contiguous* stretch still rejects the case the old rule was
+    // written for — a note that happens to contain 路径 and 断言 in unrelated clauses has
+    // a longest span of 2 characters, not 4.
+    let span = 0;
+    let current = 0;
+    let spanHub = true;
+    let currentHub = true;
+    let spanEnd = 0;
     for (let i = 0; i + 1 < run.length; i += 1) {
       const bigram = run.slice(i, i + 2);
-      if (!title.includes(bigram) && !body.includes(bigram)) {
-        all = false;
-        break;
+      if (title.includes(bigram) || body.includes(bigram)) {
+        if (!isHub(bigram)) currentHub = false;
+        current += 1;
+        if (current > span) {
+          span = current;
+          spanHub = currentHub;
+          spanEnd = i + 2;
+        }
+      } else {
+        current = 0;
+        currentHub = true;
       }
     }
-    if (all) {
+    // `span` counts bigrams; a stretch of n bigrams covers n+1 characters.
+    const spanChars = span === 0 ? 0 : span + 1;
+    const spanText = span === 0 ? '' : run.slice(spanEnd - spanChars, spanEnd);
+    // A two-character span only counts as evidence when it is a real content word *and*
+    // it appears in the title. Without the title requirement, "完全无关的问题？" was
+    // admitted by an entry whose body happened to contain 问题 — the query had no topic
+    // overlap at all. The title is the entry's subject, so that is where weak evidence
+    // has to be.
+    const inTitle = spanText.length > 0 && title.includes(spanText);
+    if (spanChars > runSpan) {
+      runSpan = spanChars;
+      runSpanHub = spanHub;
+      runSpanInTitle = inTitle;
+    } else if (spanChars === runSpan) {
+      if (spanHub === false) runSpanHub = false;
+      if (inTitle) runSpanInTitle = true;
+    }
+    if (spanChars === run.length) {
       runHit = true;
       score += 3;
     }
   }
   const coverage = tokens.length === 0 ? 0 : matched / tokens.length;
-  return { score: tokens.length === 0 ? 0 : score / (tokens.length + 1), runHit, coverage, hasRuns: runs.length > 0 };
+  return {
+    score: tokens.length === 0 ? 0 : score / (tokens.length + 1),
+    runHit,
+    runSpan,
+    runSpanHub,
+    runSpanInTitle,
+    coverage,
+    hasRuns: runs.length > 0,
+  };
 }
 
 /**
@@ -335,7 +382,23 @@ export async function search(store, request) {
     // Admission: a CJK run must be fully evidenced; word-only queries need at
     // least half their tokens. Recency is a tie-breaker, never an admission
     // ticket, so a row no other signal matched does not appear just by being new.
-    const lexicalAdmitted = lexical.hasRuns ? lexical.runHit : lexical.coverage >= 0.5;
+    // Admission. When the query contains a CJK run, a contiguous stretch of at least three
+  // characters in the *same* run has to appear in the entry. Three was chosen against the
+  // two failure modes:
+  //   - all-or-nothing (the old rule) rejected "回滚窗口多久？" for a 6-character entry
+  //     match, because 多久 is in no document — so any sentence with one unfamiliar word
+  //     returned nothing at all;
+  //   - plain token coverage admitted notes that merely contain two of the words in
+  //     different clauses, which is the false positive the run rule existed to stop.
+  // A contiguous span is the middle ground: scattered words do not form one, and a real
+  // entry match always does.
+  // A 2-character span is admitted only when it is a real content word rather than a term
+  // that appears in a sixth of the store — `hub` is the existing frequency predicate, so
+  // "回滚" passes and "我们" does not. Below 20 entries every token is a non-hub, which is
+  // the right answer for a small store: missing a recall is worse than one extra candidate.
+  const lexicalAdmitted = lexical.hasRuns
+    ? lexical.runHit || lexical.runSpan >= 3 || (lexical.runSpan === 2 && lexical.runSpanHub === false && lexical.runSpanInTitle)
+    : lexical.coverage >= 0.5;
     if (!lexicalAdmitted && entityHits === 0 && vectorScore === 0) continue;
     const age = Math.max(0, now - Number(row.updated_at ?? now));
     const recency = Math.exp(-age / (30 * DAY));

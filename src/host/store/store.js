@@ -1087,7 +1087,7 @@ export class Store {
         .get(...keys)?.n ?? 0,
     );
     const lastInjection = this.db
-      .prepare('SELECT ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden FROM request_stat ORDER BY id DESC LIMIT 1')
+      .prepare('SELECT ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source FROM request_stat ORDER BY id DESC LIMIT 1')
       .get();
     const revisions = Number(this.db.prepare('SELECT COUNT(*) AS n FROM memory').get()?.n ?? 0);
     return {
@@ -1113,6 +1113,7 @@ export class Store {
               bytes: Number(lastInjection.section_bytes),
               listed: Number(lastInjection.entries_listed),
               hidden: Number(lastInjection.entries_hidden),
+              source: lastInjection.source ?? 'section',
             },
       dbBytes: existsSync(this.paths.db) ? statSync(this.paths.db).size : 0,
       vector: { ...this.vector, ...this.embedding.health() },
@@ -1125,11 +1126,16 @@ export class Store {
    * @param row - `sessionId`, `scopeKey`, `bytes`, `listed`, `hidden`.
    */
   recordInjection(row) {
+    // `source` separates the two injection surfaces. The index runs every request; the
+    // recall assist runs once per session and, before this column existed, recorded
+    // nothing at all — so the one conditional path in the product was also the one with
+    // no answer to "why did this appear".
+    const source = typeof row.source === 'string' && row.source.length > 0 ? row.source : 'section';
     this.db
       .prepare(
-        'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden);
+      .run(this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden, source);
     // Per-entry counters, so "which line earns its bytes" stays answerable after the
     // aggregate rows rotate out. A listed entry never fetched by id is the dead
     // weight this product exists to find.
@@ -1151,6 +1157,10 @@ export class Store {
       bytes: row.bytes,
       listed: row.listed,
       hidden: row.hidden,
+      source,
+      // The ids are what makes the line answerable. Without them an audit record says
+      // "3 entries were injected" and nothing about which three.
+      ids: Array.isArray(row.ids) ? row.ids : undefined,
     });
   }
 

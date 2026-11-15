@@ -136,6 +136,19 @@ export function buildQueryPlan(query, options = {}) {
 
   const terms = [];
   for (const phrase of phrases) terms.push(phrase);
+  // Each CJK run is matched as a phrase, which is precise — but a phrase has to appear
+  // contiguously and in order, so **one word the store has never seen zeroes the whole
+  // query**. Measured before this change: "回滚窗口" found the entry, "回滚窗口多久？"
+  // found nothing, because 多久 is not in any document and the run is a single phrase
+  // with no alternative to fall back on. People type sentences, so that made search
+  // return nothing for most real questions.
+  //
+  // The bigrams are therefore also offered individually. Recall widens; the in-process
+  // scorer still rewards a contiguous run (`runs`), so precision is decided there rather
+  // than by making the FTS expression fragile.
+  for (const phrase of phrases) {
+    for (const bigram of phrase.replace(/"/g, '').split(' ')) terms.push(bigram);
+  }
   for (const token of singles) terms.push(token);
   // Exact terms, not prefix queries: FTS5 has no prefix index here, so `word*`
   // scans the whole term dictionary (measured: 1.4 s on a 10k-entry store).

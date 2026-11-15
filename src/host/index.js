@@ -23,7 +23,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '2.7.1';
+export const VERSION = '2.8.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -230,15 +230,35 @@ export function apply(ctx, rawConfig = {}) {
             const query = firstUserText(decision.messages);
             if (query.length < 2) return decision;
             const scopes = resolveScopes({ sessionId: session.id, cwd: session.header?.cwd });
-            const text = await renderAssistBlock({
+            const assistScopeKeys = readScopeKeys(scopes, { includeGlobal: read('includeGlobal') });
+            const assist = await renderAssistBlock({
               store,
-              scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
+              scopeKeys: assistScopeKeys,
               query,
               maxBytes: read('recallAssistBytes'),
+              sessionId: session.id,
+              scopeKey: scopes.workspace,
             });
             assisted.add(session.id);
             if (assisted.size > ASSIST_MEMORY) assisted.clear();
-            if (text.length === 0) return decision;
+            if (assist.text.length === 0) return decision;
+            // Record it. This path injected entries into the conversation and wrote
+            // nothing anywhere, so the panel could not answer "why did this appear in
+            // that session" — the project's own R4 rule, broken by its own feature.
+            try {
+              store.recordInjection({
+                sessionId: session.id,
+                scopeKey: scopes.workspace,
+                bytes: assist.bytes,
+                listed: assist.ids.length,
+                hidden: 0,
+                ids: assist.ids,
+                source: 'assist',
+              });
+            } catch (error) {
+              // Recording must never break the turn it is recording.
+              log.warn(`loci: could not record the recall injection: ${String(error?.message ?? error)}`);
+            }
             return {
               ...decision,
               messages: [
@@ -246,7 +266,7 @@ export function apply(ctx, rawConfig = {}) {
                 {
                   id: `loci-recall-${randomUUID()}`,
                   role: 'user',
-                  content: [{ type: 'text', text }],
+                  content: [{ type: 'text', text: assist.text }],
                   source: { kind: 'plugin:loci', form: 'block', summary: 'memory recall' },
                 },
               ],

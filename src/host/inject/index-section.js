@@ -275,23 +275,31 @@ export function createIndexSection(options) {
  * turn's matches. Off by default; when on it is injected once per session as a
  * user message, never per turn.
  *
- * @param options - `store`, `scopeKeys`, `query`, `maxBytes`, `limit`.
- * @returns the message text, or `''`.
+ * @param options - `store`, `scopeKeys`, `query`, `maxBytes`, `limit`, `sessionId`, `scopeKey`.
+ * @returns `{ text, ids, bytes }`; `text` is `''` when nothing was rendered.
  */
 export async function renderAssistBlock(options) {
-  const { store, scopeKeys, query, maxBytes = 512, limit = 3 } = options;
-  if (typeof query !== 'string' || query.trim().length < 2) return '';
-  const result = await search(store, { query, scopeKeys, statuses: ['verified'], limit, detail: 'snippet' });
-  if (result.hits.length === 0) return '';
+  const { store, scopeKeys, query, maxBytes = 512, limit = 3, sessionId, scopeKey } = options;
+  const empty = { text: '', ids: [], bytes: 0 };
+  if (typeof query !== 'string' || query.trim().length < 2) return empty;
+  // `sessionId`/`scopeKey` go into the search call so its own audit row can say which
+  // session and scope asked. They used to be omitted, which made the recall audit line
+  // unattributable even when it was written.
+  const result = await search(store, { query, scopeKeys, statuses: ['verified'], limit, detail: 'snippet', sessionId, scopeKey });
+  if (result.hits.length === 0) return empty;
   const lines = ['<loci-recall note="possibly relevant; confirm with loci_get before relying on it">'];
+  const ids = [];
   let used = bytes(lines[0]);
   for (const hit of result.hits) {
     const line = `- ${hit.id} · ${renderSafe(indexTitle(hit.title, 60))}`;
     const lineBytes = bytes(line) + 1;
     if (used + lineBytes > maxBytes) break;
     lines.push(line);
+    ids.push(hit.id);
     used += lineBytes;
   }
   lines.push('</loci-recall>');
-  return lines.length > 2 ? lines.join('\n') : '';
+  if (ids.length === 0) return empty;
+  const text = lines.join('\n');
+  return { text, ids, bytes: bytes(text) };
 }

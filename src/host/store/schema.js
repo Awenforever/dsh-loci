@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS token_stat (
 ${MEMORY_USAGE_DDL}
 
 
+-- request_stat.source (v4) records which surface produced an injection: 'section' is the
+-- per-request system-prompt index, 'assist' is the optional once-per-session recall block.
+-- Without it the two were indistinguishable, so recallAssist injections left no trace
+-- anywhere and "why did this entry appear" could not be answered for them.
+-- Kept outside the CREATE TABLE body on purpose: SQLite's ALTER TABLE ... DROP COLUMN
+-- re-parses the stored statement and fails with "incomplete input" when it holds comments.
 CREATE TABLE IF NOT EXISTS request_stat (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   ts             INTEGER NOT NULL,
@@ -163,9 +169,11 @@ CREATE TABLE IF NOT EXISTS request_stat (
   scope_key      TEXT,
   section_bytes  INTEGER NOT NULL,
   entries_listed INTEGER NOT NULL,
-  entries_hidden INTEGER NOT NULL
+  entries_hidden INTEGER NOT NULL,
+  source         TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_request_stat_ts ON request_stat (ts DESC);
+CREATE INDEX IF NOT EXISTS ix_request_stat_source ON request_stat (source);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (
   tokens,
