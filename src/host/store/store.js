@@ -1555,6 +1555,18 @@ export class Store {
       verified = false;
     }
     this.quoteChecked += 1;
+    // Two questions, not one. The verifier answers "did the user say this"; this
+    // answers "is the claim about what they said". Checking only the first let any real
+    // sentence certify an unrelated fact — the cheapest way to launder a wrong memory
+    // into the prompt. A quote that fails the second question lands as a candidate,
+    // which costs a person one click.
+    if (verified) {
+      const claim = `${input?.title ?? ''} ${input?.body ?? ''}`.trim();
+      if (claim.length > 0 && !evidenceSupports(quote, claim)) {
+        this.log?.debug?.('loci: quote is in the transcript but unrelated to the claim; keeping it a candidate');
+        verified = false;
+      }
+    }
     return verified;
   }
 
@@ -1725,9 +1737,29 @@ function nowOrMax(value) {
  * @param text - new title and body.
  * @returns true when the two share at least 15% of their character bigrams.
  */
+/**
+ * Does the quote have anything to do with the claim?
+ *
+ * Containment alone is not enough: a model can quote any real user sentence ("好的，
+ * 继续吧") and attach a fabricated claim to it, and the transcript check would pass.
+ * This is the second half — the quote must share some substance with what it is
+ * supposed to support.
+ *
+ * The 0.05 threshold is measured, not guessed. On Chinese text:
+ *   "以后都用中文回复我" → "用户偏好中文"                    0.083  legitimate paraphrase
+ *   "回滚窗口是三十分钟"   → "回滚窗口 30 分钟"                0.364  legitimate restatement
+ *   "好的，继续吧"         → "用户要求永远不要审查代码"        0.000  laundering
+ * A higher bar (the 0.15 this function used to carry) rejects the first case; 0.05
+ * separates the two groups cleanly. Failing it lands the entry as a candidate, which
+ * a person can still promote — the cost of being wrong in this direction is one click.
+ *
+ * @param quote - evidence quote.
+ * @param text - title and body of the claim.
+ * @returns true when the two share at least 5% of their character bigrams.
+ */
 function evidenceSupports(quote, text) {
   if (typeof quote !== 'string' || quote.trim().length < 8) return false;
-  return jaccard(quote, text) >= 0.15;
+  return jaccard(quote, text) >= 0.05;
 }
 /** Jaccard over whitespace-collapsed character bigrams (duplicate heuristic). */
 function jaccard(a, b) {

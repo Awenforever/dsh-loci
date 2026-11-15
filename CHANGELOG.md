@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.5.0] — 2026-11-15
+
+The rest of the boundary audit: one real hole in the trust gate, one check that could
+never fail, and a number that was being read as more than it is.
+
+### Fixed
+
+- **A real quote could certify an unrelated claim.** The gate asked only "did the user
+  say this"; it never asked "is the claim about what they said". Quoting any real
+  sentence — "好的，继续吧" — was enough to launder a fabricated fact into the prompt.
+  `evidenceSupports` was written for exactly this and had no caller. It is now part of
+  the gate, and its threshold is **measured** rather than inherited: on Chinese text a
+  legitimate paraphrase scores 0.083–0.364 and a laundered claim scores 0.000, so the
+  bar is 0.05. The old 0.15 would have rejected "用户偏好中文" from "以后都用中文回复我".
+
+- **`loci doctor`'s host row could never warn.** It printed `[ok]` for any recorded
+  version, including one outside `engines.dsh`. It now compares against the declared
+  range and warns when outside, degrading to `ok` (not a failure) when the range cannot
+  be parsed.
+
+### Changed
+
+- **The acceptance numbers are qualified, not deleted.** Every measurement in
+  `docs/ACCEPTANCE.md` was taken on **v1.0.0**; the tree is 2.5.0. Worse, the
+  acceptance question contains the entry title verbatim (`acceptance-e2e.mjs:94`), the
+  corpus fixture is readable from the agent's workspace, and there is no no-memory arm —
+  so "49/50" measures lookup, not memory effect. The page now says so at the top and on
+  the row itself. A re-acceptance on 2.5.x with held-out facts and a control arm is an
+  open item, not something a doc edit can settle.
+
 ## [2.4.1] — 2026-11-15
 
 Three fixes from an independent boundary audit. All three were verified by running the

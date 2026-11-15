@@ -10,8 +10,37 @@ import { accessSync, constants, existsSync, readdirSync, statSync } from 'node:f
 import { join } from 'node:path';
 import { findDuplicateGroups } from './store/duplicates.js';
 import { detectInstructionLike, renderSafe } from './inject/sanitize.js';
+import { compareVersions } from './update.js';
 
 /** One check result. */
+/**
+ * Decide whether a host version falls inside a declared range.
+ *
+ * Only the comparisons `engines.dsh` actually uses are supported — `>=X <Y` and
+ * `>=X <Y-0` — because a full semver implementation is a dependency this plugin does
+ * not otherwise need. Anything else returns `unknown` and the caller assumes fine: a
+ * doctor row must never fail on a range it cannot read.
+ *
+ * @param version - the host version string.
+ * @param range - `engines.dsh`, e.g. `>=0.2.2-rc.1 <0.3.0-0`.
+ * @returns `'inside' | 'outside' | 'unknown'`.
+ */
+function checkAgainstRange(version, range) {
+  if (typeof range !== 'string' || typeof version !== 'string') return 'unknown';
+  const lower = /(?:^|\s)(>=)\s*([0-9][^\s]*)/.exec(range);
+  const upperLt = /(?:^|\s)<\s*([0-9][^\s]*)/.exec(range);
+  const upperLe = /(?:^|\s)<=\s*([0-9][^\s]*)/.exec(range);
+  if (lower === null && upperLt === null && upperLe === null) return 'unknown';
+  const compare = (a, b) => compareVersions(a, b);
+  // `compareVersions(a, b) > 0` means b is newer than a.
+  // lower bound: outside when the version is below it.
+  if (lower !== null && compare(lower[2], version) < 0) return 'outside';
+  // upper `<`: outside when the version is at or above it.
+  if (upperLt !== null && compare(version, upperLt[1]) <= 0) return 'outside';
+  // upper `<=`: outside only when strictly above it.
+  if (upperLe !== null && compare(version, upperLe[1]) < 0) return 'outside';
+  return 'inside';
+}
 function check(name, status, detail) {
   return { name, status, detail };
 }
@@ -64,15 +93,28 @@ export function runDoctor(options) {
   const lastMaintenance = Number(health.migration?.to === undefined ? 0 : 0);
   checks.push(check('rows', 'ok', `${health.counts.memory} revisions · ${health.counts.memory_head} entries · ${health.counts.entity} entities`));
 
-  // Which Harness opened this store. A range in engines.dsh is a promise; this row
-  // is what actually happened, and it is the first thing to ask for in a bug report.
+  // Which Harness opened this store, and whether that version is inside the range this
+  // build declares. The row used to print `[ok]` for any version at all, which made it
+  // a warning surface that could never warn — the exact shape of check that survives
+  // review because it looks like engineering.
   try {
     const hostVersion = store.hostVersion ?? null;
-    checks.push(
-      hostVersion === null
-        ? check('host', 'warn', `not recorded yet; this build declares engines.dsh ${engines?.dsh ?? 'unknown'}`)
-        : check('host', 'ok', `last opened by DeepSeek Harness ${hostVersion}`),
-    );
+    if (hostVersion === null) {
+      checks.push(check('host', 'warn', `not recorded yet; this build declares engines.dsh ${engines?.dsh ?? 'unknown'}`));
+    } else {
+      const verdict = checkAgainstRange(hostVersion, engines?.dsh);
+      checks.push(
+        verdict === 'inside'
+          ? check('host', 'ok', `last opened by DeepSeek Harness ${hostVersion} (inside ${engines?.dsh})`)
+          : verdict === 'outside'
+            ? check(
+                'host',
+                'warn',
+                `last opened by DeepSeek Harness ${hostVersion}, outside the declared ${engines?.dsh}; memory may misbehave`,
+              )
+            : check('host', 'ok', `last opened by DeepSeek Harness ${hostVersion} (range not parsed; assumed fine)`),
+      );
+    }
   } catch (error) {
     checks.push(check('host', 'warn', `could not read: ${String(error?.message ?? error)}`));
   }

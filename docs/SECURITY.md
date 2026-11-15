@@ -26,8 +26,11 @@ A memory is injected only when `status = 'verified'`. Status is derived, not
 declared:
 
 - `trust_source = 'user'` (a human asserted it in the panel) → `verified`;
-- a tool write with an `evidenceQuote` of ≥8 characters that is still findable in
-  **the user's own messages of the live session** → `verified`;
+- a tool write with an `evidenceQuote` of ≥8 characters that is findable in **the
+  user's own messages of the live session** *and* shares substance with the claim
+  (≥5% character-bigram overlap) → `verified`; a quote that is real but unrelated to
+  the claim stays a candidate, because quoting a real sentence is the cheapest way to
+  launder a fabricated fact;
 - anything else → `candidate`;
 - instruction-shaped text → `disputed`;
 - imported or summarized text → `candidate`.

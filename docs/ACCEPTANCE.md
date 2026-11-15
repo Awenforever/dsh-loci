@@ -1,5 +1,11 @@
 # ACCEPTANCE — measured results (v1.0.0)
 
+> **Version warning.** Everything below was measured on **v1.0.0**. The current tree is
+> 2.4.x: schema v3, auto-verified capture, the pending-review notice, lesson fields, the
+> review-kind filter and the two-part quote gate all landed after these runs. Treat this
+> page as a record of what was true then, not as a property of what ships now. A
+> re-acceptance is an open item.
+
 Environment: Windows 11 · DSH 0.2.2-rc.1 · Node 24.13.0 · model `local-test/deepseek-flash`
 (reasoning off, 100k context) · every run in a throwaway `DSH_HOME` under `%TEMP%`.
 The plugin under test is the packed tarball, installed with
@@ -9,7 +15,7 @@ Verdict summary:
 
 | # | Row | Result |
 |---|---|---|
-| 1 | Recall accuracy | **PASS** - single 49/50 = 98% (`acceptance-single.json`), multi 10/10, broad 50/50 |
+| 1 | Seeded-corpus keyword recall (**not** an evaluation of whether memory helps) | **PASS on its own terms** — single 49/50, multi 10/10, broad 50/50. Caveats that limit what this number means: the question contains the entry title verbatim (scripts/acceptance-e2e.mjs:94), the corpus fixture is readable from the agent's workspace, and there is no no-memory control arm. It shows the tools can find an entry when the question names it; it does not show that injection improved an answer |
 | 2 | Injection cost | **PASS** — 0 B empty; 3,450–3,507 B steady; ~1.2k tokens measured |
 | 3 | Concurrency and crash | **PASS** — 200/200 rows, 0 lock errors, kill -9 recoverable |
 | 4 | Migration and rollback | **PASS** — rehearsal upgrade + snapshot restore, row-identical |
