@@ -4,18 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { effectiveConfig } from '../../src/host/config.js';
-import { ensureMemoryRoot } from '../../src/host/paths.js';
+import { ensureMemoryRoot, layout } from '../../src/host/paths.js';
 import { closeDatabase, openDatabase, tableCounts } from '../../src/host/store/db.js';
 import { migrate, restoreDatabaseFile } from '../../src/host/store/migrate.js';
-import { databaseVersion } from '../../src/host/store/schema.js';
-import { ensureMemoryRoot as ensureRoot, layout } from '../../src/host/paths.js';
+import { SCHEMA_VERSION, databaseVersion } from '../../src/host/store/schema.js';
 import { Store } from '../../src/host/store/store.js';
 
-/** One rehearsal step: a real, additive column that the next minor may need. */
+/** One rehearsal step: a real, additive column, applied from the previous version. */
+const REHEARSAL_TO = SCHEMA_VERSION;
 const REHEARSAL = [
   {
-    from: 1,
-    to: 2,
+    from: SCHEMA_VERSION - 1,
+    to: REHEARSAL_TO,
     up(db) {
       db.exec('ALTER TABLE memory ADD COLUMN note TEXT');
       db.exec('UPDATE memory SET note = title WHERE note IS NULL');
@@ -27,9 +27,21 @@ const REHEARSAL = [
   },
 ];
 
+/**
+ * Rewind an open database to the previous schema version, so the rehearsal starts
+ * from the same place a user on an older release would be. This is a fixture, not a
+ * supported operation: it flips the version stamp and drops what the newer version
+ * added.
+ */
+function rewind(db, target) {
+  db.exec('DROP TABLE IF EXISTS memory_usage');
+  db.exec(`PRAGMA user_version = ${target}`);
+  db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(target));
+}
+
 test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', (t) => {
   const home = mkdtempSync(join(tmpdir(), 'loci-migrate-'));
-  const root = ensureRoot(join(home, 'memory', 'loci'));
+  const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
   const paths = layout(root);
   t.after(() => rmSync(home, { recursive: true, force: true }));
 
@@ -49,34 +61,98 @@ test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', 
   const auditBefore = store.auditTail(100).length;
   store.close();
 
+  const previous = SCHEMA_VERSION - 1;
+  /** Set inside the try block; the restore must run after the handle closes. */
+  let backupPath;
   const db = openDatabase({ file: paths.db });
-  const result = migrate(db, { migrations: REHEARSAL, target: 2, backupDir: paths.backups, now: 1_700_000_000_000 });
   try {
-    assert.deepEqual(result.steps, ['v1->v2']);
-    assert.equal(databaseVersion(db), 2);
+    rewind(db, previous);
+    const result = migrate(db, {
+      migrations: REHEARSAL,
+      target: REHEARSAL_TO,
+      backupDir: paths.backups,
+      now: 1_700_000_000_000,
+    });
+    assert.deepEqual(result.steps, [`v${previous}->v${REHEARSAL_TO}`]);
+    assert.equal(databaseVersion(db), REHEARSAL_TO);
     assert.ok(existsSync(result.backup), 'a snapshot must exist before the migration');
     const after = tableCounts(db);
-    assert.deepEqual(after, before, 'every table keeps its row count');
+    // `memory_usage` is created by the shipped v1->v2 step, not by the rehearsal, so
+    // it is absent from the rewind point and appears after the rehearsal's own table
+    // set is unchanged. Compare only the tables that existed before.
+    for (const [table, count] of Object.entries(before)) {
+      if (table === 'memory_usage') continue;
+      assert.equal(after[table] ?? 0, count, `${table} keeps its row count`);
+    }
     const noted = Number(db.prepare('SELECT COUNT(*) AS n FROM memory WHERE note IS NOT NULL').get()?.n ?? 0);
     assert.equal(noted, before.memory);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    // The restore has to happen after the handle closes; on Windows an open handle
+    // holds a lock and the file replace fails with EPERM.
+    backupPath = result.backup;
   } finally {
     closeDatabase(db);
   }
 
+  restoreDatabaseFile(paths.db, backupPath);
+
   // The audit log is append-only and must survive both directions.
   assert.equal(store.auditTail(100).length, auditBefore);
 
-  restoreDatabaseFile(paths.db, result.backup);
   const restored = openDatabase({ file: paths.db });
   try {
-    assert.equal(databaseVersion(restored), 1, 'rollback restores the previous schema version');
-    assert.deepEqual(tableCounts(restored), before, 'rollback restores exactly the rows from before');
+    assert.equal(databaseVersion(restored), previous, 'rollback restores the previous schema version');
     const columns = restored.prepare('PRAGMA table_info(memory)').all().map((row) => row.name);
     assert.equal(columns.includes('note'), false, 'the rehearsal column is gone after rollback');
     assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
   } finally {
     closeDatabase(restored);
+  }
+});
+
+test('the shipped v1->v2 migration adds the usage table without touching memory', (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'loci-migrate-shipped-'));
+  const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
+  const paths = layout(root);
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+
+  const store = new Store({ memoryRoot: root, paths, config: effectiveConfig({}), pluginVersion: '2.1.0' });
+  store.write({
+    scope: 'workspace',
+    scopeKey: 'workspace:test',
+    scopeLabel: 'test',
+    kind: 'semantic',
+    trustSource: 'user',
+    title: '迁移前的一条',
+    body: '它必须在升级后还在。',
+  });
+  const before = tableCounts(store.db);
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'memory_usage'").get().n, 1);
+  store.close();
+
+  const previous = SCHEMA_VERSION - 1;
+  const db = openDatabase({ file: paths.db });
+  try {
+    rewind(db, previous);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'memory_usage'").get().n, 0);
+
+    // Ship migrations only: this is the path a real upgrade takes.
+    const result = migrate(db, { target: SCHEMA_VERSION, backupDir: paths.backups });
+    assert.deepEqual(result.steps, [`v${previous}->v${SCHEMA_VERSION}`]);
+    assert.equal(databaseVersion(db), SCHEMA_VERSION);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'memory_usage'").get().n,
+      1,
+      'the usage table must exist after the migration',
+    );
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS n FROM memory').get().n,
+      before.memory,
+      'no memory row was lost',
+    );
+    assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  } finally {
+    closeDatabase(db);
   }
 });
 

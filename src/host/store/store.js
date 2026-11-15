@@ -1088,6 +1088,20 @@ export class Store {
         'INSERT INTO request_stat (ts, session_id, scope_key, section_bytes, entries_listed, entries_hidden) VALUES (?, ?, ?, ?, ?, ?)',
       )
       .run(this.now(), row.sessionId ?? null, row.scopeKey ?? null, row.bytes, row.listed, row.hidden);
+    // Per-entry counters, so "which line earns its bytes" stays answerable after the
+    // aggregate rows rotate out. A listed entry never fetched by id is the dead
+    // weight this product exists to find.
+    if (Array.isArray(row.ids) && row.ids.length > 0) {
+      const bump = this.db.prepare(
+        `INSERT INTO memory_usage (id, inject_count, read_count, last_injected_at)
+         VALUES (?, 1, 0, ?)
+         ON CONFLICT(id) DO UPDATE SET inject_count = inject_count + 1, last_injected_at = excluded.last_injected_at`,
+      );
+      const now = this.now();
+      withTransaction(this.db, () => {
+        for (const id of row.ids) bump.run(id, now);
+      });
+    }
     this.db.prepare('DELETE FROM request_stat WHERE ts < ?').run(this.now() - 90 * 86_400_000);
     this.audit.append('inject', {
       sessionId: row.sessionId ?? null,
@@ -1096,6 +1110,64 @@ export class Store {
       listed: row.listed,
       hidden: row.hidden,
     });
+  }
+
+  /**
+   * Record that one entry was fetched by id.
+   *
+   * Injection counts alone cannot tell "the index line was enough" from "the model
+   * opened it": only this counter can.
+   * @param id - memory id.
+   */
+  recordRead(id) {
+    if (typeof id !== 'string' || id.length === 0) return;
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO memory_usage (id, inject_count, read_count, last_read_at)
+           VALUES (?, 0, 1, ?)
+           ON CONFLICT(id) DO UPDATE SET read_count = read_count + 1, last_read_at = excluded.last_read_at`,
+        )
+        .run(id, this.now());
+    } catch {
+      // A counter must never fail a read.
+    }
+  }
+
+  /**
+   * Which entries spend prompt budget without being opened.
+   *
+   * @param options - `scopeKeys`, `limit`.
+   * @returns rows sorted by injections desc, reads asc.
+   */
+  usageReport(options = {}) {
+    const keys = options.scopeKeys ?? [];
+    const limit = Math.max(1, Math.min(200, options.limit ?? 20));
+    const marks = keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
+    const rows = this.db
+      .prepare(
+        `SELECT m.id, m.title, m.kind, h.status,
+                COALESCE(u.inject_count, 0) AS injections,
+                COALESCE(u.read_count, 0) AS reads,
+                u.last_injected_at, u.last_read_at
+         FROM memory m
+         JOIN memory_head h ON h.ord = m.ord
+         LEFT JOIN memory_usage u ON u.id = m.id
+         WHERE m.deleted_at IS NULL${marks}
+         ORDER BY COALESCE(u.inject_count, 0) DESC, COALESCE(u.read_count, 0) ASC
+         LIMIT ?`,
+      )
+      .all(...keys, limit);
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      kind: row.kind,
+      status: row.status,
+      injections: Number(row.injections),
+      reads: Number(row.reads),
+      lastInjectedAt: row.last_injected_at === null ? null : Number(row.last_injected_at),
+      lastReadAt: row.last_read_at === null ? null : Number(row.last_read_at),
+    }));
   }
 
   /**

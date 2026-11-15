@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.1.0] — 2026-11-15
+
+Two findings from an independent blind review, where seven reviewers compared this
+plugin against the rest of the field. Two of them caught the same false claim; the
+other had the sharpest product objection, and both are addressed here.
+
+### Fixed
+
+- **The "no network" claim was false.** `README` and the threat-model row both said
+  "no network unless `vectorMode` is http", while `updateCheck` defaulted to `true`
+  and the panel's update route fetched the registry. Rather than reword the claim,
+  the default is now **false**, so the sentence is true: turning the check on is one
+  click, and a disabled check reads "Update check off" instead of looking like a
+  dead button. `test/unit/network-claims.test.mjs` also greps the source, so a new
+  `fetch` outside the two opt-in modules fails CI.
+
+### Added
+
+- **A pending-review line in the injected section.** Verified-only injection has an
+  invisible failure mode: a fact written at midnight is absent at 9 a.m., and "never
+  saved" looks exactly like "saved but gated". When — and only when — something is
+  waiting, the footer now carries one line with the count and says those items are
+  deliberately absent. An empty queue still costs exactly 0 bytes, and the count is
+  part of the render cache key so a new candidate appears on the next request.
+
+- **Per-entry usage counters (schema v2).** `memory_usage` records `inject_count`,
+  `read_count`, `last_injected_at`, `last_read_at` per memory, so "which line spends
+  prompt bytes and is never opened" becomes answerable. The panel's Stats tab lists
+  that dead weight; `loci_get` records a read.
+
+### Migration
+
+Schema v1 → v2 adds one table. It runs through the existing migration runner: a
+`VACUUM INTO` snapshot first, then one immediate transaction, then a row-count guard
+over every pre-existing table. Rollback stays "restore the snapshot". This is the
+first real migration this project has shipped, so `test/integration/migrate.test.mjs`
+now exercises both the rehearsal step and the shipped one.
+
+### Note
+
+The same review found two things worth stating openly rather than burying: the
+plugin is **not yet in the DSH plugin catalog** (the catalog snapshot predates its
+publication), and it has been verified on `0.2.2-rc.1` only, while `engines.dsh`
+admits the whole `0.2.2-rc.1 <0.3.0-0` range. Both are tracked as open work.
+
 ## [2.0.3] — 2026-11-14
 
 ### Fixed

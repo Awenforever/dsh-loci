@@ -12,6 +12,7 @@
 import { copyFileSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { backupTo, tableCounts, withTransaction } from './db.js';
+import { MEMORY_USAGE_DDL } from './schema.js';
 import {
   META_KEYS,
   SCHEMA_VERSION,
@@ -28,7 +29,18 @@ import {
  * drives it with a rehearsal step so the path is never untested.
  * @type {Array<{from:number,to:number,up:(db:import('node:sqlite').DatabaseSync)=>void,verify?:(db:import('node:sqlite').DatabaseSync)=>void}>}
  */
-export const SHIPPED_MIGRATIONS = [];
+export const SHIPPED_MIGRATIONS = [
+  {
+    from: 1,
+    to: 2,
+    // v2 adds per-entry usage counters. The table is new and empty, so the
+    // migration cannot lose a row; the row-count guard in \`migrate()\` still runs
+    // over every existing table and would catch a mistake here.
+    up(db) {
+      db.exec(MEMORY_USAGE_DDL);
+    },
+  },
+];
 
 /**
  * Whether the file already holds the Loci core table.

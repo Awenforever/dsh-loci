@@ -22,7 +22,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '2.0.3';
+export const VERSION = '2.1.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];

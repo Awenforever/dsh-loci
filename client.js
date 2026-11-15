@@ -139,6 +139,9 @@ window.__ModuleLoader__.load({
       'panel.verifyAll': 'Verify all {n}',
       'panel.actionFailed': 'Action failed',
       'panel.injections': 'Recent injections',
+      'panel.deadWeight': 'Injected but never opened',
+      'panel.injected': 'injected',
+      'panel.opened': 'opened',
       'panel.store': 'Store',
       'panel.confirmDelete': 'Soft-delete this entry?',
       'panel.error': 'Request failed',
@@ -257,6 +260,9 @@ window.__ModuleLoader__.load({
       'panel.verifyAll': '全部核实（{n}）',
       'panel.actionFailed': '操作失败',
       'panel.injections': '最近注入',
+      'panel.deadWeight': '注入了但从未被打开',
+      'panel.injected': '次注入',
+      'panel.opened': '次打开',
       'panel.store': '存储',
       'panel.confirmDelete': '软删除这条记忆？',
       'panel.error': '请求失败',
@@ -1084,6 +1090,31 @@ window.__ModuleLoader__.load({
                 ),
               ),
               h('div', { className: 'loci-meta', style: { marginTop: '14px' } }, `${t('panel.version')} v${data.pluginVersion ?? '—'}`),
+              // Which lines spend prompt bytes and are never opened. Sorted host-side,
+              // so the first row is the most expensive and least used.
+              (data.usage ?? []).some((row) => row.injections > 0 && row.reads === 0)
+                ? h(
+                    'div',
+                    null,
+                    h('div', { className: 'loci-section' }, t('panel.deadWeight')),
+                    (data.usage ?? [])
+                      .filter((row) => row.injections > 0 && row.reads === 0)
+                      .slice(0, 8)
+                      .map((row) =>
+                        h(
+                          'div',
+                          { key: row.id, className: 'loci-row' },
+                          h('span', { className: 'loci-id' }, row.id),
+                          h(
+                            'div',
+                            { className: 'loci-main' },
+                            h('div', { className: 'loci-name' }, row.title),
+                            h('div', { className: 'loci-meta' }, `${row.injections}×${t('panel.injected')} · 0×${t('panel.opened')}`),
+                          ),
+                        ),
+                      ),
+                  )
+                : null,
             )
           : null,
       );

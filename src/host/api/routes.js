@@ -101,6 +101,9 @@ export function registerApiRoutes(ctx, deps) {
       pluginVersion: deps.version ?? '0.0.0',
       injections: store.recentInjections(50),
       audit: store.auditTail(50),
+      // Which entries spend prompt bytes and are never opened. Aggregate request
+      // stats cannot answer this, which is why schema v2 added per-entry counters.
+      usage: store.usageReport({ scopeKeys, limit: 50 }),
     });
   });
 

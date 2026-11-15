@@ -70,7 +70,7 @@ export function renderIndexBody(options) {
   const rulesMaxBytes = Math.max(0, Math.min(maxBytes, cfg('rulesMaxBytes')));
   const maxEntries = Math.max(1, Math.min(2000, cfg('indexMaxEntries')));
   const lineChars = Math.max(40, Math.min(400, cfg('indexLineMaxChars')));
-  const empty = { text: '', bytes: 0, listed: 0, total: 0, hidden: 0 };
+  const empty = { text: '', bytes: 0, listed: 0, total: 0, hidden: 0, ids: [] };
 
   const rules = store.ruleEntries({ scopeKeys, now, limit: 24 });
   const entries = store.indexEntries({ scopeKeys, now, limit: maxEntries + 1 });
@@ -160,7 +160,18 @@ export function renderIndexBody(options) {
     listed = 0;
   }
 
-  return { text, bytes: bytes(text), listed, total, hidden: Math.max(0, total - listed) };
+  return {
+    text,
+    bytes: bytes(text),
+    listed,
+    total,
+    hidden: Math.max(0, total - listed),
+    // Rule lines are injected too, and they are the ones a person most wants usage
+    // data for, so both blocks report their ids.
+    // Rule lines are injected too, and they are the ones a person most wants usage
+    // data for, so both blocks report their ids. `ruleEntries` is already verified-only.
+    ids: [...rules.slice(0, 12).map((rule) => rule.id), ...visible.slice(0, listed).map((entry) => entry.id)],
+  };
 }
 
 /**
@@ -188,6 +199,7 @@ export function createIndexSection(options) {
         bytes: rendered.bytes,
         listed: rendered.listed,
         hidden: rendered.hidden,
+        ids: rendered.ids ?? [],
       });
     } catch (error) {
       log?.warn?.(`loci: cannot record injection: ${String(error?.message ?? error)}`);

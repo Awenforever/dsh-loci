@@ -333,7 +333,17 @@ export function createTools(deps) {
       const id = str(args, 'id', { required: true, maxChars: 64 });
       const revision = int(args, 'revision', { min: 1 });
       const includeHistory = bool(args, 'includeHistory', true);
-      return store.get(id, { revision, includeHistory });
+      const result = store.get(id, { revision, includeHistory });
+      // A read counter is what separates "the index line was enough" from "the model
+      // had to open it". It must never fail the read itself.
+      if (result?.entry !== undefined) {
+        try {
+          store.recordRead(result.entry.id);
+        } catch {
+          /* counting is best effort */
+        }
+      }
+      return result;
     },
   };
 

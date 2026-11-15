@@ -8,7 +8,27 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+/**
+ * DDL for the v2 per-entry usage table.
+ *
+ * Kept as its own constant because two paths must agree on it: a fresh database
+ * (via {@link SCHEMA_SQL}) and an existing one (via the v1→v2 migration). A table
+ * that only exists on new installs is the classic way a feature "works on my
+ * machine".
+ */
+export const MEMORY_USAGE_DDL = `
+CREATE TABLE IF NOT EXISTS memory_usage (
+  id               TEXT PRIMARY KEY,
+  inject_count     INTEGER NOT NULL DEFAULT 0,
+  read_count       INTEGER NOT NULL DEFAULT 0,
+  last_injected_at INTEGER,
+  last_read_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_memory_usage_inject ON memory_usage (inject_count DESC);
+CREATE INDEX IF NOT EXISTS ix_memory_usage_read ON memory_usage (read_count DESC);
+`;
 
 /** DDL for a fresh database. Order matters: FTS and the head table follow `memory`. */
 export const SCHEMA_SQL = `
@@ -112,6 +132,9 @@ CREATE TABLE IF NOT EXISTS token_stat (
   token TEXT PRIMARY KEY,
   df    INTEGER NOT NULL DEFAULT 0
 );
+
+${MEMORY_USAGE_DDL}
+
 
 CREATE TABLE IF NOT EXISTS request_stat (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
