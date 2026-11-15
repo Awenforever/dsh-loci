@@ -15,7 +15,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const out = process.argv[2] ?? 'card-harness.png';
+const out = process.argv[2] ?? 'marketplace/screenshots/sidebar-card.png';
 const source = readFileSync('client.js', 'utf8').replace(/\r\n/g, '\n');
 
 // Extract the CSS template literal exactly as the components use it.
