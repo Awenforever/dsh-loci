@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.10.0] — 2026-11-15
+
+The last four findings from the audit. All four are the same shape: an operation that
+trusted an input it should have checked.
+
+### Fixed
+
+- **`snapshot --label` could write outside the memory root.** The label came from the
+  command line and was joined straight into a path, so `--label ../../tmp/x` produced a
+  database outside `$DSH_HOME/memory/loci/`. `SECURITY.md` said `assertInside` guarded
+  every generated path; this one was not guarded. The label is now reduced to a filename
+  *and* the resolved path is asserted.
+
+- **`loci_get` and `loci_forget` ignored the scope set.** Every read in the product binds
+  an explicit scope-key set except these two, which took an id and used it — so an id
+  pasted from another project's chat returned that entry's body, or soft-deleted it. Both
+  now refuse an entry outside the session's read set. A miss and a foreign hit answer the
+  same way, so the refusal does not confirm what exists elsewhere.
+
+- **An MCP write with no scope pooled in `session:unknown`.** `readScopeKeys(scopes, {
+  scope: undefined })[0]` is the *session* key, and a facade has no session — so every MCP
+  server on the machine shared that one key while no Host session ever read it. Proposals
+  were invisible to the review tab. A scope-less write now lands in the workspace the
+  facade is serving.
+
+- **Capture turned ordinary sentences into verified rules.** Bare `别` matched inside
+  级别, 特别, 识别, 区别 and 分别, and `要不要…？` matched the 不要 rule. Measured before
+  the change: *"我特别想看 diff"*, *"两者区别不大，随便选"*, *"我们分别试了两种方案"*,
+  *"识别这类错误要靠日志"*, *"这个 bug 的级别是 P1，先处理它"* — five false positives, each
+  of which becomes a `verified` line in `Rules (must follow)` with the default
+  `autoVerifyCaptured`. An imperative must now open a clause, and a sentence ending in `？`
+  is never a statement.
+
+  Verified against 8 negatives (all rejected) and 10 positives (all captured with the right
+  kind: 以后都用…, 不要再改…, 别把密钥…, 禁止…, 必须先…, 我们的约定是…, 记住…, 发布流程是…, 以后一律…, 下次别…).
+
+### Docs
+
+- `DESIGN.md` said "every captured row is a `candidate`". That stopped being true when
+  `autoVerifyCaptured` shipped and the sentence survived several releases; it now states the
+  two doors into the prompt and what the flag controls.
+
 ## [2.9.0] — 2026-11-15
 
 R3 was the last rule the product stated and did not keep.

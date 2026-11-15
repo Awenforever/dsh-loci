@@ -82,6 +82,28 @@ function strList(args, key, options = {}) {
  * @param exec - tool execution context.
  * @returns `{sessionId, scopes, header}`.
  */
+/**
+ * Refuse an id-addressed operation that points outside this session's scopes.
+ *
+ * Reads were scoped everywhere except here: `loci_get` and `loci_forget` took an id and
+ * used it, so a model that had seen an id from another project could read its body or
+ * soft-delete it. SECURITY T5 says every read binds an explicit scope-key set; by id it
+ * did not. The check runs after the lookup, so a miss and a foreign hit answer the same
+ * way — the caller learns nothing about what exists elsewhere.
+ *
+ * @param store - open store.
+ * @param id - the id the caller supplied.
+ * @param scopeKeys - this session's explicit read set.
+ * @param operation - name used in the error message.
+ * @throws when the entry exists but is outside the scope set.
+ */
+function assertInScope(store, id, scopeKeys, operation) {
+  const found = store.get(id);
+  if (found?.entry === undefined) return;
+  if (scopeKeys.includes(found.entry.scopeKey)) return;
+  throw new Error(`${operation}: ${id} is not in this session's scope`);
+}
+
 function execContext(exec) {
   const session = exec?.agent?.session;
   const sessionId = session?.id;
@@ -366,10 +388,12 @@ export function createTools(deps) {
     },
     timeoutMs: 10_000,
     isConcurrencySafe: () => true,
-    execute: async (args) => {
+    execute: async (args, exec) => {
       const id = str(args, 'id', { required: true, maxChars: 64 });
       const revision = int(args, 'revision', { min: 1 });
       const includeHistory = bool(args, 'includeHistory', true);
+      const context = execContext(exec);
+      assertInScope(store, id, readScopeKeys(context.scopes, { includeGlobal: config('includeGlobal') }), 'loci_get');
       const result = store.get(id, { revision, includeHistory });
       // A read counter is what separates "the index line was enough" from "the model
       // had to open it". It must never fail the read itself.
@@ -406,10 +430,14 @@ export function createTools(deps) {
     },
     timeoutMs: 10_000,
     isConcurrencySafe: () => false,
-    execute: async (args) => {
+    execute: async (args, exec) => {
       const id = str(args, 'id', { required: true, maxChars: 64 });
       const mode = oneOf(args, 'mode', ['soft', 'restore'], 'soft');
       const reason = str(args, 'reason', { fallback: undefined, maxChars: 200 });
+      const context = execContext(exec);
+      // Without this, a model that had seen an id from another project could soft-delete
+      // it. Deletion is the one operation where an unscoped id is worse than a bad read.
+      assertInScope(store, id, readScopeKeys(context.scopes, { includeGlobal: config('includeGlobal') }), 'loci_forget');
       return store.forget(id, { mode, reason, actor: 'model' });
     },
   };

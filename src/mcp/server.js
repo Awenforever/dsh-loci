@@ -162,11 +162,17 @@ async function callTool(name, args) {
     }
     case 'loci_write': {
       if (!allowWrite) throw new Error('this server is read-only; start it with --allow-write to propose memories');
-      const scopeKeys = readScopeKeys(scopes, { scope: requestedScope(args) });
-      const scopeKey = scopeKeys[0] ?? scopes.workspace;
+      // Never fall back to `scopeKeys[0]`. With no scope requested that is
+      // `session:unknown` — a key every MCP server on the machine shares and no Host
+      // session ever reads, so proposals pooled in a scope the user could not see in the
+      // panel's review tab. A facade has no session, so the honest default is the
+      // workspace it is serving.
+      const requested = requestedScope(args);
+      const writeScope = requested === undefined || requested === 'session' ? 'workspace' : requested;
+      const scopeKey = readScopeKeys(scopes, { scope: writeScope, includeGlobal: false })[0] ?? scopes.workspace;
       const result = store.write({
         kind: ['semantic', 'procedural', 'rule', 'episodic'].includes(args?.kind) ? args.kind : 'semantic',
-        scope: ['workspace', 'project', 'global'].includes(args?.scope) ? args.scope : 'workspace',
+        scope: writeScope,
         scopeKey,
         scopeLabel: 'mcp',
         title: String(args?.title ?? ''),

@@ -23,20 +23,45 @@ const MESSAGE_COUNT_CAP = 40;
 /** Buffered bytes per session. */
 const BUFFER_BYTE_CAP = 24 * 1024;
 
-/** Sentence patterns that mark a durable statement, with the kind they imply. */
+/**
+ * Sentence patterns that mark a durable statement, with the kind they imply.
+ *
+ * These run on every user message by default, so a false positive does not stay a
+ * candidate — with `autoVerifyCaptured` on it becomes a `verified` rule in the
+ * `Rules (must follow)` block. Bare substring matching was therefore expensive: `别`
+ * matched inside 级别, 特别, 识别, 区别 and 分别, and five ordinary sentences were measured
+ * turning into rules ("我特别想看 diff", "两者区别不大，随便选"). An imperative is now
+ * required to open a clause, and `不要` cannot be the tail of `要不要`.
+ */
+const CLAUSE_START = String.raw`(?:^|[，,、。；;：:！？!?\s]|但是|然后|所以|而且|并且|另外)`;
 const DURABLE_PATTERNS = Object.freeze([
-  { re: /(?:以后|今后|下次)(?:都|一律|必须|要|不要|别)/, kind: 'rule' },
-  { re: /(?:不要|别|禁止|不得|不允许|不能再|不可以)/, kind: 'rule' },
+  // A forward-looking commitment. The time word is what makes it strong regardless of
+  // where the clause begins.
+  { re: /(?:以后|今后|下次)(?:都|一律|必须|要|不要|别再?|禁止)/, kind: 'rule' },
+  {
+    re: new RegExp(`${CLAUSE_START}(?:不要|别再?|禁止|不得|不允许|不可以)`, 'u'),
+    kind: 'rule',
+  },
   { re: /(?:必须先|一定要|务必|记得先|一定要先)/, kind: 'procedural' },
   { re: /(?:流程是|步骤是|做法是|顺序是)/, kind: 'procedural' },
   { re: /(?:记住|记一下|记下来|帮我记住)/, kind: 'semantic' },
   { re: /(?:我的|我们的)(?:偏好|习惯|约定|规则|要求|标准)/, kind: 'semantic' },
-  { re: /(?:约定|规则是|标准是|原则是)/, kind: 'semantic' },
+  // `约定` on its own reads as a reference ("按约定处理"), not an announcement, so it
+  // needs the copula the way the others already had it.
+  { re: /(?:约定是|规则是|标准是|原则是)/, kind: 'semantic' },
   { re: /\b(?:always|never|from now on|remember that|we agreed|our rule)\b/i, kind: 'rule' },
 ]);
 
 /** Sentence separators for the extractor. */
 const SENTENCE_SPLIT = /[。！？!?；;\n]+/;
+/**
+ * A sentence *plus* the punctuation that ended it.
+ *
+ * `split()` throws the terminator away, and whether a segment ended in `？` is the
+ * difference between a statement and a question — `要不要一起吃饭？` matched the 不要
+ * pattern and became a rule because that information was gone.
+ */
+const SENTENCE_WITH_END = /([^。！？!?；;\n]+)([。！？!?；;\n]*)/g;
 
 /**
  * Flatten message content into plain text.
@@ -483,8 +508,13 @@ export function extractDurableStatements(userMessages, maxChars = 200) {
   const out = [];
   const seen = new Set();
   for (const message of userMessages) {
-    for (const raw of String(message.text ?? '').split(SENTENCE_SPLIT)) {
-      const sentence = raw.replace(/\s+/g, ' ').trim();
+    // Keep the terminator: whether a segment ended in a question mark decides whether it
+    // can be a statement at all. `要不要一起吃饭？` used to match the 不要 pattern and
+    // become a rule; split() discards the separator, so the distinction was unavailable.
+    for (const match of String(message.text ?? '').matchAll(SENTENCE_WITH_END)) {
+      const terminator = match[2] ?? '';
+      if (terminator === '？' || terminator === '?') continue;
+      const sentence = String(match[1] ?? '').replace(/\s+/g, ' ').trim();
       if (sentence.length < 6 || sentence.length > maxChars) continue;
       const matched = DURABLE_PATTERNS.find((pattern) => pattern.re.test(sentence));
       if (matched === undefined) continue;

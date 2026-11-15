@@ -294,8 +294,13 @@ guess.
 | plugin unload | flush summaries, close the database | one write set |
 | maintenance (6 h) | close stale working/candidate rows, repair a drifted FTS index, `PRAGMA optimize`, backfill embeddings | bounded, no model |
 
-Nothing here can grow the prompt: every captured row is a `candidate`, and candidates
-are not injected.
+Nothing here can grow the prompt **by itself**: candidates are not injected, and a captured
+statement only becomes injectable through one of two doors — a person approving it, or the
+quote gate, which requires the sentence to be present verbatim in the user's own messages
+*and* related to the claim. `autoVerifyCaptured` (default on) is what makes the second door
+apply to capture; turn it off and every captured row waits for a click. This paragraph used
+to say "every captured row is a `candidate`", which stopped being true when that default
+landed and was left standing for several releases.
 
 ---
 

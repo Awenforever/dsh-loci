@@ -23,6 +23,7 @@ import { EmbeddingChannel, vectorToBlob } from './embedding.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
 import { cleanText, normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
+import { assertInside } from '../paths.js';
 
 /**
  * Relations a caller may declare between two facts.
@@ -1423,7 +1424,14 @@ export class Store {
    */
   snapshot(label = 'manual') {
     this.#assertWritable();
-    return backupTo(this.db, join(this.paths.backups, `${label}-${this.now()}.db`));
+    // The label comes from a command line and was joined straight into a path, so
+    // `--label ../../tmp/x` wrote a database outside the memory root. SECURITY §4 said
+    // `assertInside` guarded every generated path; this one was not guarded. Sanitise the
+    // label to a filename, then assert the resolved path anyway — belt and braces, because
+    // the assertion is the part that would survive a future change to the sanitiser.
+    const safeLabel = String(label).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'manual';
+    const target = join(this.paths.backups, `${safeLabel}-${this.now()}.db`);
+    return backupTo(this.db, assertInside(this.paths.backups, target));
   }
 
   /** Health checks used by `doctor`. */

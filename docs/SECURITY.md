@@ -13,7 +13,7 @@ file sandbox, approval policy) are the Harness's and are assumed to work.
 | T2 | Stored text breaks prompt assembly | Every later request throws | `interpolate:false` plus `{{`/`}}` neutralization at render time; `loci doctor` runs a live probe that renders hostile text and fails if any of it survives |
 | T3 | A credential is written into memory | Secret in a plaintext database and in every future prompt | nine high-confidence patterns + entropy check; default `redact`, optional `reject` |
 | T4 | An external agent or page writes memory | Poisoned long-term memory | tools are model-facing only through the Host; the MCP facade is read-only by default and can only create candidates; imported entries are candidates |
-| T5 | Cross-project leakage | Project A's facts answer in project B | explicit scope-key sets on every read; `global` requires an explicit scope; tested |
+| T5 | Cross-project leakage | Project A's facts answer in project B | explicit scope-key sets on every read, **including the two id-addressed tools** — `loci_get` and `loci_forget` used to take an id and use it, so an id pasted from another project's chat worked; both now refuse an entry outside the session's read set (`test/unit/containment.test.mjs`). `global` is read by default (`includeGlobal`) but written only on request; the MCP facade's scope-less write lands in the workspace, never in the shared `session:unknown` |
 | T6 | The panel API is reachable from another origin | Local admin surface exposed to a web page | exact `connection.fetch` route (owner Peer, same-origin fence), JSON-only writes, 256 KB body cap, no CORS headers |
 | T7 | Data written outside the Harness home | Un-backed-up, un-scoped secrets | single root `$DSH_HOME/memory/loci/`, every path asserted with `assertInside` |
 | T8 | A write blocks the agent loop | Turn hangs | WAL + bounded busy timeout + six retries; transactions are single-digit milliseconds; capture is debounced and never awaited by the turn |
@@ -54,7 +54,10 @@ schema and re-derived by the store. The MCP facade cannot either.
 ## 4. Filesystem
 
 - One root: `$DSH_HOME/memory/loci/`. Resolved as config → `$DSH_HOME` → `~/.dsh`.
-- `assertInside` guards export, import and every generated path.
+- `assertInside` guards export, import, `snapshot` and every generated path. The snapshot
+  label comes from a command line and used to be joined straight into a path, so
+  `--label ../../tmp/x` wrote a database outside the memory root; the label is now reduced
+  to a filename **and** the resolved path is asserted (`test/unit/containment.test.mjs`).
 - File permissions are the OS default; Loci does not implement encryption. Treat the
   directory like any other plaintext store of notes (BitLocker/FileVault, user ACLs).
 - Uninstall leaves the data behind by design (see OPERATIONS §7).
