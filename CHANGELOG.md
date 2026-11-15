@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.6.0] — 2026-11-15
+
+The rest of the boundary audit: three silent-wrongness bugs, and the invariants rewritten
+to say what the code actually does.
+
+### Fixed
+
+- **The review filter was ignored.** The panel sent `kinds=rule,semantic,procedural`
+  while the route read `kind`, so every session summary appeared in a queue designed to
+  exclude them. The route now accepts both spellings.
+- **"N items await review" could never reach zero.** `countPending` ignored `valid_to`,
+  so candidates closed by maintenance stayed counted in the injected notice forever —
+  a permanent nag that cost bytes and named rows no review list would show.
+- **`/loci review` pointed at an operation that does not exist** (`loci_write op:"verify"`).
+  Fixed by adding the door that was actually missing: **`dsh-loci verify --id <id>
+  [--status disputed]`**. The tool surface still has no verify, on purpose — the model
+  must never grant trust — but a terminal-only user could previously create candidates
+  forever and never promote one.
+
+### Changed
+
+- **The invariants now state what is enforced, and when each one expires.**
+  - I2 became **I2′**: no write reorders or rewrites an existing line; re-evaluation
+    happens at session/day boundaries only. The old "byte-identical with no writes" was
+    false — the footer carries a date, so it changed daily by design.
+  - I4 became **I4′**: session reads bind an explicit key set; the panel and export
+    enumerate every scope, which is an administrative view rather than a session read.
+  - I1 no longer says "verified requires a human": it says the store derives status, and
+    verified comes from a human action **or** a quote that is present and related.
+  - R1 and R2 were rewritten because the project violated them: `recallAssist` selects by
+    body text (now an explicit, bounded exception), and the pending count deliberately
+    changes mid-session (now stated as an informed cost, not denied).
+  - New **§0.1** gives every invariant its category (structural / contingent /
+    preference), what it depends on, and the event that should trigger re-evaluation.
+    §2.1 had expiry signals for the one thing the project *rejected* and none for the
+    four things it *relies on*; that asymmetry is the most reusable finding of the audit.
+
+- **PRIVACY said "two things can reach the network". It was three.** Session extraction
+  sends up to 12 KB of conversation through the Host's own model service. Not a third
+  party, but the count was wrong and the page now names all three. The prose test grew a
+  check for the third path so the count cannot drift again.
+
 ## [2.5.0] — 2026-11-15
 
 The rest of the boundary audit: one real hole in the trust gate, one check that could

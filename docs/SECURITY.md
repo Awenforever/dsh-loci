@@ -17,7 +17,7 @@ file sandbox, approval policy) are the Harness's and are assumed to work.
 | T6 | The panel API is reachable from another origin | Local admin surface exposed to a web page | exact `connection.fetch` route (owner Peer, same-origin fence), JSON-only writes, 256 KB body cap, no CORS headers |
 | T7 | Data written outside the Harness home | Un-backed-up, un-scoped secrets | single root `$DSH_HOME/memory/loci/`, every path asserted with `assertInside` |
 | T8 | A write blocks the agent loop | Turn hangs | WAL + bounded busy timeout + six retries; transactions are single-digit milliseconds; capture is debounced and never awaited by the turn |
-| T9 | Memory exfiltration over the network | Privacy breach | two opt-in paths only, both off by default: the update check (`updateCheck`, one `GET` of the package metadata, carries nothing about memory) and the HTTP embedding channel (`vectorMode: 'http'`, endpoint user-configured, failure parks the channel). No other request exists — `docs/PRIVACY.md` §3 lists both |
+| T9 | Memory exfiltration over the network | Privacy breach | three opt-in paths, all off by default: the update check (`updateCheck`, one `GET` of the package metadata, carries nothing about memory), the HTTP embedding channel (`vectorMode: 'http'`, endpoint user-configured, failure parks the channel), and session extraction (`extractMode`, up to 12 KB of recent conversation to the Host's own model service at session end). No other request exists — `docs/PRIVACY.md` §3 lists all three |
 | T10 | Unbounded growth | Token cost creep | hard byte budget, pinned/rule caps, soft per-scope cap option |
 
 ## 2. The trust gate, precisely

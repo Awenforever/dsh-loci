@@ -23,12 +23,17 @@ anything from a session that is not the root session of a conversation.
 Nothing, by default. There is no telemetry, no analytics, and no network call in the
 plugin's normal path.
 
-Two things can reach the network, and both are opt-in:
+Three things can reach the network, and all are opt-in:
 
 | Path | When | What is sent | How to disable |
 |---|---|---|---|
-| Update check | only when you press "check for updates" on the sidebar card | one `GET https://registry.npmjs.org/dsh-loci/latest`; no query string, no identifier | `updateCheck: false`, or simply never press it |
+| Update check | only when you press "check for updates" on the sidebar card | one `GET https://registry.npmjs.org/dsh-loci/latest`; no query string, no identifier | `updateCheck: false` (the default), or simply never press it |
 | Embedding channel | only when `vectorMode` is `http` and an endpoint is configured | the text of the memory being embedded | leave `vectorMode` at `off` |
+| Session extraction | only when `extractMode` is `on`/`turn`/`session`, at session end | up to 12 KB of the recent conversation, to the model your Host is already configured with — through the Host's own `llm` service, not a connection this plugin opens | leave `extractMode` at `off` (the default) |
+
+The third path was missing from this page for two releases. It is not a third party —
+it goes to the same model provider the session itself is talking to — but "two things"
+was a count, and the count was wrong.
 
 Opening the panel or the card does **not** contact the registry - the version
 badge renders what is installed, and the update answer is served from a local

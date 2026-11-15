@@ -179,8 +179,12 @@ export function registerApiRoutes(ctx, deps) {
     const statuses = status === 'any' || status === null
       ? ['verified', 'candidate', 'disputed']
       : status.split(',').filter(Boolean);
-    const kind = url.searchParams.get('kind');
-    const kinds = kind === null || kind === 'all' ? undefined : kind.split(',').filter(Boolean);
+    // Accept both spellings. The panel sent `kinds=` while this read `kind=`, so the
+    // review tab's "only injectable kinds" filter was a no-op: every session summary
+    // showed up in a queue that was designed to exclude them. A silently ignored query
+    // parameter is the kind of bug that only shows up as "the list is full of noise".
+    const kindParam = url.searchParams.get('kinds') ?? url.searchParams.get('kind');
+    const kinds = kindParam === null || kindParam === 'all' ? undefined : kindParam.split(',').map((entry) => entry.trim()).filter(Boolean);
     if (query.trim().length > 0) {
       const result = await search(store, {
         query,

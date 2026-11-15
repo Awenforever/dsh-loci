@@ -117,10 +117,15 @@ The settings page writes the fields marked *live* without a restart.
 
 ## What it will not do
 
-- No model call in any automatic path in v1.0 — capture and summaries are
-  deterministic, so the cost is visible and zero.
-- No cloud, no telemetry. Two optional network paths, both off by default: the update check (`updateCheck`) and the HTTP embedding channel (`vectorMode: 'http'`).
-- No cross-project leakage: reads use an explicit scope-key set, never a wildcard.
+- Capture and the session summary are deterministic — no model call, so their cost is
+  visible and zero. The only model call is `extractMode`, which is **off** by default
+  and only runs when you set it.
+- No cloud, no telemetry. Three optional network paths, all off by default: the update
+  check (`updateCheck`), the HTTP embedding channel (`vectorMode: 'http'`), and session
+  extraction (which sends the recent conversation to your configured model through the
+  Harness).
+- Session reads use an explicit scope-key set, never a wildcard. The panel and export
+  enumerate every scope — an admin view, not a session read.
 - No physical deletion by default; `purge` needs a config switch, a confirmation,
   and leaves an audit line.
 

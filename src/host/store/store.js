@@ -876,7 +876,7 @@ export class Store {
    * @param scopeKeys - explicit scope keys (never a wildcard).
    * @returns the count of candidate and disputed entries.
    */
-  countPending(scopeKeys) {
+  countPending(scopeKeys, now = this.now()) {
     if (scopeKeys.length === 0) return 0;
     const marks = scopeKeys.map(() => '?').join(', ');
     return Number(
@@ -884,9 +884,10 @@ export class Store {
         .prepare(
           `SELECT COUNT(*) AS n FROM memory m
            WHERE m.status IN ('candidate', 'disputed') AND m.deleted_at IS NULL
+             AND (m.valid_to IS NULL OR m.valid_to > ?)
              AND m.scope_key IN (${marks})`,
         )
-        .get(...scopeKeys)?.n ?? 0,
+        .get(now, ...scopeKeys)?.n ?? 0,
     );
   }
 

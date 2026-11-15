@@ -140,10 +140,12 @@ status resolution:
    else                               → candidate
 ```
 
-The quote check is the whole trust model in one line: **a fact is verified when the
-user's own words, still present in this session, support it.** A model cannot promote
-its own guess by writing `status: 'verified'` through the tool — the tool does not
-accept that field, and the store re-derives status from evidence.
+The quote check is two questions, and both have to pass: **is the quote still present in
+this session's user messages** (containment), and **does it share substance with the
+claim** (≥5% character-bigram overlap). The second half exists because containment alone
+is enough to launder a fabricated fact — quoting "好的，继续吧" certified anything. A model
+cannot promote its own guess by writing `status: 'verified'` through the tool: the tool
+does not accept that field, and the store re-derives status from evidence.
 
 The write is one `BEGIN IMMEDIATE` transaction that touches `memory`, `memory_fts`,
 `token_stat`, `entity`/`memory_entity`, `memory_head`, and `memory_edge`. A crash

@@ -63,6 +63,7 @@ const COMMANDS = new Set([
   'migrate',
   'rollback',
   'purge',
+  'verify',
   'snapshot',
   'snapshots',
   'help',
@@ -201,7 +202,35 @@ switch (command) {
         console.log(`candidates ${candidates.total} · disputed ${disputed.total}`);
         for (const item of candidates.items) console.log(`  candidate ${item.id} · ${item.title}`);
         for (const item of disputed.items) console.log(`  disputed  ${item.id} · ${item.title}`);
+        if (candidates.total > 0 || disputed.total > 0) {
+          console.log('');
+          console.log('approve with: dsh-loci verify --id <id>            (or in the panel: Memory → Review)');
+          console.log('reject  with: dsh-loci verify --id <id> --status disputed');
+        }
       }
+    });
+    break;
+  }
+  // A person approving a candidate. The tool surface deliberately has no equivalent —
+  // the model must never be able to grant trust — so before this command a terminal-only
+  // or MCP user could create candidates forever and never promote one. The panel is the
+  // GUI door; this is the other one, and both are human-typed.
+  case 'verify': {
+    const id = flag('id');
+    if (id === undefined || id === '') {
+      console.error('verify needs --id <memory id>');
+      process.exitCode = 2;
+      break;
+    }
+    const status = flag('status') ?? 'verified';
+    if (!['verified', 'disputed', 'candidate'].includes(status)) {
+      console.error(`unknown status: ${status}; expected verified, disputed or candidate`);
+      process.exitCode = 2;
+      break;
+    }
+    await withStore((store) => {
+      const result = store.setTrust(id, status, { actor: 'cli' });
+      emit(result, `${id} → ${status}`);
     });
     break;
   }
@@ -340,6 +369,7 @@ switch (command) {
   snapshot [--label <name>]
   migrate [--target <n>]
   rollback [--from <snapshot>]
+  verify --id <id> [--status verified|disputed|candidate]
   purge --id <id> --confirm <id> [--allow-hard-delete]
 
 options: --home <path>  --json   (either may come before or after the command)

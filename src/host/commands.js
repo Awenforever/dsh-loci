@@ -92,7 +92,13 @@ export function registerCommands(ctx, deps) {
             const lines = [`candidates: ${pending.total}`, `disputed: ${disputed.total}`];
             for (const item of pending.items.slice(0, 15)) lines.push(`  candidate ${item.id} · ${item.title}`);
             for (const item of disputed.items.slice(0, 15)) lines.push(`  disputed  ${item.id} · ${item.title}`);
-            lines.push('verify with: loci_write op:"verify" id:<id>');
+            // Point at things that exist. This used to say `loci_write op:"verify"`,
+            // an operation the tool has never had and must not have — the model is not
+            // allowed to grant trust. A person approves in the panel, or from a
+            // terminal with the CLI, which is where the authority actually lives.
+            lines.push('');
+            lines.push('approve in the panel: Memory → Review');
+            lines.push('or from a terminal:   dsh-loci verify --id <id> [--status disputed]');
             return { kind: 'success', text: lines.join('\n') };
           }
           case 'export': {

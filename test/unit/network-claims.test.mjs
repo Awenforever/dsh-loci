@@ -49,9 +49,16 @@ test('no source file fetches anything except the two opt-in modules', () => {
 });
 
 test('the prose matches the code', () => {
-  // The failure this guards against is a sentence, not a bug.
-  assert.match(read('README.md'), /both off by default/i);
+  // The failure this guards against is a sentence, not a bug. It has now caught two:
+  // the original "no network unless vectorMode is http" (false while updateCheck
+  // defaulted to true), and the count itself — PRIVACY said "two things" while a third
+  // egress (session extraction through the Host) existed and was unlisted.
+  assert.match(read('README.md'), /all off by default/i);
   assert.doesNotMatch(read('README.md'), /no network unless you configure/i);
-  assert.match(read('docs/SECURITY.md'), /both off by default/i);
+  assert.doesNotMatch(read('README.md'), /two optional network paths/i);
+  assert.match(read('docs/SECURITY.md'), /all off by default/i);
   assert.match(read('docs/PRIVACY.md'), /press "check for updates"/);
+  assert.match(read('docs/PRIVACY.md'), /Three things can reach the network/i);
+  // The third path must be named, not just counted down.
+  assert.match(read('docs/PRIVACY.md'), /session extraction/i);
 });
