@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.4.0] — 2026-11-15
+
+The index-byte bar had no visible track.
+
+### Fixed
+
+- **The bar's track was one theme layer step**, `--dsw-alias-bg-layer-2` against a
+  `--dsw-alias-bg-layer-1` card — #f1f1f4 on #ffffff, which is almost nothing. The bar read
+  as a floating blue sliver: you could see how much was used and not what the whole was, which
+  is the only reason a bar beats a number here. The track is now `--dsw-alias-border-l1` with
+  an inset ring, and the groove is 5px so the unfilled part is legible.
+- A non-zero section gets at least a 2% fill so a nearly-empty index still shows *something*
+  against the groove rather than looking empty.
+
 ## [3.3.0] — 2026-11-15
 
 R23 and R24: the card now describes *this* conversation, and the panel explains itself.

@@ -198,8 +198,8 @@ window.__ModuleLoader__.load({
 .loci-card-metric-value.is-warn { color: var(--dsw-alias-state-warn-primary); }
 .loci-card-metric-value.is-error { color: var(--dsw-alias-state-error-primary); }
 .loci-card-barline { display: flex; align-items: center; gap: 6px; width: 100%; }
-.loci-card-bar { flex: 1 1 auto; min-width: 20px; height: 4px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2); overflow: hidden; }
-.loci-card-bar-fill { height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary); }
+.loci-card-bar { position: relative; flex: 1 1 auto; min-width: 20px; height: 5px; border-radius: 999px; background: var(--dsw-alias-border-l1); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1); overflow: hidden; }
+.loci-card-bar-fill { position: relative; height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary); min-width: 2px; }
 .loci-card-bar-fill.is-warn { background: var(--dsw-alias-state-warn-primary); }
 .loci-card-bar-label { font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
 .loci-card-foot { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 8.5px; color: var(--dsw-alias-label-secondary); }
@@ -587,7 +587,7 @@ window.__ModuleLoader__.load({
                 { className: 'loci-card-bar', role: 'presentation' },
                 h('div', {
                   className: `loci-card-bar-fill${indexBytes / budget > 0.85 ? ' is-warn' : ''}`,
-                  style: { width: `${Math.min(100, Math.round((indexBytes / budget) * 100))}%` },
+                  style: { width: `${Math.max(indexBytes > 0 ? 2 : 0, Math.min(100, Math.round((indexBytes / budget) * 100)))}%` },
                 }),
               ),
               h('span', { className: 'loci-card-bar-label' }, `${indexBytes} / ${budget} B`),
