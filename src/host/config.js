@@ -157,7 +157,12 @@ function buildSchema() {
     extractMaxCallsPerHour: z.number().step(1).min(0).max(240).default(DEFAULTS.extractMaxCallsPerHour).volatile(),
     extractMaxCandidates: z.number().step(1).min(0).max(20).default(DEFAULTS.extractMaxCandidates).volatile(),
     extractSessionMaxCandidates: z
-      .number().n      .step(1).n      .min(0).n      .max(20).n      .default(DEFAULTS.extractSessionMaxCandidates).n      .volatile(),
+      .number()
+      .step(1)
+      .min(0)
+      .max(20)
+      .default(DEFAULTS.extractSessionMaxCandidates)
+      .volatile(),
     extractTimeoutMs: z.number().step(500).min(1000).max(120000).default(DEFAULTS.extractTimeoutMs).volatile(),
     maintenanceMode: z.union(ENUMS.maintenanceMode).default(DEFAULTS.maintenanceMode).volatile(),
     maintenanceIntervalHours: z.number().step(0.5).min(0.5).max(168).default(DEFAULTS.maintenanceIntervalHours).volatile(),

@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.3.1] — 2026-11-15
+
+### Fixed
+
+- **A corrupted line in the config schema.** `2.3.0` failed in CI at
+  `.number().n .step(1)` — a patch script wrote a literal `.n` where a newline was
+  meant. It passed every local gate, because `buildSchema()` only runs when
+  `@deepseek-ai/schemastery` resolves, and a checkout without dependencies never
+  executes that line.
+
+### Added
+
+- `test/unit/config-schema.test.mjs` builds the schema whenever the peer dependency
+  is present, and constructs it with the shipped defaults. A broken chain, an
+  out-of-range default or a wrong union member now fails a test instead of a tag.
+  The corruption above was reintroduced on purpose to confirm this test catches it.
+
+### Note
+
+`2.3.0` was tagged but **never published** (the CI job stopped before the publish
+step). This is the first version carrying the session digest.
+
 ## [2.3.0] — 2026-11-15
 
 The last open item from the blind review, and the one a heavy daily user called the
