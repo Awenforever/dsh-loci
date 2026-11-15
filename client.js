@@ -45,7 +45,7 @@ window.__ModuleLoader__.load({
       'card.dead': 'Dead',
       'card.pendingHint': '{n} item(s) waiting for you in Review.',
       'card.updated': 'updated',
-      'card.pending': '{n} still need your review',
+      'card.pendingSentence': '{n} still need your review',
       'card.pinned': 'pinned',
       'card.open': 'Open memory',
       'card.check': 'Check for updates',
@@ -172,7 +172,7 @@ window.__ModuleLoader__.load({
 .loci-card-root.is-rail { flex: 0 0 auto; padding: 6px; align-items: center; justify-content: center; }
 .loci-card-head { display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; }
 .loci-card-title { font-size: 13px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
-.loci-card-ver { flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 8.5px; line-height: 1.2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; white-space: nowrap; }
+.loci-card-ver { flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 9px; line-height: 1.2; font-family: inherit; font-variant-numeric: tabular-nums; cursor: pointer; white-space: nowrap; }
 .loci-card-ver:hover { color: var(--dsw-alias-label-primary); }
 .loci-card-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 .loci-card-dot.is-warn { background: var(--dsw-alias-state-warn-primary); }
@@ -479,6 +479,7 @@ window.__ModuleLoader__.load({
             'aria-label': t('card.open'),
             onClick: () => open?.(),
           },
+          h('style', null, CSS),
           h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true },
             h('path', { d: 'M4 6.5h16M4 12h16M4 17.5h10', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' }),
             h('circle', { cx: 18.5, cy: 17.5, r: 2.2, stroke: 'currentColor', strokeWidth: 1.5 }),
@@ -507,6 +508,7 @@ window.__ModuleLoader__.load({
             if (event.key === 'Enter' || event.key === ' ') open?.();
           },
         },
+        h('style', null, CSS),
         h(
           'div',
           { className: 'loci-card-head' },

@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.0.1] — 2026-11-15
+
+The 3.0.0 card was correct markup with no stylesheet, and the screenshot showed it.
+
+### Fixed
+
+- **The card was never styled outside the panel.** Every `.loci-*` rule lives in one CSS
+  template string that only `MemoryPanel` and `SettingsSection` render as a `<style>`
+  element. In the sidebar, with the panel closed, no `<style>` existed — so the card's DOM
+  was right and its layout was simply absent. That is what "bare text in the sidebar"
+  looked like, and it predates 3.0.0: the first screenshot showed it too. The card now
+  renders the stylesheet itself, and so does its rail variant.
+
+- **`card.pending` was defined twice.** The old value was the sentence
+  `'{n} still need your review'`; 3.0.0 added a bare `'Pending'` label for the metric row,
+  and the later definition won — so the card printed the sentence with an unsubstituted
+  `{n}`. The sentence is now `card.pendingSentence` and the label stays `Pending`.
+
+- **The version chip rendered as `v3. 0. 0`.** The chip used
+  `ui-monospace, SFMono-Regular, Menlo, monospace`, which on Windows falls back to a
+  monospace face whose period is centred in a wide advance; at 8.5px that reads as gaps
+  between the digits. Measured with `getComputedStyle`: `letter-spacing: normal`,
+  `word-spacing: 0`, width 25.50 — the spacing was correct, the **glyph** was not. The chip
+  now inherits the UI font with tabular figures, at 9px.
+
+### Added
+
+- **`scripts/shot-card.mjs`** renders the sidebar card to a PNG using the stylesheet
+  extracted from `client.js` and the DOM the component produces, through headless Edge. It
+  cannot catch a logic mistake, only a drawing one — but a drawing mistake is exactly what
+  shipped twice, and a screenshot is the only review that shows it.
+
+### Not added
+
+Four guard files from the previous draft (a separate client-i18n test, an English-only test,
+a CSS-shape assertion and a manifest check) were collapsed into **one** test file and one
+manifest assertion. Guards that outnumber the behaviour they protect get deleted by the next
+person, which is worse than not having them.
+
+### Corrected in the record
+
+The 3.0.0 log entry said the card had been verified. It had not been looked at. The entry
+above records what the screenshot showed.
+
 ## [3.0.0] — 2026-11-15
 
 The sidebar card was not a card, and the plugin had a second language it did not need.
