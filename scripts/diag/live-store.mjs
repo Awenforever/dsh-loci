@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Snapshot the live store so R14 can be observed rather than assumed.
+ * Snapshot the live store so the injection chain can be observed rather than assumed.
  *
  * R14's remaining half is the full chain: a model writes → a person verifies → the next turn
  * injects non-zero bytes. This prints the state needed to tell which step has happened.
  */
-import { effectiveConfig } from './src/host/config.js';
-import { layout, resolveDshHome, resolveMemoryRoot } from './src/host/paths.js';
-import { Store } from './src/host/store/store.js';
+import { effectiveConfig } from '../../src/host/config.js';
+import { layout, resolveDshHome, resolveMemoryRoot } from '../../src/host/paths.js';
+import { Store } from '../../src/host/store/store.js';
 
 const label = process.argv[2] ?? 'snapshot';
 const root = resolveMemoryRoot(resolveDshHome());

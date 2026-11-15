@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.5.0] — 2026-11-15
+
+The CLI could not tell "nothing to review" apart from "wrong directory".
+
+### Fixed
+
+- **`dsh-loci review` printed `candidates 0 · disputed 0` without saying which scope it
+  looked at.** `review`, `verify` and `stats --session` resolve their scope from
+  `process.cwd()`, which is correct for a terminal command — it describes the directory it
+  runs in. But the output never named that directory, so the same command returned `0` from
+  the repository and `5` from the workspace, and both looked like an answer.
+
+  Observed for real while verifying an entry: five candidates in the store, `review` said
+  zero, and the difference was only the directory. The scope is now printed, and `--all`
+  shows every scope from anywhere.
+
+### Found while verifying the injection chain
+
+The full chain was exercised end to end for the first time, with a real model tool call in a
+fresh session:
+
+1. the model called `loci_write` with an `evidenceQuote` that is **not** verbatim in any user
+   message → the entry landed as `candidate`, which is the gate doing its job;
+2. `dsh-loci verify --id` promoted it to `verified` — the human step;
+3. the next prompt assembly carried the entry: `section_bytes = 323`, `entries_listed = 1`,
+   `memory_usage.inject_count = 1`, and the rendered section contained
+   `- m_01M7… · procedural · 2026-11-15 · 回滚窗口是三十分钟`.
+
+Before verification the same surface carried 354 bytes of pending notice with `listed = 0`,
+so the two states are distinguishable rather than merely non-zero.
+
+### Added
+
+- `scripts/diag/live-store.mjs` and `scripts/diag/render-section.mjs`: print the live store
+  summary and the exact section the model receives. Both are read-only and exist because
+  "0 bytes" and "the entry is there" were being argued about instead of looked at.
+
 ## [3.4.0] — 2026-11-15
 
 The index-byte bar had no visible track.

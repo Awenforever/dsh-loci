@@ -194,11 +194,16 @@ switch (command) {
   }
   case 'review': {
     await withStore((store) => {
-      const { scopeKeys } = sessionsScope();
+      // A terminal command describes the directory it runs in, so say which one. Otherwise
+      // "0 candidates" cannot be told apart from "wrong directory".
+      const { scopes, scopeKeys } = argv.includes('--all')
+        ? { scopes: { labels: { workspace: '(all scopes)' } }, scopeKeys: store.allScopeKeys() }
+        : sessionsScope();
       const candidates = store.list({ scopeKeys, statuses: ['candidate'], limit: 50, offset: 0 });
       const disputed = store.list({ scopeKeys, statuses: ['disputed'], limit: 50, offset: 0 });
       if (json) console.log(JSON.stringify({ candidates, disputed }, null, 2));
       else {
+        console.log(`scope ${scopes.labels.workspace}`);
         console.log(`candidates ${candidates.total} · disputed ${disputed.total}`);
         for (const item of candidates.items) console.log(`  candidate ${item.id} · ${item.title}`);
         for (const item of disputed.items) console.log(`  disputed  ${item.id} · ${item.title}`);
