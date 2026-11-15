@@ -123,6 +123,8 @@ export class Store {
     this.now = options.now ?? (() => Date.now());
     this.quoteVerifier = options.quoteVerifier ?? (() => false);
     this.pluginVersion = options.pluginVersion ?? '0.0.0';
+    /** Recorded host version, so support can see which point release met this store. */
+    this.hostVersion = options.hostVersion ?? undefined;
     this.readOnly = options.readOnly === true;
     this.db = openDatabase({ file: this.paths.db, readOnly: this.readOnly });
     this.audit = this.readOnly
@@ -1059,6 +1061,9 @@ export class Store {
       byStatus,
       byKind,
       byScope,
+      // Which Harness point release this store has met. A range in engines.dsh is a
+      // promise; this is the record of what actually opened the file.
+      hostVersion: this.hostVersion ?? readMeta(this.db, META_KEYS.hostVersion) ?? null,
       pendingCandidates: pending,
       disputed,
       lastInjection:

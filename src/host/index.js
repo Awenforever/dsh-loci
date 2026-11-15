@@ -18,11 +18,12 @@ import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
 import { UpdateChecker } from './update.js';
 import { Extractor, completeViaHost } from './extract/extractor.js';
+import { detectHostVersion, hostLineOf } from './host-version.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '2.1.0';
+export const VERSION = '2.2.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -98,15 +99,30 @@ export function apply(ctx, rawConfig = {}) {
   log.info(`loci: using ${memoryRoot}`);
 
   let capture;
+  // Record which Harness this store is actually running on. `engines.dsh` is a
+  // range; this field is the only one that says which point release met the file,
+  // so a support report can be checked instead of guessed at.
+  const detectedHost = detectHostVersion();
   const store = new Store({
     memoryRoot,
     paths,
     config,
     log,
     pluginVersion: VERSION,
+    hostVersion: detectedHost?.version,
     live: read,
     quoteVerifier: (quote, options) => capture?.verifyQuote(quote, options) ?? false,
   });
+  if (detectedHost !== undefined) {
+    try {
+      store.db
+        .prepare("INSERT INTO meta (key, value) VALUES ('host_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(detectedHost.version);
+    } catch {
+      /* recording is best effort */
+    }
+    log?.info?.(`loci: host ${detectedHost.version} (${hostLineOf(detectedHost.version)})`);
+  }
 
   const updates = new UpdateChecker({
     currentVersion: VERSION,

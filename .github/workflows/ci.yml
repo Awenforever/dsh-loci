@@ -68,3 +68,21 @@ jobs:
           npm install --no-audit --no-fund "$tarball"
           npx --no-install dsh-loci doctor --home /tmp/loci-smoke-home
 
+      # `engines.dsh` is a range; a range is a promise nobody tested. When a Host is
+      # actually installed on the runner, read it out of its app.asar and assert that
+      # the API surface this plugin depends on is still there. A stock GitHub runner
+      # has no Host (it is not published to npm), so this skips loudly rather than
+      # failing a build for a missing environment.
+      - name: host API surface (runs only where a Host is installed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=""
+          for candidate in "$DSH_ASAR" "/opt/deepseek-harness/resources/app.asar" "$HOME/.local/share/deepseek-harness/resources/app.asar"; do
+            if [ -n "$candidate" ] && [ -f "$candidate" ]; then archive="$candidate"; break; fi
+          done
+          if [ -z "$archive" ]; then
+            echo "::notice::no Host install on this runner; compat probe skipped (run it locally with --asar)"
+            exit 0
+          fi
+          node scripts/compat-probe.mjs --asar "$archive"

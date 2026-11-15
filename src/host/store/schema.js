@@ -160,6 +160,8 @@ export const META_KEYS = Object.freeze({
   createdAt: 'created_at',
   indexRev: 'index_rev',
   lastMaintenance: 'last_maintenance',
+  /** The Harness version this store has been used with, recorded at activation. */
+  hostVersion: 'host_version',
 });
 
 /**

@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.2.0] — 2026-11-15
+
+Four reviewers of an independent blind review named the same risk: `engines.dsh`
+admits the whole `>=0.2.2-rc.1 <0.3.0-0` range, but the only version ever booted was
+`0.2.2-rc.1`. A range is a promise nobody tested.
+
+### Added
+
+- **`scripts/compat-probe.mjs`** — reads the *installed* Host out of its `app.asar`
+  and asserts that every API this plugin touches still exists in the expected shape:
+  the section contract (`interpolate: false`, `order`), the `tools`, `commands` and
+  `connection` services with their registration calls, and the `turn/end` event.
+  Run against the installed **0.2.2-rc.3**: **5/5 passed**. It is not a boot test,
+  and the docs now say exactly which question it answers and which it does not.
+
+- **The store records the Host that opened it.** `DSH_INSTALL_DIR` is read at
+  activation, the version lands in `meta.host_version`, `stats` exposes it, the panel
+  shows it, and `loci doctor` prints
+  `[ok] host: last opened by DeepSeek Harness 0.2.2-rc.3`. Every user install now
+  produces the evidence the next compatibility table needs, instead of leaving the
+  answer to a range in a manifest.
+
+- CI gained a conditional probe step: it runs where a Host is installed and prints a
+  skip notice otherwise (the Host is not published to npm, so a stock runner has
+  nothing to read).
+
+### Changed
+
+- `dshReleases` gained a `0.2.2-rc.3` row with status `api-surface-verified` — a
+  deliberate third status between "verified" (booted) and "untested", so a range
+  entry can never again imply more than was actually checked.
+
 ## [2.1.0] — 2026-11-15
 
 Two findings from an independent blind review, where seven reviewers compared this

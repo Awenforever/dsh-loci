@@ -39,6 +39,9 @@ const PLUGIN_VERSION = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;
 
+/** The shipped manifest, read once: version for reports, engines for the host check. */
+const MANIFEST = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
 const rawArgv = process.argv.slice(2);
 
 /**
@@ -129,7 +132,9 @@ const diagnosticScope = () => {
 
 switch (command) {
   case 'doctor': {
-    const result = await withStore((store) => runDoctor({ store, paths, config: effectiveConfig({ home }) }));
+    const result = await withStore((store) =>
+        runDoctor({ store, paths, config: effectiveConfig({ home }), engines: MANIFEST.engines }),
+      );
     if (json) console.log(JSON.stringify(result, null, 2));
     else console.log(formatDoctor(result));
     process.exitCode = result.status === 'fail' ? 1 : 0;

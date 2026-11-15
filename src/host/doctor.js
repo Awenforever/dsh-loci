@@ -21,7 +21,7 @@ function check(name, status, detail) {
  * @returns `{status, checks, summary}` where status is the worst check status.
  */
 export function runDoctor(options) {
-  const { store, paths, config } = options;
+  const { store, paths, config, engines } = options;
   const checks = [];
 
   const health = (() => {
@@ -62,6 +62,19 @@ export function runDoctor(options) {
 
   const lastMaintenance = Number(health.migration?.to === undefined ? 0 : 0);
   checks.push(check('rows', 'ok', `${health.counts.memory} revisions · ${health.counts.memory_head} entries · ${health.counts.entity} entities`));
+
+  // Which Harness opened this store. A range in engines.dsh is a promise; this row
+  // is what actually happened, and it is the first thing to ask for in a bug report.
+  try {
+    const hostVersion = store.hostVersion ?? null;
+    checks.push(
+      hostVersion === null
+        ? check('host', 'warn', `not recorded yet; this build declares engines.dsh ${engines?.dsh ?? 'unknown'}`)
+        : check('host', 'ok', `last opened by DeepSeek Harness ${hostVersion}`),
+    );
+  } catch (error) {
+    checks.push(check('host', 'warn', `could not read: ${String(error?.message ?? error)}`));
+  }
 
   try {
     accessSync(paths.root, constants.W_OK);

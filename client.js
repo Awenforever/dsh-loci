@@ -1076,6 +1076,7 @@ window.__ModuleLoader__.load({
                 { className: 'loci-kv' },
                 h('dt', null, 'path'), h('dd', null, data.memoryRoot ?? '—'),
                 h('dt', null, 'schema'), h('dd', null, `v${data.schemaVersion}`),
+                h('dt', null, 'host'), h('dd', null, data.hostVersion ?? 'unknown'),
                 h('dt', null, 'vector'), h('dd', null, `${vs.mode ?? 'off'}${vs.healthy ? ' · healthy' : ''}${vs.lastError ? ` · ${vs.lastError}` : ''}`),
                 h('dt', null, 'last injection'),
                 h('dd', null, data.lastInjection ? `${data.lastInjection.bytes} B · ${data.lastInjection.listed} listed · ${data.lastInjection.hidden} hidden` : '—'),

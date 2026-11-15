@@ -8,7 +8,38 @@
 | 0.2.2-rc.1 (host) | **24.22.3** | Ubuntu 24.04 (WSL2) | **verified** — manifest gate, 38/38 tests, coverage 82.93%, benchmark p95 5.28 ms at 2k | `scripts/run-linux-ci.sh` (fetches Node 24, runs the same commands as CI) |
 | 0.2.2-rc.1 (host) | 22.23.0 | Ubuntu 24.04 (WSL2) | **verified** — same suite × 3 consecutive runs | recorded in `docs/ACCEPTANCE.md` §6 |
 | 0.2.2-rc.1 | 24 | Ubuntu (GitHub Actions) | the identical step list runs in `.github/workflows/ci.yml`; the host is not published, so Actions has not run it | `.github/workflows/ci.yml` |
+| **0.2.2-rc.3** | 24.21.0 | Windows 11 | **API surface verified** — the source-signature probe passes 5/5 against the installed `app.asar`; not a boot test | `node scripts/compat-probe.mjs --asar <install>/resources/app.asar` |
 | other 0.2.x | — | — | not verified | — |
+
+### What "API surface verified" does and does not mean
+
+A range in `engines.dsh` is a promise nobody tested. `scripts/compat-probe.mjs`
+reads the **installed** host package out of the shipped `app.asar` and asserts that
+every Host API this plugin touches is still present in the shape it expects:
+
+```text
+host      : 0.2.2-rc.3
+[ok  ] systemPrompt sections        interpolate: false, order, section(
+[ok  ] tools service + register     super(ctx, "tools"), register(
+[ok  ] session turn/end event       "turn/end"
+[ok  ] commands service + register  super(ctx, "commands"), register(
+[ok  ] connection service           super(ctx, "connection")
+5/5 checks passed
+```
+
+It catches a renamed service, a changed section contract, or a moved event — the
+failures that would otherwise show up as "the plugin silently stopped injecting" on
+a version we never booted. It does **not** prove activation, tool registration at
+runtime, or injection on a live session; those still require a real host, and rc.3
+has not had one in this repository yet.
+
+The plugin also records the host version it meets: `DSH_INSTALL_DIR` is read at
+activation, the value lands in `meta.host_version`, and `loci doctor` prints
+`[ok] host: last opened by DeepSeek Harness 0.2.2-rc.3`. That turns every user
+install into evidence for the next compatibility table.
+
+CI runs the probe **when a host is present** and prints a skip notice otherwise
+(the host is not published to npm, so a stock runner has nothing to read).
 
 `scripts/run-linux-ci.sh` exists so the Linux claim is reproducible on any machine
 with WSL: it downloads the newest Node 24 tarball to `/tmp` (nothing is installed
