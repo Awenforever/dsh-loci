@@ -976,7 +976,7 @@ export class Store {
     const items = this.db
       .prepare(
         `SELECT m.id, m.revision, m.kind, m.scope, m.scope_label, m.title, m.status, m.pinned, m.tags,
-                m.valid_from, m.valid_to, m.updated_at, m.created_at,
+                m.valid_from, m.valid_to, m.updated_at, m.created_at, m.source_session,
                 substr(m.body, 1, 240) AS snippet
          FROM memory m
          WHERE (m.valid_to IS NULL OR m.valid_to > ?) AND m.scope_key IN (${keyMarks})
@@ -1000,6 +1000,9 @@ export class Store {
         updatedAt: Number(row.updated_at),
         createdAt: Number(row.created_at),
         snippet: row.snippet ?? '',
+        // Which session proposed this row. A session digest is reviewed as one
+        // batch, so the reviewer needs to see that these items belong together.
+        sourceSession: row.source_session ?? null,
       }));
     return { items, total };
   }

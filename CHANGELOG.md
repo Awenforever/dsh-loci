@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.3.0] — 2026-11-15
+
+The last open item from the blind review, and the one a heavy daily user called the
+biggest product hole: between "deterministic rules" and "ask the model every turn"
+there was no middle. Per-turn extraction asks for one review decision per turn until
+the queue is abandoned; rules alone miss anything stated in passing.
+
+### Added
+
+- **`extractMode: 'session'`** — one digest per session, run when the session ends,
+  proposing at most `extractSessionMaxCandidates` (5) items. Same rules as before:
+  candidates only, verbatim-quote grounding, hourly budget, timeout, silent failure.
+  `'on'`/`'turn'` keep the per-turn behaviour for anyone who wants it.
+
+- **Review groups a digest.** List rows now carry `sourceSession`, and the review tab
+  shows "N proposed together" with one button to verify that batch — the shape the
+  reviewer asked for, instead of five identical rows and five decisions.
+
+### Notes
+
+- The digest runs independently of the episodic summary, so a user can want one
+  without the other, and a failing model cannot break the session release.
+- The buffer is copied before the asynchronous call: releasing it at dispose must
+  not race with the model reading it.
+
 ## [2.2.0] — 2026-11-15
 
 Four reviewers of an independent blind review named the same risk: `engines.dsh`

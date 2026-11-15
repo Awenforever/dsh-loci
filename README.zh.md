@@ -78,7 +78,7 @@ node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" docto
 | `rulesMaxBytes` | `1024` | 段内规则块的字节上限 |
 | `defaultScope` | `workspace` | 未显式指定时的写入作用域 |
 | `captureMode` | `rules` | 规则型捕获用户的明确约定 |
-| `extractMode` | `off` | 设为 `on` 时，在回合结束让模型提一遍「这轮有什么值得记」——一律落为候选，且有预算上限 |
+| `extractMode` | `off` | 设为 `session` 时，在**会话结束**让模型提一次、最多 `extractSessionMaxCandidates` 条——一次坐下审完，而不是每轮审一条。`turn`/`on` 保留旧的逐轮行为。一律落为候选，且有预算上限 |
 | `recallAssist` | `off` | 每会话一次、有上限的首轮辅助召回块 |
 | `maintenanceMode` | `sweep` | 每 6 小时做 TTL、索引修复、向量补齐 |
 | `secretPolicy` | `redact` | 高置信密钥脱敏，或直接拒绝写入 |

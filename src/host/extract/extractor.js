@@ -7,9 +7,9 @@
  * lost. This module asks a model to read the recent conversation and propose what
  * is worth remembering.
  *
- * Four rules keep it from becoming the thing users turn off:
+ * Five rules keep it from becoming the thing users turn off:
  *
- * 1. **Off by default.** `extractMode` must be set to `on` explicitly.
+ * 1. **Off by default.** `extractMode` must be set explicitly.
  * 2. **Candidates only.** Everything it writes has status `candidate`; a person
  *    decides. Nothing here can reach the prompt by itself.
  * 3. **Budgeted.** A call cap per hour, a cap on candidates per run, an input cap
@@ -17,6 +17,11 @@
  * 4. **It can always fail.** No model configured, timeout, unparseable answer,
  *    store error — every path returns `{written: 0, reason}` and the turn is never
  *    affected.
+ * 5. **Batch, don't drip.** `'session'` mode runs once, when a session ends, and
+ *    proposes at most a handful of items in one go. `'turn'` mode still exists for
+ *    people who want it, but reviewing one proposal per turn is how a review queue
+ *    turns into a chore — the failure a heavy user described as "either it
+ *    remembers too little or it makes me triage".
  *
  * @module dsh-loci/extract
  */
@@ -104,7 +109,8 @@ export class Extractor {
 
   /** Whether the feature is switched on *and* a model route exists. */
   enabled() {
-    return this.config('extractMode') === 'on' && typeof this.complete === 'function';
+    const mode = this.config('extractMode');
+    return (mode === 'on' || mode === 'turn' || mode === 'session') && typeof this.complete === 'function';
   }
 
   /**
@@ -129,7 +135,8 @@ export class Extractor {
       this.lastReason = reason;
       return { written: 0, reason, ids: [] };
     };
-    if (this.config('extractMode') !== 'on') return fail('disabled');
+    const mode = this.config('extractMode');
+    if (mode !== 'on' && mode !== 'turn' && mode !== 'session') return fail('disabled');
     if (typeof this.complete !== 'function') return fail('no-model');
     if (this.remainingCalls() <= 0) return fail('budget');
 
@@ -148,7 +155,14 @@ export class Extractor {
       return fail('model-error');
     }
 
-    const items = parseExtraction(answer).slice(0, Number(this.config('extractMaxCandidates') ?? 3));
+    // A turn-sized batch and a session-sized digest are different products: three
+    // proposals per turn is a queue nobody drains, five at the end of a session is
+    // one sitting.
+    const cap =
+      request?.mode === 'session'
+        ? Number(this.config('extractSessionMaxCandidates') ?? 5)
+        : Number(this.config('extractMaxCandidates') ?? 3);
+    const items = parseExtraction(answer).slice(0, cap);
     if (items.length === 0) return fail('nothing');
 
     // A quote that is not in the transcript means the model invented it; those

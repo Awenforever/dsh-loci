@@ -136,6 +136,8 @@ window.__ModuleLoader__.load({
       'panel.noCandidates': 'Nothing waiting for review.',
       'panel.reviewHint': 'Only entries that could be injected are listed. A summary of a past session is history, not a claim.',
       'panel.reject': 'Reject',
+      'panel.digestOf': '{n} proposed together',
+      'panel.verifyGroup': 'Verify these {n}',
       'panel.verifyAll': 'Verify all {n}',
       'panel.actionFailed': 'Action failed',
       'panel.injections': 'Recent injections',
@@ -257,6 +259,8 @@ window.__ModuleLoader__.load({
       'panel.noCandidates': '没有待审条目。',
       'panel.reviewHint': '这里只列可能被注入的条目；过去会话的摘要属于历史，不是主张。',
       'panel.reject': '驳回',
+      'panel.digestOf': '同一批次提出 {n} 条',
+      'panel.verifyGroup': '核实这 {n} 条',
       'panel.verifyAll': '全部核实（{n}）',
       'panel.actionFailed': '操作失败',
       'panel.injections': '最近注入',
@@ -985,6 +989,35 @@ window.__ModuleLoader__.load({
           ),
           h('div', { className: 'loci-actions' }, actions, h('button', { type: 'button', className: 'loci-btn is-quiet', onClick: () => onOpen(item.id) }, '→')),
         );
+      // A session digest arrives as a batch. Showing five identical-shaped rows with
+      // no grouping is what turns one sitting into five decisions; grouping lets the
+      // reviewer confirm the batch that was proposed together.
+      const bySession = (items) => {
+        const groups = new Map();
+        for (const item of items) {
+          const key = item.sourceSession ?? '';
+          const list = groups.get(key);
+          if (list === undefined) groups.set(key, [item]);
+          else list.push(item);
+        }
+        return groups;
+      };
+      const sessionGroups = (items) =>
+        [...bySession(items).entries()]
+          .filter(([key, list]) => key !== '' && list.length > 1)
+          .map(([key, list]) =>
+            h(
+              'div',
+              { key, className: 'loci-meta', style: { margin: '10px 0 4px', alignItems: 'center' } },
+              h('span', null, `${t('panel.digestOf').replace('{n}', String(list.length))} · ${key.slice(0, 12)}`),
+              h('span', { className: 'loci-grow' }),
+              h(
+                'button',
+                { type: 'button', className: 'loci-btn is-primary', disabled: busy !== undefined, onClick: () => verifyMany(list) },
+                t('panel.verifyGroup').replace('{n}', String(list.length)),
+              ),
+            ),
+          );
       const block = (title, state, actions) =>
         h(
           'div',
@@ -1008,7 +1041,7 @@ window.__ModuleLoader__.load({
               : null,
           ),
           state.data?.items?.length
-            ? state.data.items.map((item) => row(item, actions(item)))
+            ? [sessionGroups(state.data.items), ...state.data.items.map((item) => row(item, actions(item)))]
             : h('div', { className: 'loci-muted' }, t('panel.noCandidates')),
         );
       const candidateActions = (item) => [

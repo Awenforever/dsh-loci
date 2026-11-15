@@ -61,8 +61,15 @@ export const DEFAULTS = Object.freeze({
   captureMaxPerStatementChars: 200,
   /** Write one episodic session summary when a root agent is disposed. */
   summaryOnDispose: true,
-  /** 'off' | 'on' — background extraction of preferences stated in passing. */
+  /**
+   * 'off' | 'on' | 'turn' | 'session' — background extraction of preferences stated
+   * in passing. 'on' and 'turn' mean one pass per turn (noisy: one proposal per
+   * turn becomes a review chore). 'session' means one digest when the session ends,
+   * which is the mode a heavy user asked for: five proposals, one sitting.
+   */
   extractMode: 'off',
+  /** How many candidates one session-end digest may propose. */
+  extractSessionMaxCandidates: 5,
   /** Hard cap on extraction calls per hour; exhausting it is silent. */
   extractMaxCallsPerHour: 6,
   /** How many candidates one extraction run may write. */
@@ -123,7 +130,7 @@ export const ENUMS = Object.freeze({
   defaultScope: ['workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
   captureMode: ['rules', 'off'],
-  extractMode: ['off', 'on'],
+  extractMode: ['off', 'on', 'turn', 'session'],
   maintenanceMode: ['sweep', 'off'],
   secretPolicy: ['redact', 'reject'],
   vectorMode: ['off', 'http'],
@@ -149,6 +156,8 @@ function buildSchema() {
     extractMode: z.union(ENUMS.extractMode).default(DEFAULTS.extractMode).volatile(),
     extractMaxCallsPerHour: z.number().step(1).min(0).max(240).default(DEFAULTS.extractMaxCallsPerHour).volatile(),
     extractMaxCandidates: z.number().step(1).min(0).max(20).default(DEFAULTS.extractMaxCandidates).volatile(),
+    extractSessionMaxCandidates: z
+      .number().n      .step(1).n      .min(0).n      .max(20).n      .default(DEFAULTS.extractSessionMaxCandidates).n      .volatile(),
     extractTimeoutMs: z.number().step(500).min(1000).max(120000).default(DEFAULTS.extractTimeoutMs).volatile(),
     maintenanceMode: z.union(ENUMS.maintenanceMode).default(DEFAULTS.maintenanceMode).volatile(),
     maintenanceIntervalHours: z.number().step(0.5).min(0.5).max(168).default(DEFAULTS.maintenanceIntervalHours).volatile(),

@@ -185,7 +185,10 @@ export class Capture {
    * slow model must not delay the rule capture that costs nothing.
    */
   #scheduleExtraction(sessionId, buffer) {
-    if (this.config('extractMode') !== 'on' || this.extractor === undefined) return;
+    const mode = this.config('extractMode');
+    // 'session' deliberately does not schedule per turn: that is the whole point of
+    // the mode. It runs once, in summarize(), when the session ends.
+    if ((mode !== 'on' && mode !== 'turn') || this.extractor === undefined) return;
     if (buffer.extractTimer !== undefined) return;
     const delay = Math.max(0, Number(this.config('captureDebounceMs') ?? 30000));
     buffer.extractTimer = setTimeout(() => {
@@ -196,6 +199,7 @@ export class Capture {
         .then(() =>
           extractor.run({
             sessionId,
+            mode: 'turn',
             messages: buffer.messages,
             scopeKey: this.#workspaceKey(buffer.cwd, sessionId),
             scopeLabel: this.#workspaceLabel(buffer.cwd),
@@ -299,6 +303,39 @@ export class Capture {
     );
   }
 
+  /**
+   * One extraction pass for a whole session, run as it ends.
+   *
+   * This is the middle ground the review asked for: deterministic rules catch
+   * statements that announce themselves, per-turn extraction catches everything but
+   * costs one review decision per turn. A session digest reads the whole
+   * conversation once and proposes at most a handful of items in one sitting.
+   *
+   * Fire-and-forget by design: the buffer is copied before the asynchronous call so
+   * releasing it cannot race with the model.
+   *
+   * @param sessionId - session id.
+   * @param buffer - the buffered messages.
+   */
+  #runSessionDigest(sessionId, buffer) {
+    const extractor = this.extractor;
+    if (extractor === undefined || buffer === undefined || buffer.messages.length < 4) return;
+    const messages = [...buffer.messages];
+    const scopeKey = this.#workspaceKey(buffer.cwd, sessionId);
+    const scopeLabel = this.#workspaceLabel(buffer.cwd);
+    Promise.resolve()
+      .then(() => extractor.run({ sessionId, mode: 'session', messages, scopeKey, scopeLabel }))
+      .then((result) => {
+        if (result?.written > 0) {
+          this.statistics.extracted += result.written;
+          this.log?.debug?.(`loci: session digest proposed ${result.written} item(s)`);
+        }
+      })
+      .catch((error) => {
+        this.log?.debug?.(`loci: session digest failed: ${String(error?.message ?? error)}`);
+      });
+  }
+
   /** Write the episodic summary for one session and drop its buffer. */
   summarize(sessionId, reason = 'dispose') {
     const buffer = this.sessions.get(sessionId);
@@ -311,6 +348,11 @@ export class Capture {
       if (buffer.extractTimer !== undefined) clearTimeout(buffer.extractTimer);
       this.sessions.delete(sessionId);
     };
+    // The digest is independent of the episodic summary: a user can want one and not
+    // the other, and the digest must still run when summaries are off.
+    if (this.config('extractMode') === 'session' && buffer !== undefined) {
+      this.#runSessionDigest(sessionId, buffer);
+    }
     if (this.config('summaryOnDispose') !== true) {
       release();
       return 0;

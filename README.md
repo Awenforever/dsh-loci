@@ -108,7 +108,7 @@ The settings page writes the fields marked *live* without a restart.
 | `rulesMaxBytes` | `1024` | ceiling for the rules block inside that budget |
 | `defaultScope` | `workspace` | scope a write lands in when it does not say |
 | `captureMode` | `rules` | deterministic capture of explicit durable statements |
-| `extractMode` | `off` | `on` asks the configured model, at turn end, what is worth remembering — always as candidates, always budgeted |
+| `extractMode` | `off` | `session` asks the model once, when a session ends, for up to `extractSessionMaxCandidates` proposals — one sitting to review, not one per turn. `turn`/`on` keep the older per-turn behaviour. Always candidates, always budgeted |
 | `recallAssist` | `off` | one bounded first-turn recall block per session |
 | `maintenanceMode` | `sweep` | TTL, index repair, and embedding backfill every 6h |
 | `secretPolicy` | `redact` | redact high-confidence secrets, or refuse the write |
