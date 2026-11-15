@@ -27,6 +27,9 @@ window.__ModuleLoader__.load({
     const API = '/api/loci';
     const ENTRY_ID = 'dsh-loci';
     const PANEL_ID = 'loci';
+    // The card and the panel mount separately, so a request to open a specific tab has
+    // to travel through module scope. The panel consumes it once, then clears it.
+    let requestedTab;
 
     const EN = {
       'meta.title': 'Loci memory palace',
@@ -44,6 +47,7 @@ window.__ModuleLoader__.load({
       'card.opened': 'Opened',
       'card.dead': 'Dead',
       'card.pendingHint': '{n} item(s) waiting for you in Review.',
+      'card.latest': 'Latest',
       'card.updated': 'updated',
       'card.pendingSentence': '{n} still need your review',
       'card.pinned': 'pinned',
@@ -194,6 +198,11 @@ window.__ModuleLoader__.load({
 .loci-card-foot-grow { flex: 1 1 auto; }
 .loci-card-empty { font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
 .loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
+.loci-card-known { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+.loci-card-known-tag { flex: 0 0 auto; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; color: var(--dsw-alias-label-secondary); }
+.loci-card-known-text { min-width: 0; font-size: 9.5px; color: var(--dsw-alias-label-primary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.loci-card-hint-action { align-self: flex-start; margin: 0; padding: 2px 6px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 9px; line-height: 1.2; cursor: pointer; text-align: left; }
+.loci-card-hint-action:hover { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
@@ -203,7 +212,7 @@ window.__ModuleLoader__.load({
 .loci-tab:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .loci-tab.is-active { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-weight: 600; }
 .loci-grow { flex: 1 1 auto; }
-.loci-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px 24px; }
+.loci-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px max(16px, calc((100% - 860px) / 2)) 28px; }
 .loci-btn { border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: 6px; padding: 3px 9px; font: inherit; cursor: pointer; }
 .loci-btn:hover { border-color: var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); }
 .loci-btn:disabled { opacity: .5; cursor: default; }
@@ -438,6 +447,7 @@ window.__ModuleLoader__.load({
       // read as bare text inside the sidebar rather than as a card — and the audit's own
       // "no dashboard" objection was about refusing to interrupt, not about hiding data.
       const stats = useJson('/stats', { intervalMs: 30_000 });
+      const knowledge = useJson('/knowledge?limit=1', { intervalMs: 30_000 });
       const config = useJson('/config');
       const update = useJson('/update');
       const [checking, setChecking] = useState(false);
@@ -468,6 +478,10 @@ window.__ModuleLoader__.load({
       const injected = usage.reduce((total, row) => total + Number(row.injections ?? 0), 0);
       const opened = usage.reduce((total, row) => total + Number(row.reads ?? 0), 0);
       const dead = usage.filter((row) => Number(row.injections ?? 0) > 0 && Number(row.reads ?? 0) === 0).length;
+      // What the agent currently understands, newest first. Numbers answer "how much";
+      // this answers "what".
+      const top = knowledge.data?.items?.[0];
+      const latest = typeof top?.title === 'string' && top.title.length > 0 ? top.title : null;
 
       if (!wide) {
         return h(
@@ -548,6 +562,14 @@ window.__ModuleLoader__.load({
                   metric(t('card.pending'), pending, pending > 0 ? 'is-warn' : ''),
                   metric(t('card.disputed'), disputed, disputed > 0 ? 'is-error' : ''),
                 ),
+        data !== undefined && latest !== null
+          ? h(
+              'div',
+              { className: 'loci-card-known' },
+              h('span', { className: 'loci-card-known-tag' }, t('card.latest')),
+              h('span', { className: 'loci-card-known-text' }, latest),
+            )
+          : null,
         data !== undefined && entries > 0 && budget > 0
           ? h(
               'div',
@@ -573,7 +595,21 @@ window.__ModuleLoader__.load({
               h('span', { className: 'loci-card-foot-grow' }),
             )
           : null,
-        pending > 0 ? h('div', { className: 'loci-card-hint' }, t('card.pendingHint').replace('{n}', String(pending))) : null,
+        pending > 0
+          ? h(
+              'button',
+              {
+                type: 'button',
+                className: 'loci-card-hint loci-card-hint-action',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  requestedTab = 'review';
+                  open?.();
+                },
+              },
+              t('card.pendingHint').replace('{n}', String(pending)),
+            )
+          : null,
       );
     }
     // ---------------------------------------------------------------- panel
@@ -1136,7 +1172,12 @@ window.__ModuleLoader__.load({
     }
 
     function MemoryPanel({ t }) {
-      const [tab, setTab] = useState('feed');
+      const [tab, setTab] = useState(() => {
+        // "N item(s) waiting for you in Review" in the card is a way in, not a remark.
+        const wanted = requestedTab;
+        requestedTab = undefined;
+        return wanted ?? 'feed';
+      });
       const [selected, setSelected] = useState(undefined);
       const [nonce, setNonce] = useState(0);
       const tabs = useMemo(
@@ -1180,6 +1221,10 @@ window.__ModuleLoader__.load({
     }
 
     function PanelIcon({ size, active }) {
+      // Three stacked sheets: the product is a layered index, and the glyph has to read at
+      // the same optical weight as the shipped icons beside it. The previous drawing lived
+      // in 4–20 of the viewBox with a small off-centre dot, which made it look thinner and
+      // smaller than its neighbours in the sidebar.
       return h(
         'svg',
         {
@@ -1188,10 +1233,28 @@ window.__ModuleLoader__.load({
           viewBox: '0 0 24 24',
           fill: 'none',
           'aria-hidden': true,
-          style: { opacity: active ? 1 : 0.75, display: 'block' },
+          style: { opacity: active ? 1 : 0.72, display: 'block' },
         },
-        h('path', { d: 'M4 6.5h16M4 12h16M4 17.5h10', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' }),
-        h('circle', { cx: 18.5, cy: 17.5, r: 2.2, stroke: 'currentColor', strokeWidth: 1.5 }),
+        h('path', {
+          d: 'M12 3 21 7.5 12 12 3 7.5 12 3Z',
+          stroke: 'currentColor',
+          strokeWidth: 1.8,
+          strokeLinejoin: 'round',
+        }),
+        h('path', {
+          d: 'M3.6 12.2 12 16.4l8.4-4.2',
+          stroke: 'currentColor',
+          strokeWidth: 1.8,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
+        h('path', {
+          d: 'M3.6 16.8 12 21l8.4-4.2',
+          stroke: 'currentColor',
+          strokeWidth: 1.8,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        }),
       );
     }
 

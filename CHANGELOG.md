@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.1.0] — 2026-11-15
+
+Four things from looking at the live sidebar and panel.
+
+### Changed
+
+- **The sidebar icon now has the same weight as the menu it sits in.** Native
+  `sidebar.panellist` entries receive `{ size, active }`; this one used `size` correctly but
+  drew inside 4–20 of a 24 viewBox with a small off-centre dot, so beside the shipped icons
+  it read thinner and smaller. Redrawn as a symmetric **layers** glyph spanning 3–21 at
+  stroke 1.8 — the optical weight of its neighbours, and a shape that says layered memory.
+
+- **The panel is a readable column, not edge-to-edge text.** The scroll container's
+  horizontal padding became `max(16px, calc((100% - 860px) / 2))`, so rows sit in a centred
+  measure on a wide window without touching any tab component.
+
+- **"N item(s) waiting for you in Review" is now a way in.** It was a sentence telling a
+  person to go somewhere else and find the tab. It is a button: it opens the panel already
+  on Review. The card and the panel mount separately, so the request travels through module
+  scope and is consumed once.
+
+- **The card says what it knows, not only how much.** Commit `4065c98` (2026-11-13) recorded
+  the brief for this surface: *"not a dashboard … read the card and think 'it got that, it
+  recorded that, we agreed on that'"*, with one short paragraph of what the agent
+  understands in this project and pending work as one quiet line, never a number. 3.0.0
+  replaced that paragraph with counters. The counters stay — they were asked for and they
+  are useful — and one line of content goes back under them: a `Latest` row showing the most
+  recently trusted entry, from `GET /api/loci/knowledge?limit=1`.
+
+### Not changed
+
+- `docs/PRIOR-ART.md` still records that the card should be scoped to **this project's read
+  set** rather than every scope. It currently is not: `/stats` and `/knowledge` called
+  without parameters enumerate the whole store, and the sidebar card has no access to the
+  session's cwd. Scoping the card is a real open item, not something to assert.
+
 ## [3.0.1] — 2026-11-15
 
 The 3.0.0 card was correct markup with no stylesheet, and the screenshot showed it.
