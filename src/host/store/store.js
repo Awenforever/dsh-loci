@@ -1048,8 +1048,29 @@ export class Store {
    */
   stats(options = {}) {
     const keys = options.scopeKeys ?? [];
-    const filtered = keys.length > 0;
-    const marks = filtered ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
+    // undefined means nobody asked for a scope (an admin whole-store view); [] means
+    // someone asked for a scope and got no keys — which must answer *nothing*, not
+    // *everything*. It used to drop the filter in both cases, so a scope-resolution
+    // failure turned into a confident answer about every project on the machine.
+    if (Array.isArray(options.scopeKeys) && options.scopeKeys.length === 0) {
+      return {
+        schemaVersion: this.schemaVersion(),
+        indexRev: this.indexRev(),
+        revisions: 0,
+        heads: 0,
+        byStatus: {},
+        byKind: {},
+        byScope: {},
+        hostVersion: this.hostVersion ?? readMeta(this.db, META_KEYS.hostVersion) ?? null,
+        pendingCandidates: 0,
+        disputed: 0,
+        lastInjection: null,
+        dbBytes: existsSync(this.paths.db) ? statSync(this.paths.db).size : 0,
+        vector: { ...this.vector, ...this.embedding.health() },
+        memoryRoot: this.memoryRoot,
+      };
+    }
+    const marks = keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
     const byStatus = {};
     for (const row of this.db
       .prepare(
@@ -1200,6 +1221,9 @@ export class Store {
   usageReport(options = {}) {
     const keys = options.scopeKeys ?? [];
     const limit = Math.max(1, Math.min(200, options.limit ?? 20));
+    // Same rule as `stats`: an explicit empty list means no rows; an absent one means the
+    // whole store, which is what the panel's admin report asks for.
+    if (Array.isArray(options.scopeKeys) && options.scopeKeys.length === 0) return [];
     const marks = keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
     const rows = this.db
       .prepare(

@@ -209,11 +209,18 @@ export function createTools(deps) {
       const context = execContext(exec);
       const op = oneOf(args, 'op', ['create', 'update', 'merge', 'pin', 'unpin', 'restore'], 'create');
       const id = str(args, 'id', { fallback: undefined });
+      // Every id-addressed op has to respect the read set, not just the two literally named
+      // get/forget. `update` moved a foreign entry into this session's scope, `pin` changed
+      // how it sorts in another project's index, and `restore` could un-delete something a
+      // different project had removed.
+      const idScopeKeys = () => readScopeKeys(context.scopes, { includeGlobal: config('includeGlobal') });
+      if (id !== undefined && op !== 'create') assertInScope(store, id, idScopeKeys(), `loci_write ${op}`);
 
       if (op === 'merge') {
         if (id === undefined) throw new Error('id is required for merge (the entry to keep)');
         const sourceIds = Array.isArray(args?.sourceIds) ? args.sourceIds.filter((value) => typeof value === 'string') : [];
         if (sourceIds.length === 0) throw new Error('sourceIds is required for merge (at least one id to fold in)');
+        for (const sourceId of sourceIds) assertInScope(store, sourceId, idScopeKeys(), 'loci_write merge source');
         const result = store.merge({
           targetId: id,
           sourceIds,

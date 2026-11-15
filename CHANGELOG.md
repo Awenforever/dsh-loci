@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.10.1] — 2026-11-15
+
+Three more ways a scope mistake could have answered with the wrong data. Found by checking
+the last unverified claims from the audit instead of trusting the previous pass.
+
+### Fixed
+
+- **`/api/loci/preview?cwd=…` returned 400.** The route read `resolved.readKeys` and
+  `resolved.label`, neither of which `resolveScopes` returns, so any caller that supplied a
+  `cwd` or `session` got `Cannot read properties of undefined (reading 'length')`. The panel
+  never sends those parameters, which is why it survived: a latent failure on the one
+  endpoint that answers "what does *this* conversation get". `/api/loci/knowledge` had the
+  same defect.
+
+- **An explicit empty scope set meant "the whole store".** `stats({ scopeKeys: [] })` and
+  `usageReport({ scopeKeys: [] })` dropped the filter, while `list([])` and
+  `countPending([])` returned nothing. That asymmetry turns a scope-resolution failure into
+  a confident answer about every project on the machine. Now: omitted means the whole
+  database (an admin question), `[]` means nothing.
+
+- **`update`, `pin`, `unpin`, `restore` and `merge` ignored the read set.** Only `loci_get`
+  and `loci_forget` were guarded in 2.10.0. `update` moved a foreign entry into the calling
+  session's scope, `pin` changed how it sorts in another project's index, and `restore`
+  could un-delete an entry a different project had removed.
+
+### Note
+
+`test/unit/scope-semantics.test.mjs` pins all three. The empty-versus-absent distinction is
+asserted in both directions, because the failure mode is a silent widening rather than a
+crash.
+
 ## [2.10.0] — 2026-11-15
 
 The last four findings from the audit. All four are the same shape: an operation that

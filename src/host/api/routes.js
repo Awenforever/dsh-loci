@@ -116,8 +116,15 @@ export function registerApiRoutes(ctx, deps) {
     const sessionId = url.searchParams.get('session') ?? undefined;
     const scoped = cwd !== undefined || sessionId !== undefined;
     const resolved = scoped ? resolveScopes({ cwd, sessionId }) : undefined;
-    const scopeKeys = scoped ? resolved.readKeys : store.allScopeKeys();
-    const scopeLabel = scoped ? resolved.label : `all ${scopeKeys.length} stored scope(s)`;
+    // `resolveScopes` returns `{session, workspace, project, global, labels, cwd,
+    // projectRoot}` — there is no `readKeys` and no `label`, so this route threw
+    // "Cannot read properties of undefined (reading 'length')" whenever a caller supplied
+    // `?cwd=`. The panel never does, which is why it survived: a latent 400 on the one
+    // endpoint that answers "what does this conversation get".
+    const scopeKeys = scoped ? readScopeKeys(resolved, { includeGlobal: config.includeGlobal !== false }) : store.allScopeKeys();
+    const scopeLabel = scoped
+      ? [resolved.labels.workspace, resolved.labels.project].filter((value, index, all) => all.indexOf(value) === index).join(' / ')
+      : `all ${scopeKeys.length} stored scope(s)`;
     return json({
       ...renderIndexBody({
         store,
@@ -153,7 +160,7 @@ export function registerApiRoutes(ctx, deps) {
     const scopeKeys =
       cwd === undefined && sessionId === undefined
         ? store.allScopeKeys()
-        : resolveScopes({ cwd, sessionId }).readKeys;
+        : readScopeKeys(resolveScopes({ cwd, sessionId }), { includeGlobal: config.includeGlobal !== false });
     return json(buildKnowledge(store, { limit, scopeKeys }));
   });
 
