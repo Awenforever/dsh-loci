@@ -82,7 +82,11 @@ const store = new Store({
 });
 const before = store.stats();
 record('plugin created its store', existsSync(paths.db), paths.db);
-record('empty store injected 0 bytes', true, before.lastInjection === null ? 'no injection yet' : `${before.lastInjection.bytes} bytes`);
+// These two used to be `record(..., true)` — literally `pass: true`, so they could not
+// fail and were not checks. An empty store injecting 0 bytes is a real property worth
+// asserting, so assert it.
+record('empty store injected 0 bytes', before.lastInjection === null || before.lastInjection.bytes === 0,
+  before.lastInjection === null ? 'no injection recorded yet' : `${before.lastInjection.bytes} bytes`);
 
 const fact = '发布顺序是 staging → canary 10% → 全量，任何一步失败就立刻停止';
 const writePrompt = [
@@ -100,7 +104,12 @@ record('one entry stored', afterWrite.heads >= 1, `${afterWrite.heads} entries`)
 const entries = store.list({ scopeKeys: store.allScopeKeys(), statuses: ['verified'], limit: 10, offset: 0 });
 const target = entries.items.find((item) => item.title.includes('发布') || item.title.includes('staging') || item.title.includes('canary'));
 record('entry is verified (quote gate passed)', target !== undefined, target === undefined ? `statuses: ${JSON.stringify(afterWrite.byStatus)}` : target.id);
-record('write session injected nothing (empty store at start)', true);
+// Also `record(..., true)` before. The real property: the section the write session saw
+// listed nothing, because the store was empty when that section was rendered.
+const afterWriteInjection = store.stats().lastInjection;
+record('the write session saw an empty index',
+  afterWriteInjection === null || Number(afterWriteInjection.listed ?? 0) === 0,
+  afterWriteInjection === null ? 'no injection recorded' : `${afterWriteInjection.entries_listed ?? '?'} listed, ${afterWriteInjection.section_bytes ?? '?'} bytes`);
 
 const recallPrompt = '根据长期记忆，我们的发布顺序是什么？只回答顺序和失败处理，不要解释。';
 const recallRun = await runTask(recallPrompt);

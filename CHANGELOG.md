@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.7.0] — 2026-11-15
+
+The acceptance was measuring less than it claimed. This release re-runs it properly and
+writes down the answer, including the part that is uncomfortable.
+
+### The measurement
+
+`scripts/acceptance-v2.mjs` — 30 facts, each question written so it shares **no character
+bigram** with its target title (checked, not assumed). Seeded into a throwaway store, never
+placed where the model could read it.
+
+| Channel | Result |
+|---|---|
+| lexical search (`loci_search`) | **0/30 top-1 · 0/30 top-3 · 30 missed** |
+| injected index | **30/30 present** |
+| section cost | 0 entries → 0 B · 10 → 1,081 B · 30 → 2,781 B |
+
+Three blind answer arms on 20 questions about a fictional project whose facts exist nowhere
+in this repo:
+
+| Arm | Correct | Behaviour |
+|---|---|---|
+| no memory | **0/20** | answered `UNKNOWN` 20/20 — abstained instead of confabulating |
+| index only, titles carry the fact | **20/20** | exact values |
+| index + fetch, titles are summaries | requested **12/12** ids | did not discriminate — pulled the whole index |
+
+**What this means:** memory demonstrably changes answers (0/20 → 20/20 on identical
+questions, nothing else varied). It also shows that a paraphrase with no shared vocabulary
+is **invisible to lexical search — not degraded, zero** — so the index, not search, is the
+channel that carries facts. And arm C is the warning: when titles are summaries, a model's
+response to ambiguity is to fetch everything, which is fine at 12 entries and untenable at
+200. Narrowing that is a design problem, not a formatting problem.
+
+### Fixed
+
+- **Two e2e checks were `record(..., true)`** — literal `pass: true`, structurally unable to
+  fail. Replaced with real assertions on `lastInjection.bytes` and `listed`.
+- `scripts/acceptance-v2.mjs` gives each store size its own home and asserts the seed count;
+  the v1.0.0 harness created a scratch home and discarded it (`void scratch`) and called
+  `seedCorpus(...).slice(count)`, which does not limit seeding.
+
+### Docs
+
+- `docs/ACCEPTANCE.md` rewritten into two clearly separated sections: §A the historical
+  v1.0.0 record with the four defects that limited it, §B the 2.6.0 re-run. Where they
+  disagree, §B wins.
+- **Not measured, and stated as such**: whether the model answers correctly *inside a real
+  DSH session* (the arms pasted the index into a prompt), tokens per answered question, and
+  long-run queue behaviour.
+
 ## [2.6.0] — 2026-11-15
 
 The rest of the boundary audit: three silent-wrongness bugs, and the invariants rewritten
