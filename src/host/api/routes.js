@@ -347,6 +347,9 @@ function installedOnly(version) {
     updateAvailable: false,
     checkedAt: null,
     status: 'idle',
+    // The card shows a "check" button; without this flag a disabled check looks
+    // broken ("nothing happens") instead of switched off.
+    checkEnabled: false,
   };
 }
 

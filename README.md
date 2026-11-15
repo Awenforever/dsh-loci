@@ -119,7 +119,7 @@ The settings page writes the fields marked *live* without a restart.
 
 - No model call in any automatic path in v1.0 — capture and summaries are
   deterministic, so the cost is visible and zero.
-- No cloud, no telemetry, no network unless you configure `vectorMode: 'http'`.
+- No cloud, no telemetry. Two optional network paths, both off by default: the update check (`updateCheck`) and the HTTP embedding channel (`vectorMode: 'http'`).
 - No cross-project leakage: reads use an explicit scope-key set, never a wildcard.
 - No physical deletion by default; `purge` needs a config switch, a confirmation,
   and leaves an audit line.

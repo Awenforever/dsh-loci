@@ -88,7 +88,7 @@ node "$HOME/.dsh/profiles/<profile>/node_modules/dsh-loci/scripts/cli.mjs" docto
 ## 它明确不做
 
 - v1.0 的自动路径里没有模型调用 —— 捕获与摘要是确定性的，成本可见且为零。
-- 无云、无遥测；除非你配置 `vectorMode: 'http'`，否则不出网。
+- 无云、无遥测。只有两条可选出网路径，**都默认关闭**：更新检查（`updateCheck`）与 HTTP 向量通道（`vectorMode: 'http'`）。
 - 不跨项目串味：读取用显式 scope-key 集合，从不通配。
 - 默认不物理删除；`purge` 需要配置开关 + 确认 + 留审计。
 

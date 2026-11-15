@@ -100,8 +100,15 @@ export const DEFAULTS = Object.freeze({
   workingTtlDays: 7,
   /** Allow `op:'purge'` to physically delete revisions. */
   allowHardDelete: false,
-  /** Ask the registry for a newer version when the card is opened. */
-  updateCheck: true,
+  /**
+   * Ask the registry for a newer version when the card is opened.
+   *
+   * Off by default: the whole product claims "no network unless you opt in", and a
+   * default-on version check made that sentence false. A reviewer caught it, and the
+   * claim is worth more than the convenience — turning this on is one click in
+   * Settings, and the request carries nothing about memory.
+   */
+  updateCheck: false,
   /** Registry used by that check; point it at a mirror when npmjs.org is slow. */
   updateRegistry: 'https://registry.npmjs.org',
   /** 'error' | 'info' | 'debug'. */

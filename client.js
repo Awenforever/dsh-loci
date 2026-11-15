@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
       'card.check': 'Check for updates',
       'card.upToDate': 'Up to date',
       'card.updateTo': 'Update available',
+      'card.checkOff': 'Update check off',
       'card.checking': 'Checking…',
       'card.unknown': 'Version check unavailable',
       'card.unpublished': 'Not on npm yet',
@@ -160,6 +161,7 @@ window.__ModuleLoader__.load({
       'card.check': '检查更新',
       'card.upToDate': '已是最新',
       'card.updateTo': '有新版本',
+      'card.checkOff': '更新检查已关闭',
       'card.checking': '检查中…',
       'card.unknown': '无法检查版本',
       'card.unpublished': '尚未发布',
@@ -483,13 +485,18 @@ window.__ModuleLoader__.load({
       const version = typeof update?.version === 'string' ? update.version.replace(/^v/i, '') : null;
       const hasUpdate = update?.updateAvailable === true;
       const unknown = update !== undefined && update.status === 'unavailable';
+      // The check is opt-in, so "off" is a normal state, not a failure: it must read
+      // as switched off rather than as a button that does nothing.
+      const checkDisabled = update?.checkEnabled === false;
       const text = hasUpdate
         ? `${t('card.updateTo')}${update.latestVersion ? ` · v${update.latestVersion}` : ''}`
         : unknown
           ? t('card.unknown')
-          : update?.status === 'ok'
-            ? t('card.upToDate')
-            : t('card.check');
+          : checkDisabled
+            ? t('card.checkOff')
+            : update?.status === 'ok'
+              ? t('card.upToDate')
+              : t('card.check');
       return h(
         'span',
         { className: 'loci-card-line', style: { gap: '5px' } },
@@ -500,7 +507,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             className: 'loci-btn is-quiet',
             title: text,
-            disabled: checking === true,
+            disabled: checking === true || checkDisabled,
             onClick: (event) => {
               event.stopPropagation();
               onCheck?.();
