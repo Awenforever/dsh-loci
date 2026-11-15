@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [3.6.0] — 2026-11-15
+
+One product, one mark.
+
+### Fixed
+
+- **The sidebar menu and the footer card drew two different symbols.** The menu showed a
+  layers glyph, the card showed a leaf, and both are visible at the same time. The layers
+  glyph is the one already tuned to the native menu's optical weight (3–21 inside a 24 viewBox
+  at stroke 1.8), so it became the product's single mark: `LociMark` now owns the path data and
+  the menu, the card and the collapsed rail all render it, differing only in size.
+
+  The rail variant had a third symbol — three horizontal lines with a dot — which is gone too.
+
+### Added
+
+- `scripts/diag/scope-sharing.mjs`: reports which session wrote each entry and which sessions
+  received it. Written to answer "is this memory per-conversation or shared?" with the database
+  instead of with a description of the code.
+
+  The answer, from the live store: **shared within a directory.** An entry written in session
+  `db604d73` was injected into `317525bd` and `3e48f83b`; entries written in `317525bd` were
+  injected into `4c45fb3c`. All four sessions sit in `default-workspace`, and every entry is
+  stored under one key, `workspace:d9d179cb…`.
+
 ## [3.5.0] — 2026-11-15
 
 The CLI could not tell "nothing to review" apart from "wrong directory".

@@ -35,7 +35,8 @@ const TOKENS = {
   '--dsw-alias-state-idle-primary': '#9a9aa5',
 };
 
-const LOGO = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+// The one mark, copied from client.js's LociMark so the harness cannot drift from the product.
+const LOGO = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="display:block">
   <path d="M12 3 21 7.5 12 12 3 7.5 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
   <path d="M3.6 12.2 12 16.4l8.4-4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M3.6 16.8 12 21l8.4-4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>

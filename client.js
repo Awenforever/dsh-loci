@@ -502,10 +502,7 @@ window.__ModuleLoader__.load({
             onClick: () => open?.(),
           },
           h('style', null, CSS),
-          h('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true },
-            h('path', { d: 'M4 6.5h16M4 12h16M4 17.5h10', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' }),
-            h('circle', { cx: 18.5, cy: 17.5, r: 2.2, stroke: 'currentColor', strokeWidth: 1.5 }),
-          ),
+          h(LociMark, { size: 18 }),
         );
       }
 
@@ -534,19 +531,7 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'loci-card-head' },
-          h(
-            'span',
-            { className: 'loci-card-mark', 'aria-hidden': true },
-            h('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none' },
-              h('path', {
-                d: 'M20 4c0 9-6.5 15-16 16 0 0 .5-7 4.5-11S20 4 20 4Z',
-                stroke: 'currentColor',
-                strokeWidth: 1.6,
-                strokeLinejoin: 'round',
-              }),
-              h('path', { d: 'M5 20 14 10', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
-            ),
-          ),
+          h('span', { className: 'loci-card-mark', 'aria-hidden': true }, h(LociMark, { size: 13 })),
           h('span', { className: 'loci-card-title' }, t('card.title')),
           h(VersionLabel, { t, update: fresh ?? update.data, onCheck: check, checking }),
           h('span', { className: `loci-card-dot ${dotClass}`.trim(), 'aria-hidden': true }),
@@ -1231,11 +1216,18 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function PanelIcon({ size, active }) {
-      // Three stacked sheets: the product is a layered index, and the glyph has to read at
-      // the same optical weight as the shipped icons beside it. The previous drawing lived
-      // in 4–20 of the viewBox with a small off-centre dot, which made it look thinner and
-      // smaller than its neighbours in the sidebar.
+    /**
+     * The one mark of this product: three stacked sheets.
+     *
+     * It lives here, in one place, because the sidebar menu and the footer card used to draw
+     * two different symbols — layers in the menu, a leaf on the card — and a person sees both
+     * at once. The geometry is tuned to the native menu icons: 3–21 inside a 24 viewBox at
+     * stroke 1.8, which matches their optical weight.
+     *
+     * @param options - `size` in pixels, `opacity` for the active/inactive state.
+     * @returns the svg element.
+     */
+    function LociMark({ size, opacity = 1 }) {
       return h(
         'svg',
         {
@@ -1244,7 +1236,7 @@ window.__ModuleLoader__.load({
           viewBox: '0 0 24 24',
           fill: 'none',
           'aria-hidden': true,
-          style: { opacity: active ? 1 : 0.72, display: 'block' },
+          style: { opacity, display: 'block', flex: '0 0 auto' },
         },
         h('path', {
           d: 'M12 3 21 7.5 12 12 3 7.5 12 3Z',
@@ -1267,6 +1259,10 @@ window.__ModuleLoader__.load({
           strokeLinejoin: 'round',
         }),
       );
+    }
+
+    function PanelIcon({ size, active }) {
+      return h(LociMark, { size, opacity: active ? 1 : 0.72 });
     }
 
     function SettingsIcon({ size }) {
