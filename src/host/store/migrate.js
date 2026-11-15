@@ -12,7 +12,7 @@
 import { copyFileSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { backupTo, tableCounts, withTransaction } from './db.js';
-import { MEMORY_USAGE_DDL } from './schema.js';
+import { MEMORY_LESSON_DDL, MEMORY_USAGE_DDL } from './schema.js';
 import {
   META_KEYS,
   SCHEMA_VERSION,
@@ -38,6 +38,15 @@ export const SHIPPED_MIGRATIONS = [
     // over every existing table and would catch a mistake here.
     up(db) {
       db.exec(MEMORY_USAGE_DDL);
+    },
+  },
+  {
+    from: 2,
+    to: 3,
+    // Four nullable columns: no row can be lost, and every existing entry simply has
+    // no lesson shape yet.
+    up(db) {
+      db.exec(MEMORY_LESSON_DDL);
     },
   },
 ];

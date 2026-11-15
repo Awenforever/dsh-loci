@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [2.4.0] — 2026-11-15
+
+Three items from `docs/PRIOR-ART.md` — the systematic pass over what the field does
+better, judged against this plugin's four invariants rather than by popularity.
+
+### Added
+
+- **Lesson shape (`pattern` / `fix` / `prevents` / `whenCondition`)**, schema v3. A
+  lesson stored as free text is unreadable six months later: you remember the rule but
+  not why it exists. `prevents` is where that answer lives, and it is the one clause
+  appended to the index line for `procedural` entries — a rule without its consequence
+  gets ignored. Ordinary facts render byte-identically to before, and the fields never
+  raise trust.
+
+- **`conflicts` / `extends` relations.** `memory_edge` has always had a `relation`
+  column but only ever held `supersedes`, so every correction was a full replacement.
+  Real corrections are partial — "the rollback window is 45 minutes now, but database
+  changes still get 30" contradicts one clause and confirms another. Now a caller can
+  declare a weaker relation, both entries stay readable, and `loci_get` shows the link.
+
+- **Touched files in the episodic summary.** "Where were we last time" was a question
+  this project had to answer by hand. File paths are now extracted from tool-call
+  arguments and recorded on the session summary, which is never injected — so it costs
+  the prompt nothing and only helps `loci_search`.
+
+### Migration
+
+Schema v2 → v3 adds four nullable columns; no row can be lost and every existing entry
+simply has no lesson shape yet. The integration test now walks the whole shipped chain
+v1 → v3 rather than a single step.
+
+### Not done, on purpose
+
+Auto-triggered injection (`when` matching decides what gets injected) stays rejected:
+it breaks prefix stability and lets memory content decide its own admission. The
+condition is **stored and shown, never used to select**. Recorded with the rest of the
+rejections in `docs/PRIOR-ART.md` §2.
+
 ## [2.3.1] — 2026-11-15
 
 ### Fixed

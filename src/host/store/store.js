@@ -22,7 +22,17 @@ import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
-import { normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
+import { cleanText, normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
+
+/**
+ * Relations a caller may declare between two facts.
+ *
+ * `supersedes` is written by the store itself (a revision replaces its predecessor).
+ * The other two exist because real corrections are partial: `conflicts` says "these
+ * disagree and a person must decide", `extends` says "this adds to that and both
+ * hold". Neither changes what is injected — an entry still needs its own verification.
+ */
+export const RELATIONS = Object.freeze(new Set(['conflicts', 'extends']));
 
 /** Ids that were revoked or never existed. */
 export class MemoryNotFoundError extends Error {
@@ -76,6 +86,11 @@ function mapRow(row) {
     supersedes: row.supersedes ?? null,
     supersededBy: row.superseded_by ?? null,
     evidence: JSON.parse(row.evidence ?? '{}'),
+    /** The lesson shape, when this entry is one. Null for ordinary facts. */
+    pattern: row.pattern ?? null,
+    fix: row.fix ?? null,
+    prevents: row.prevents ?? null,
+    whenCondition: row.when_condition ?? null,
     /** Citation back to the code or document the fact came from. */
     sourceRef: JSON.parse(row.evidence ?? '{}').ref ?? null,
     sourceSession: row.source_session ?? null,
@@ -211,6 +226,7 @@ export class Store {
     const evidence = prepared.evidence ?? {};
     const status = this.#resolveStatus({ input, prepared, evidence, trustSource });
 
+    const lesson = this.#lessonFields(input);
     const contentHash = createHash('sha256')
       .update(`${normalizeTitle(prepared.title)}\n${normalizeText(prepared.body)}`, 'utf8')
       .digest('hex');
@@ -299,7 +315,9 @@ export class Store {
         now,
         verifiedBy: status === 'verified' ? (input.verifiedBy ?? trustSource) : null,
         verifiedAt: status === 'verified' ? now : null,
+        ...lesson,
       });
+      this.#linkRelations(id, 1, input.relations, now);
       this.bumpIndexRev();
       return inserted;
     });
@@ -344,6 +362,7 @@ export class Store {
       throw new RevisionConflictError(id, input.expectedRevision, Number(head.row.revision));
     }
     const prepared = input.preparedOverride ?? prepareForStorage(input, { secretPolicy: this.live('secretPolicy') });
+    const lesson = this.#lessonFields(input);
     if (prepared.rejected) {
       throw new MemoryRejectedError(`memory contains a high-confidence secret (${prepared.redactions.join(', ')})`);
     }
@@ -394,6 +413,12 @@ export class Store {
         pinned: input.pinned === true ? 1 : Number(head.row.pinned),
         importance: Number.isInteger(input.importance) ? input.importance : Number(head.row.importance),
         contentHash,
+        // A revision that does not restate the lesson keeps the previous shape: fixing a
+        // typo in the title must not silently erase why the lesson exists.
+        pattern: lesson.pattern ?? head.row.pattern ?? null,
+        fix: lesson.fix ?? head.row.fix ?? null,
+        prevents: lesson.prevents ?? head.row.prevents ?? null,
+        whenCondition: lesson.whenCondition ?? head.row.when_condition ?? null,
         createdAt: Number(head.row.created_at),
         now,
         verifiedBy: status === 'verified' ? (input.verifiedBy ?? 'tool') : null,
@@ -405,6 +430,11 @@ export class Store {
            VALUES (?, ?, ?, ?, 'supersedes', ?)`,
         )
         .run(id, revision, id, Number(head.row.revision), now);
+      // A revision is not always a full replacement. "The rollback window is 45 minutes
+      // now, but database changes still get 30" contradicts the old entry on one clause
+      // and agrees on another; superseding it would destroy the part that is still true.
+      // Callers can therefore declare a weaker relation and both facts stay readable.
+      this.#linkRelations(id, revision, input.relations, now);
       this.bumpIndexRev();
       return inserted;
     });
@@ -789,7 +819,8 @@ export class Store {
     const placeholders = keys.map(() => '?').join(', ');
     const rows = this.db
       .prepare(
-        `SELECT m.id, m.revision, m.kind, m.scope, m.title, m.valid_from, m.updated_at, m.pinned, m.created_at, m.tier
+        `SELECT m.id, m.revision, m.kind, m.scope, m.title, m.valid_from, m.updated_at, m.pinned, m.created_at, m.tier,
+                m.prevents
          FROM memory m
          WHERE m.status = 'verified'
            AND m.deleted_at IS NULL
@@ -808,6 +839,8 @@ export class Store {
       validFrom: Number(row.valid_from),
       updatedAt: Number(row.updated_at),
       pinned: Number(row.pinned) === 1,
+      // The index needs one clause of context for a lesson; everything else stays out.
+      prevents: row.prevents ?? null,
     }));
   }
 
@@ -1525,6 +1558,59 @@ export class Store {
     return verified;
   }
 
+  /**
+   * Sanitize the optional lesson shape.
+   *
+   * These are free text from a model, so they get the same treatment as a title: control
+   * characters and bidi overrides stripped, length capped. Empty input stays null rather
+   * than an empty string, so "no lesson shape" is one value and not two.
+   *
+   * @param input - caller input.
+   * @returns the four fields, all nullable.
+   */
+  #lessonFields(input) {
+    const clean = (value, maxChars) => {
+      const text = cleanText(typeof value === 'string' ? value : '', maxChars);
+      return text.length === 0 ? null : text;
+    };
+    return {
+      pattern: clean(input?.pattern, 400),
+      fix: clean(input?.fix, 800),
+      prevents: clean(input?.prevents, 300),
+      whenCondition: clean(input?.whenCondition, 300),
+    };
+  }
+
+  /**
+   * Record the relations a caller declared for one revision.
+   *
+   * Silently skips anything unusable — an unknown relation name, a self reference, a
+   * target that does not exist or was deleted. A bad link must never fail the write:
+   * the fact itself is still worth keeping, and a missing edge is recoverable while a
+   * lost fact is not.
+   *
+   * @param id - this entry.
+   * @param revision - the revision the relation was declared on.
+   * @param relations - caller-supplied `[{id, relation}]`.
+   * @param now - timestamp.
+   */
+  #linkRelations(id, revision, relations, now) {
+    if (!Array.isArray(relations) || relations.length === 0) return;
+    const link = this.db.prepare(
+      `INSERT OR IGNORE INTO memory_edge (src_id, src_rev, dst_id, dst_rev, relation, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    for (const relation of relations) {
+      if (relation === null || typeof relation !== 'object') continue;
+      const target = typeof relation.id === 'string' ? relation.id : '';
+      const kind = relation.relation;
+      if (target.length === 0 || !RELATIONS.has(kind) || target === id) continue;
+      const other = this.#headRow(target);
+      if (other === undefined || other.status === 'deleted') continue;
+      link.run(id, revision, target, Number(other.row.revision), kind, now);
+    }
+  }
+
   #insertRevision(row) {
     const result = this.db
       .prepare(
@@ -1532,8 +1618,9 @@ export class Store {
            id, revision, kind, scope, scope_key, scope_label, title, title_norm, body, tags, entities,
            status, trust_source, flags, valid_from, valid_to, recorded_at, supersedes, superseded_by,
            evidence, source_session, source_event, verified_at, verified_by, pinned, importance, tier,
-           content_hash, created_at, updated_at, deleted_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)`,
+           content_hash, created_at, updated_at, deleted_at,
+           pattern, fix, prevents, when_condition
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
       )
       .run(
         row.id,
@@ -1566,6 +1653,12 @@ export class Store {
         row.contentHash,
         row.createdAt,
         row.now,
+        // The four lesson columns sit after `deleted_at` in the column list, which is
+        // bound as a literal NULL, so they come last in this argument list.
+        row.pattern ?? null,
+        row.fix ?? null,
+        row.prevents ?? null,
+        row.whenCondition ?? null,
       );
     const ord = Number(result.lastInsertRowid);
     const text = `${row.title} ${row.body} ${(row.tags ?? []).join(' ')}`;

@@ -131,6 +131,38 @@ export function createTools(deps) {
           type: 'string',
           description: 'Where this fact lives in the repository, e.g. "src/host/store.js:120". Shown by loci_get so a reader can check it.',
         },
+        pattern: {
+          type: 'string',
+          description: 'For kind "procedural": the reusable shape of the problem, e.g. "a script edits a file and the quoting silently mangles it".',
+        },
+        fix: {
+          type: 'string',
+          description: 'For kind "procedural": what actually worked, concretely enough to repeat.',
+        },
+        prevents: {
+          type: 'string',
+          description:
+            'For kind "procedural": what breaks without this lesson. Shown on the index line, because a rule without its consequence gets ignored.',
+        },
+        whenCondition: {
+          type: 'string',
+          description:
+            'For kind "procedural": the situation this lesson was written for. Stored and shown, never used to decide whether the entry is injected.',
+        },
+        relations: {
+          type: 'array',
+          description:
+            'Other entries this one touches. "conflicts" records that they disagree and a person must decide; "extends" records that this adds to that and both still hold. Neither replaces the other entry the way an update does.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              relation: { type: 'string', enum: ['conflicts', 'extends'] },
+            },
+            required: ['id', 'relation'],
+            additionalProperties: false,
+          },
+        },
         evidenceNote: { type: 'string' },
         validFrom: { type: 'string', description: 'ISO time the fact became true (default: now).' },
         ttlDays: { type: 'integer', description: 'Close the fact after N days (default: no expiry).' },
@@ -205,6 +237,11 @@ export function createTools(deps) {
         sourceSession: context.sessionId ?? null,
         sourceEvent: Number.isSafeInteger(lastUserSeq) ? lastUserSeq : undefined,
         sourceRef: str(args, 'sourceRef', { fallback: undefined }),
+        relations: Array.isArray(args?.relations) ? args.relations : undefined,
+        pattern: str(args, 'pattern', { fallback: undefined }),
+        fix: str(args, 'fix', { fallback: undefined }),
+        prevents: str(args, 'prevents', { fallback: undefined }),
+        whenCondition: str(args, 'whenCondition', { fallback: undefined }),
         evidence: {
           ...(evidenceQuote === undefined ? {} : { quote: evidenceQuote }),
           ...(str(args, 'evidenceNote', { fallback: undefined }) === undefined
@@ -514,9 +551,32 @@ function renderGet(value) {
     lines.push(`source: ${renderSafe(entry.sourceRef)}`);
   }
   lines.push('', renderSafe(entry.body));
+  // A lesson reads as four labelled lines rather than one paragraph: the problem, the
+  // remedy, the consequence, and the situation it was written for.
+  for (const [label, value] of [
+    ['pattern', entry.pattern],
+    ['fix', entry.fix],
+    ['prevents', entry.prevents],
+    ['when', entry.whenCondition],
+  ]) {
+    if (typeof value === 'string' && value.length > 0) lines.push(`${label}: ${renderSafe(value)}`);
+  }
   const quote = entry.evidence?.quote;
   if (typeof quote === 'string' && quote.length > 0) {
     lines.push('', `evidence: “${renderSafe(quote)}”${entry.sourceSession ? ` (session ${entry.sourceSession})` : ''}`);
+  }
+  // Declared relations are the only place a partial correction is visible: the entry
+  // itself reads as one fact, and "this disagrees with m_yyy on one clause" lives here.
+  const relations = (Array.isArray(value.edges) ? value.edges : []).filter(
+    (edge) => edge.relation === 'conflicts' || edge.relation === 'extends',
+  );
+  if (relations.length > 0) {
+    lines.push('', 'relations:');
+    for (const edge of relations) {
+      const other = edge.src_id === entry.id ? edge.dst_id : edge.src_id;
+      const direction = edge.src_id === entry.id ? '→' : '←';
+      lines.push(`- ${edge.relation} ${direction} ${other}`);
+    }
   }
   const history = Array.isArray(value.history) ? value.history : [];
   if (history.length > 1) {

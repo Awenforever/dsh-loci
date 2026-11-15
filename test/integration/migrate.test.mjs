@@ -28,13 +28,19 @@ const REHEARSAL = [
 ];
 
 /**
- * Rewind an open database to the previous schema version, so the rehearsal starts
- * from the same place a user on an older release would be. This is a fixture, not a
- * supported operation: it flips the version stamp and drops what the newer version
- * added.
+ * Rewind an open database to an earlier schema version, so a test starts from the
+ * same place a user on an older release would be. This is a fixture, not a supported
+ * operation: it drops what the newer versions added and flips the version stamp.
  */
 function rewind(db, target) {
-  db.exec('DROP TABLE IF EXISTS memory_usage');
+  const columns = () => db.prepare('PRAGMA table_info(memory)').all().map((row) => row.name);
+  if (target < 3) {
+    // v3 added the lesson shape.
+    for (const column of ['pattern', 'fix', 'prevents', 'when_condition']) {
+      if (columns().includes(column)) db.exec(`ALTER TABLE memory DROP COLUMN ${column}`);
+    }
+  }
+  if (target < 2) db.exec('DROP TABLE IF EXISTS memory_usage');
   db.exec(`PRAGMA user_version = ${target}`);
   db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(target));
 }
@@ -110,7 +116,7 @@ test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', 
   }
 });
 
-test('the shipped v1->v2 migration adds the usage table without touching memory', (t) => {
+test('the shipped migration chain v1->v3 keeps every row and adds both shapes', (t) => {
   const home = mkdtempSync(join(tmpdir(), 'loci-migrate-shipped-'));
   const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
   const paths = layout(root);
@@ -130,7 +136,8 @@ test('the shipped v1->v2 migration adds the usage table without touching memory'
   assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'memory_usage'").get().n, 1);
   store.close();
 
-  const previous = SCHEMA_VERSION - 1;
+  // Start from v1: this test is about the whole shipped chain, not a single step.
+  const previous = 1;
   const db = openDatabase({ file: paths.db });
   try {
     rewind(db, previous);
@@ -138,7 +145,7 @@ test('the shipped v1->v2 migration adds the usage table without touching memory'
 
     // Ship migrations only: this is the path a real upgrade takes.
     const result = migrate(db, { target: SCHEMA_VERSION, backupDir: paths.backups });
-    assert.deepEqual(result.steps, [`v${previous}->v${SCHEMA_VERSION}`]);
+    assert.deepEqual(result.steps, ['v1->v2', 'v2->v3']);
     assert.equal(databaseVersion(db), SCHEMA_VERSION);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'memory_usage'").get().n,

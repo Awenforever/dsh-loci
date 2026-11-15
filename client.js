@@ -131,6 +131,12 @@ window.__ModuleLoader__.load({
       'panel.history': 'History',
       'panel.evidence': 'Evidence',
       'panel.source': 'Source',
+      'panel.lesson': 'Lesson',
+      'panel.lesson.pattern': 'pattern',
+      'panel.lesson.fix': 'fix',
+      'panel.lesson.prevents': 'prevents',
+      'panel.lesson.when': 'when',
+      'panel.relations': 'Relations',
       'panel.candidates': 'Candidates',
       'panel.disputed': 'Disputed',
       'panel.noCandidates': 'Nothing waiting for review.',
@@ -254,6 +260,12 @@ window.__ModuleLoader__.load({
       'panel.history': '历史',
       'panel.evidence': '证据',
       'panel.source': '出处',
+      'panel.lesson': '教训',
+      'panel.lesson.pattern': '问题形态',
+      'panel.lesson.fix': '做法',
+      'panel.lesson.prevents': '不做会怎样',
+      'panel.lesson.when': '适用场景',
+      'panel.relations': '关联',
       'panel.candidates': '候选',
       'panel.disputed': '争议',
       'panel.noCandidates': '没有待审条目。',
@@ -742,7 +754,7 @@ window.__ModuleLoader__.load({
 
     function Detail({ id, t, onBack, onChange }) {
       const { data, error, loading, reload } = useJson(`/item?id=${encodeURIComponent(id)}&history=1`);
-      const entry = data?.entry;
+      // \edges\ is a sibling of \entry\ in the API payload; fold it in so the detail view\n      // can show declared relations without a second request.\n      const entry = data?.entry === undefined ? undefined : { ...data.entry, edges: data.edges ?? [] };
       const act = async (path, body) => {
         try {
           await apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
@@ -810,6 +822,43 @@ window.__ModuleLoader__.load({
               ),
               h('div', { className: 'loci-section' }, 'Body'),
               h('pre', { className: 'loci-pre' }, entry.body),
+              // A lesson's shape, and the relations that record a partial correction.
+              // Both are read-only here: they come from the write that created the entry.
+              ['pattern', 'fix', 'prevents', 'when'].some((key) => typeof entry[key === 'when' ? 'whenCondition' : key] === 'string')
+                ? h(
+                    'div',
+                    null,
+                    h('div', { className: 'loci-section' }, t('panel.lesson')),
+                    h(
+                      'dl',
+                      { className: 'loci-kv' },
+                      ...['pattern', 'fix', 'prevents', 'when'].flatMap((key) => {
+                        const value = entry[key === 'when' ? 'whenCondition' : key];
+                        return typeof value === 'string' && value.length > 0
+                          ? [h('dt', { key: `${key}-k` }, t(`panel.lesson.${key}`)), h('dd', { key: `${key}-v` }, value)]
+                          : [];
+                      }),
+                    ),
+                  )
+                : null,
+              (entry.edges ?? []).some((edge) => edge.relation === 'conflicts' || edge.relation === 'extends')
+                ? h(
+                    'div',
+                    null,
+                    h('div', { className: 'loci-section' }, t('panel.relations')),
+                    ...(entry.edges ?? [])
+                      .filter((edge) => edge.relation === 'conflicts' || edge.relation === 'extends')
+                      .map((edge) => {
+                        const other = edge.src_id === entry.id ? edge.dst_id : edge.src_id;
+                        return h(
+                          'div',
+                          { key: `${edge.relation}-${other}`, className: 'loci-meta' },
+                          h('span', null, edge.relation),
+                          h('code', { className: 'loci-id' }, other),
+                        );
+                      }),
+                  )
+                : null,
               entry.sourceRef
                 ? h(
                     'div',

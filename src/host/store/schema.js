@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -18,6 +18,21 @@ export const SCHEMA_VERSION = 2;
  * that only exists on new installs is the classic way a feature "works on my
  * machine".
  */
+/**
+ * DDL for the v3 lesson fields.
+ *
+ * A lesson stored as free text is unreadable six months later: you remember the rule
+ * but not why it exists. `prevents` is the field that answer lives in, `pattern` and
+ * `fix` split the problem from the remedy, and `when_condition` records the situation
+ * the lesson was written for — stored, shown, never used to decide injection.
+ */
+export const MEMORY_LESSON_DDL = `
+ALTER TABLE memory ADD COLUMN pattern TEXT;
+ALTER TABLE memory ADD COLUMN fix TEXT;
+ALTER TABLE memory ADD COLUMN prevents TEXT;
+ALTER TABLE memory ADD COLUMN when_condition TEXT;
+`;
+
 export const MEMORY_USAGE_DDL = `
 CREATE TABLE IF NOT EXISTS memory_usage (
   id               TEXT PRIMARY KEY,
@@ -67,6 +82,11 @@ CREATE TABLE IF NOT EXISTS memory (
   tier           INTEGER NOT NULL DEFAULT 2,
   importance     INTEGER NOT NULL DEFAULT 3,
   content_hash   TEXT NOT NULL,
+  -- v3: a lesson's shape. All nullable; ordinary facts leave them empty.
+  pattern        TEXT,
+  fix            TEXT,
+  prevents       TEXT,
+  when_condition TEXT,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
   deleted_at     INTEGER,

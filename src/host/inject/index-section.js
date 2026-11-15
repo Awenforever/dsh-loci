@@ -108,7 +108,16 @@ export function renderIndexBody(options) {
   // candidates used to render an empty "Index —" heading, which reads as "memory is
   // empty" right next to the line saying something is waiting.
   const indexHeader = visible.length > 0 ? `Index — ${renderSafe(indexTitle(scopeLabel, 120))}` : '';
-  const entryLine = (entry) => `- ${entry.id} · ${entry.kind} · ${formatDate(entry.validFrom)} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
+  // A lesson's one-line summary carries what it prevents, because that is the part a
+  // reader needs to act on it: the rule without the consequence gets ignored. Only for
+  // `procedural` entries that actually have the field, so ordinary facts are byte-identical
+  // to before.
+  const PREVENTS_CHARS = 60;
+  const entryLine = (entry) => {
+    const head = `- ${entry.id} · ${entry.kind} · ${formatDate(entry.validFrom)} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
+    if (entry.kind !== 'procedural' || typeof entry.prevents !== 'string' || entry.prevents.length === 0) return head;
+    return `${head} — prevents: ${renderSafe(indexTitle(entry.prevents, PREVENTS_CHARS))}`;
+  };
 
   const footerFor = (listed) => {
     const hidden = Math.max(0, total - listed);

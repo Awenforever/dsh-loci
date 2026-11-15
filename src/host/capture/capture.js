@@ -118,6 +118,9 @@ export class Capture {
     if (buffer === undefined) {
       buffer = {
         messages: [],
+      // Paths this session actually touched, most recent last. A tool call is the only
+      // honest source: it is what the model asked to do, not what it said it did.
+      files: [],
         bytes: 0,
         captures: 0,
         timer: undefined,
@@ -141,6 +144,35 @@ export class Capture {
     }
   }
 
+  /**
+   * Pull file paths out of one tool call.
+   *
+   * Deliberately narrow: only the argument names that actually carry paths, and only
+   * values that still look like a path after trimming. A false positive here would put
+   * a sentence into the resumption list, which is worse than missing a file.
+   *
+   * @param buffer - the session buffer.
+   * @param name - tool name (kept for the debug trail).
+   * @param rawArguments - the JSON argument string.
+   */
+  #noteFiles(buffer, name, rawArguments) {
+    const KEYS = /"(path|file|file_path|filePath|dir|directory|cwd|target|pattern|notebook_path)"\s*:\s*"([^"]{1,300})"/g;
+    let match;
+    let added = 0;
+    while ((match = KEYS.exec(rawArguments)) !== null && added < 8) {
+      const value = match[2].replace(/\\/g, '/').trim();
+      if (value.length < 2 || value.length > 300) continue;
+      // A glob is not a path someone can open; keep the directory part when it has one.
+      const cleaned = value.replace(/\*\*?.*$/, '').replace(/\/$/, '');
+      if (cleaned.length < 2) continue;
+      if (buffer.files.includes(cleaned)) continue;
+      buffer.files.push(cleaned);
+      added += 1;
+      if (buffer.files.length > 40) buffer.files.shift();
+    }
+    if (added > 0) this.log?.debug?.(`loci: ${name} touched ${added} path(s)`);
+  }
+
   /** Record one event; never throws into the session commit path. */
   onSessionEvent(session, event) {
     try {
@@ -162,6 +194,14 @@ export class Capture {
         buffer.messages.push({ seq: event.seq, role: 'assistant', text });
         buffer.bytes += Buffer.byteLength(text, 'utf8');
         this.#trim(buffer);
+        return;
+      }
+      if (event.type === 'tool/call') {
+        const name = String(event.data?.name ?? '');
+        const args = event.data?.arguments;
+        if (typeof args === 'string' && Buffer.byteLength(args, 'utf8') <= 8192) {
+          this.#noteFiles(buffer, name, args);
+        }
         return;
       }
       if (event.type === 'turn/end') {
@@ -382,7 +422,11 @@ export class Capture {
         scopeKey: this.#workspaceKey(buffer.cwd, sessionId),
         scopeLabel: this.#workspaceLabel(buffer.cwd),
         title,
-        body,
+        body: buffer.files.length > 0
+          // The episodic entry is history: it is never injected, so this list costs the
+          // prompt nothing and only helps `loci_search` answer "where were we".
+          ? `${body}\n\nFiles touched this session:\n${buffer.files.slice(-20).map((file) => `- ${file}`).join('\n')}`
+          : body,
         trustSource: 'summary',
         sourceSession: sessionId,
         sourceEvent: buffer.messages.at(-1)?.seq,
