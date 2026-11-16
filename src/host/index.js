@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.10.0';
+export const VERSION = '4.10.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -454,7 +454,15 @@ export function apply(ctx, rawConfig = {}) {
     // Recorded before the work, not after: an outcome recorded only on success cannot distinguish
     // "never called", "threw", and "returned nothing" — the three cases that have each cost a release.
     try {
-      store.audit.append('curate-start', { sessionId, trigger, hasRoute: curation.trigger !== undefined });
+      store.audit.append('curate-start', {
+        sessionId,
+        trigger,
+        hasRoute: curation.trigger !== undefined,
+        // The count, not the text. "nothing to read" has now been the answer for two releases, and
+        // the two possible reasons — buffer empty, or buffer never filled — need different fixes.
+        transcriptMessages: transcripts.get(sessionId)?.length ?? 0,
+        captureMessages: capture?.messagesOf?.(sessionId)?.length ?? 0,
+      });
     } catch {
       /* diagnostic only */
     }

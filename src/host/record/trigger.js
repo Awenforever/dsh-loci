@@ -41,7 +41,12 @@ export function createCurationTrigger({ store, config, capture, callModel, resol
     // extraction and wrong here: curation kept reporting "nothing to read" for conversations that
     // demonstrably had a transcript, because most `user/message` events are harness-injected.
     const messages = transcriptOf?.(session.id) ?? capture?.messagesOf?.(session.id) ?? [];
-    if (messages.length < 2) return { ran: false, reason: 'nothing to read' };
+    // One substantial message is enough. The threshold used to be two, on the reasoning that a
+    // conversation needs an exchange to judge — but the transcript starts accumulating when the
+    // plugin loads, so an in-progress conversation has a short window, and a single message can
+    // perfectly well contain "以后部署先走灰度". The pre-filter decides whether anything in it is
+    // worth a model call; this check only rules out having nothing at all.
+    if (messages.length === 0) return { ran: false, reason: 'nothing to read' };
     const candidates = prefilter(messages.slice(-TRANSCRIPT_CAP));
     if (candidates.length === 0) return { ran: false, reason: 'no candidate sentence' };
 

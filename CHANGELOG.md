@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.10.1] — 2026-11-16
+
+One message is enough to judge.
+
+### The last "nothing to read"
+
+The transcript starts accumulating when the plugin loads, so a conversation already in progress has a
+short window — mine had exactly one message since the upgrade. The trigger required **two**, on the
+reasoning that a conversation needs an exchange before it can be judged.
+
+That reasoning is wrong on its own terms: `以后部署先走灰度` is durable in a single sentence, and the
+pre-filter is what decides whether anything is worth a model call. The length check only needs to rule
+out having nothing at all.
+
+### Changed
+
+- **\`messages.length === 0\` is the only refusal.** The pre-filter does the judging about content.
+- **\`curate-start\` records both buffer sizes** — `transcriptMessages` and `captureMessages`. Two
+  releases answered `nothing to read`, and "the buffer is empty" and "the buffer was never filled" are
+  different faults; the counts make that visible in one row rather than another round of inference.
+
+293 tests, coverage lines 89.1 / branches 70.2 / functions 83.0.
+
 ## [4.10.0] — 2026-11-16
 
 Curation gets the transcript the events actually carry.
