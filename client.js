@@ -182,6 +182,9 @@ window.__ModuleLoader__.load({
       'panel.injected': 'injected',
       'panel.opened': 'opened',
       'panel.store': 'Store',
+      'panel.distance': 'Distance from the working set',
+      'panel.distanceHint':
+        'Measured in memory units — units of work, not dates. Retirement is off until a threshold is calibrated, so this is where growth shows up first.',
       'panel.confirmDelete': 'Soft-delete this entry?',
       'panel.error': 'Request failed',
       'panel.updated': 'Updated',
@@ -1188,12 +1191,60 @@ window.__ModuleLoader__.load({
                 h('dt', null, 'path'), h('dd', null, data.memoryRoot ?? '—'),
                 h('dt', null, 'schema'), h('dd', null, `v${data.schemaVersion}`),
                 h('dt', null, 'host'), h('dd', null, data.hostVersion ?? 'unknown'),
+                h('dt', null, 'memory unit'), h('dd', null, `${(data.mu?.now ?? 0).toFixed(1)} MU`),
+                h('dt', null, 'retirement'),
+                h('dd', null, (data.mu?.retireAfter ?? 0) > 0 ? `after ${data.mu.retireAfter} MU` : 'off (threshold not calibrated)'),
                 h('dt', null, 'vector'), h('dd', null, `${vs.mode ?? 'off'}${vs.healthy ? ' · healthy' : ''}${vs.lastError ? ` · ${vs.lastError}` : ''}`),
                 h('dt', null, 'last injection'),
                 h('dd', null, data.lastInjection ? `${data.lastInjection.bytes} B · ${data.lastInjection.listed} listed · ${data.lastInjection.hidden} hidden` : '—'),
               ),
-              h('div', { className: 'loci-section' }, t('panel.injections')),
-              (data.injections ?? []).slice(0, 20).map((row, index) =>
+              // Where the entries sit, in the store's only clock.
+              //
+              // This is the panel's answer to "how old is my memory": four bands of distance from the
+              // working set, never a date. Retirement is off until a threshold is calibrated, so the
+              // growing cold band is the visible cost of that choice rather than a silent one.
+              data.mu !== undefined
+                ? h(
+                    'div',
+                    null,
+                    h('div', { className: 'loci-section' }, t('panel.distance')),
+                    h(
+                      'div',
+                      { className: 'loci-cells' },
+                      cell('fresh', data.mu.bands?.fresh ?? 0),
+                      cell('active', data.mu.bands?.active ?? 0),
+                      cell('cool', data.mu.bands?.cool ?? 0),
+                      cell('cold', data.mu.bands?.cold ?? 0),
+                    ),
+                    h(
+                      'div',
+                      { className: 'loci-meta', style: { marginTop: '6px' } },
+                      t('panel.distanceHint'),
+                    ),
+                    (data.muTrail ?? []).length > 0
+                      ? h(
+                          'div',
+                          { style: { marginTop: '10px' } },
+                          (data.muTrail ?? [])
+                            .slice(-6)
+                            .reverse()
+                            .map((row, index) =>
+                              h(
+                                'div',
+                                { key: `${row.mu}-${index}`, className: 'loci-row' },
+                                h('span', { className: 'loci-id' }, row.mu.toFixed(1)),
+                                h(
+                                  'div',
+                                  { className: 'loci-main' },
+                                  h('div', { className: 'loci-meta' }, `${row.reason} · +${row.add} new · +${row.use} use`),
+                                ),
+                              ),
+                            ),
+                        )
+                      : null,
+                  )
+                : null,
+              h('div', { className: 'loci-section' }, t('panel.injections')),              (data.injections ?? []).slice(0, 20).map((row, index) =>
                 h(
                   'div',
                   { key: `${row.ts}-${index}`, className: 'loci-row' },

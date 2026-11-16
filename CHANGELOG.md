@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.0.1] — 2026-11-17
+
+The panel gets the clock.
+
+5.0.0 shipped the counter, replaced the three wall-clock behaviours, and exposed the distribution in
+`doctor` and the evaluation — but the panel, which is where a person actually looks, still showed nothing.
+The objective named three surfaces and only two were done.
+
+### Added to the Statistics tab
+
+- **Distance from the working set**, as four bands of memory units: fresh / active / cool / cold.
+- **The trail**, newest last: for each advance, the reason and the two components that produced it
+  (`+2 new · +3 use`), so "why did the clock move" is answerable in the UI rather than by reading
+  `mu_event` with a script.
+- `memory unit` and `retirement` in the store block, with retirement stating plainly that it is
+  **off because the threshold is not calibrated** — the growth that follows is the visible cost of that
+  choice, not a hidden one.
+
+### What the real store shows
+
+Verified against the live database rather than assumed:
+
+```
+scopes  [session:…, workspace:…, project:…, global:]
+mu.now  10.15
+bands   {fresh: 3, active: 0, cool: 0, cold: 0}
+trail   16:57:10 mu=3.00 reason=inject add=0 use=4
+        16:59:15 mu=8.76 reason=inject add=0 use=4
+        17:00:09 mu=10.15 reason=inject add=0 use=3
+```
+
+Every advance so far is `inject`, which is the expected shape now: the clock was introduced with all
+existing entries stamped at its starting value, so nothing has had a chance to age yet. Entries that keep
+being injected stay at distance 0 by design — being in the working set *is* being at zero.
+
+306 tests, coverage lines 90.6 / branches 70.6 / functions 85.6.
+
 ## [5.0.0] — 2026-11-17
 
 The memory unit becomes the only clock.
