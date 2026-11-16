@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.7.1';
+export const VERSION = '4.8.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -383,29 +383,57 @@ export function apply(ctx, rawConfig = {}) {
     ),
   );
 
-  // Curation runs when a conversation ends, on the main context.
+  // Curation runs when a conversation ends, triggered by the events that are *proven* to arrive.
   //
-  // The listener lives here, beside capture's, because that is where `agent/disposed` demonstrably
-  // arrives: registered on the injected `llm` child it never fired for ordinary conversations, so
-  // curation silently never ran while every other part of the route was healthy. The run is also
-  // recorded in the audit either way — "did not run" and "ran and kept nothing" are different
-  // results, and this project has spent six releases confusing the two.
+  // `agent/disposed` was the obvious signal and it never fired for ordinary conversations — not on
+  // the injected `llm` child, and not on the main context either, while `agent/pre-step` and
+  // `session/event` both fire there without difficulty. Rather than keep guessing at the scoping
+  // rule, curation now listens on `turn/end`, which the capture layer demonstrably receives, and
+  // keeps `agent/disposed` as a second chance. A once-per-session guard makes the two idempotent.
+  //
+  // The outcome is recorded in the audit either way: "did not run" and "ran and kept nothing" are
+  // different results, and this project has spent six releases confusing the two.
+  const curated = new Set();
+  const runCuration = async (sessionId, session, trigger) => {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return;
+    if (curated.has(sessionId)) return;
+    curated.add(sessionId);
+    if (curated.size >= 256) curated.clear();
+    const outcome =
+      curation.trigger === undefined
+        ? { ran: false, reason: 'no model route' }
+        : await curation.trigger({ session });
+    try {
+      store.audit.append('curate', {
+        sessionId,
+        trigger,
+        ran: outcome?.ran === true,
+        reason: outcome?.reason ?? null,
+        written: Array.isArray(outcome?.written) ? outcome.written.length : 0,
+      });
+    } catch {
+      /* the audit is best-effort */
+    }
+  };
+
   disposers.push(
     ctx.effect(() =>
-      ctx.on('agent/disposed', async ({ agent } = {}) => {
-        const outcome = curation.trigger === undefined
-          ? { ran: false, reason: 'no model route' }
-          : await curation.trigger(agent);
-        try {
-          store.audit.append('curate', {
-            sessionId: agent?.session?.id ?? null,
-            ran: outcome?.ran === true,
-            reason: outcome?.reason ?? null,
-            written: Array.isArray(outcome?.written) ? outcome.written.length : 0,
-          });
-        } catch {
-          /* the audit is best-effort */
-        }
+      ctx.on('session/event', (session, event) => {
+        // A completed turn is the first moment a conversation has something to judge. Cron the
+        // judgement to it rather than to a lifecycle event whose delivery proved unreliable.
+        if (event?.type !== 'turn/end') return;
+        if (read('curatorMode') !== 'session-end') return;
+        if (session?.id === undefined) return;
+        void runCuration(session.id, session, 'turn-end');
+      }),
+    ),
+  );
+  disposers.push(
+    ctx.effect(() =>
+      ctx.on('agent/disposed', ({ agent } = {}) => {
+        const session = agent?.session;
+        if (session?.id === undefined) return;
+        void runCuration(session.id, session, 'disposed');
       }),
     ),
   );

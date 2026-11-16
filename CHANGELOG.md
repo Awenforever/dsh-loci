@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.8.0] — 2026-11-16
+
+Curation triggers on an event that is proven to arrive.
+
+### What the last two attempts established
+
+`agent/disposed` was the obvious signal for "a conversation ended". Measured:
+
+- registered on the injected child of `llm`: never fired;
+- registered on the main context, beside capture's listener: never fired either — a finished
+  conversation produced its session summary and **no `curate` audit row at all**;
+- while `agent/pre-step` and `session/event` both fire on that same context without difficulty.
+
+I stopped trying to infer the scoping rule and switched to a signal with evidence behind it.
+
+### Changed
+
+- **`turn/end` triggers curation.** The capture layer demonstrably receives `session/event`, and a
+  completed turn is the first moment a conversation has something worth judging. `agent/disposed`
+  stays registered as a second chance.
+- **A once-per-session guard** makes the two triggers idempotent, so the second one costs nothing.
+- **Every outcome is audited**: `{sessionId, trigger, ran, reason, written}`. Which trigger fired is
+  part of the record, because "the fallback is doing the work" is a fact worth seeing rather than a
+  detail to hide.
+
+### Why the cheap trigger is also the right one
+
+Waiting for disposal means a conversation's memory is only curated after it is completely finished —
+which for a long session may be hours after the content was said, and never at all if the session
+stays open. Triggering on `turn/end` curates while the conversation is still alive, which is both
+more timely and, as it turned out, the only one of the two that actually runs.
+
+293 tests, coverage lines 89.1 / branches 70.2 / functions 83.0.
+
 ## [4.7.1] — 2026-11-16
 
 Curation now runs where the event actually arrives.
