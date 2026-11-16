@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.11.0] — 2026-11-16
+
+Both halves are now closed in real use, and the relevance figure is finally honest.
+
+### 记: five entries, written by the model, from real conversations
+
+```
+VERIFIED  procedural · session:3e48f83b   review/accept 默认使用 astra-high，不默认 astra-max
+VERIFIED  semantic   · session:28851ce6   设备设置选项卡激活时显示不完整
+VERIFIED  semantic   · session:28851ce6   部分下拉框首次点击被吞，第二次点击才显示完整选项
+VERIFIED  semantic   · session:28851ce6   全局设置列映射来源列下拉框重复点击会重复打开而非开关切换
+VERIFIED  rule       · session:28851ce6   改动前后严格审计，禁止顺带修改未要求的内容
+```
+
+All five `verified`, which means the quote gate accepted every one: each is grounded in a verbatim
+sentence the person actually wrote, in the conversation it came from. None were approved by anyone —
+the trust came from the grounding.
+
+The reason they are session-scoped is not incidental. A conversation's own words are true of that
+conversation, so they verify immediately; promoting one to workspace scope reopens the gate through
+`sameScope`, which is the boundary rule from 4.2.0 doing its job.
+
+### Why the last five releases were needed
+
+Four things had to be right at once, and each was invisible until the one before it worked:
+`agent/disposed` never fired (→ `step/end`), `turn/end` is not dispatched at all (found by a
+histogram, one row), the capture buffer excluded most messages (→ a dedicated transcript), and a
+two-message minimum refused a transcript that legitimately had one.
+
+### Relevance, measured honestly
+
+The old `relevance` column was bytes-of-the-needed-entry over section bytes. It cannot move much,
+because the slice's denominator is already near its floor — so it read 2.0% against a legacy 1.0% and
+understated the change.
+
+The honest figure is **precision**: of the entries listed, the share that are the one the question
+needed. A fixed index lists 35 entries for every question regardless, so its precision is bounded by
+(chance of inclusion)/35 and *cannot improve* without changing what it emits.
+
+| entries | fixed index | slice composer | ratio |
+|---|---|---|---|
+| 40 | 2.50% | 10.0% | 4.0× |
+| 200 | 0.50% | 7.8% | 15.6× |
+| 600 | 0.35% | 7.5% | 21.5× |
+
+At 600 entries a reworded question got 35 lines of which about 0.35% were useful; it now gets 8 lines
+of which about 7.5% are useful — **21× better precision on 71% less text**. Natural questions improve
+35.9×.
+
+293 tests, coverage lines 89.1 / branches 70.3 / functions 83.0.
+
 ## [4.10.1] — 2026-11-16
 
 One message is enough to judge.

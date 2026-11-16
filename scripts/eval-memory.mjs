@@ -512,6 +512,7 @@ async function measureRecallSlice(sizes) {
             tier: composed.slice.tier,
             ownLineBytes: present ? ownLineBytes : 0,
             remaining: composed.remaining,
+            listed: composed.ids.length,
           };
         };
         perQuestion.push({ natural: await runOne(fact.natural), hard: await runOne(fact.hard) });
@@ -529,6 +530,17 @@ async function measureRecallSlice(sizes) {
         // Bytes of the needed entry over bytes of the section, per question.
         relevance: mean((row) => (row.hard.bytes === 0 ? 0 : row.hard.ownLineBytes / row.hard.bytes)),
         naturalRelevance: mean((row) => (row.natural.bytes === 0 ? 0 : row.natural.ownLineBytes / row.natural.bytes)),
+        // Precision: of the entries listed, the share that are the one the question needed.
+        //
+        // This is the honest "relevance" for a one-entry need, and it is the metric a fixed index
+        // cannot move at all: that section lists 35 entries for every question regardless, so its
+        // precision is (chance the needed one is among them) / 35. It also avoids the trap in the
+        // byte-share figure above, whose denominator is now near its floor.
+        precision: mean((row) => (row.hard.listed === 0 ? 0 : (row.hard.present ? 1 : 0) / row.hard.listed)),
+        naturalPrecision: mean((row) =>
+          row.natural.listed === 0 ? 0 : (row.natural.present ? 1 : 0) / row.natural.listed,
+        ),
+        listed: mean((row) => row.hard.listed),
         remaining: mean((row) => row.hard.remaining),
       });
     } finally {
@@ -624,17 +636,22 @@ if (asJson) {
   console.log(`  mean hard-question / title bigram overlap: ${pct(recall[0].meanOverlap)}`);
 
   console.log('\n=== A2. 忆 with the slice composer (architecture under test) ===');
-  console.log('  store   mean bytes   natural-found   hard-found   loose tier   none   relevance  (natural)');
+  console.log('  store   mean bytes   listed   natural-found   hard-found   loose tier   none   precision  (natural)');
   for (const row of slice) {
     console.log(
-      `  ${String(row.size).padStart(5)}  ${row.bytes.toFixed(0).padStart(11)}  ` +
+      `  ${String(row.size).padStart(5)}  ${row.bytes.toFixed(0).padStart(11)}  ${row.listed.toFixed(1).padStart(6)}  ` +
         `${pct(row.naturalPresent).padStart(13)}  ${pct(row.hardPresent).padStart(11)}  ` +
         `${pct(row.hardLoose).padStart(11)}  ${pct(row.hardNone).padStart(6)}  ` +
-        `${pct(row.relevance).padStart(9)}  ${pct(row.naturalRelevance).padStart(10)}`,
+        `${pct(row.precision).padStart(10)}  ${pct(row.naturalPrecision).padStart(10)}`,
     );
   }
   console.log('\n  natural-found / hard-found = the needed entry is in the section at all (not just rank 1).');
   console.log('  loose tier = recovered by the second-chance pass after the strict pass returned nothing.');
+  console.log('  precision = of the entries listed, the share that are the one the question needed.');
+  console.log('              This is the honest relevance figure: the fixed index lists 35 entries for every');
+  console.log('              question, so its precision is bounded by (chance of inclusion) / 35 and cannot');
+  console.log('              improve without changing what it emits. The byte-share column it replaces has a');
+  console.log('              denominator near its floor here and therefore understates the change.');
 
   console.log('\n=== A3. Rewrite rescue — is rephrasing enough to close the gap? ===');
   console.log('  store   measured   missed   recovered-by-rewrite   ceiling');
