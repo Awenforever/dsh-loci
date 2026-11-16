@@ -20,7 +20,7 @@ import { backupTo, closeDatabase, integrityCheck, openDatabase, quickCheck, tabl
 import { newEntityId, newMemoryId } from './ids.js';
 import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
-import { muAdvance, muBand, muNow, muTrail } from './mu.js';
+import { deriveBandEdges, muAdvance, muBand, muNow, muTrail } from './mu.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
 import { cleanText, normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
@@ -1480,14 +1480,27 @@ export class Store {
    * `p = muNow - mu_touched`: zero means "relevant as of this instant", larger means further away.
    * This is the whole of "age" in this store — there is no second definition.
    *
-   * @param options - `scopeKeys`, `edges`.
-   * @returns `{now, entries, bands, retireAfter}`.
+   * **`mu_touched = 0` means "no MU history", not "touched at MU zero".** The v7 migration stamped
+   * existing rows with the counter's starting value, so those entries sit at `p = muNow` and would
+   * otherwise dominate every high percentile while telling us nothing about their age. They are counted
+   * separately as `untracked` and excluded from the band edges, which are derived from entries that have
+   * actually been observed.
+   *
+   * @param options - `scopeKeys`, `edges`, `bandEdges` (`'auto'` | `'fixed'`).
+   * @returns `{now, entries, bands, untracked, edges, retireAfter}`.
    */
   muPositions(options = {}) {
     const now = this.muNow();
     const keys = options.scopeKeys;
     if (Array.isArray(keys) && keys.length === 0) {
-      return { now, entries: [], bands: { fresh: 0, active: 0, cool: 0, cold: 0 }, retireAfter: 0 };
+      return {
+        now,
+        entries: [],
+        bands: { fresh: 0, active: 0, cool: 0, cold: 0 },
+        untracked: 0,
+        edges: { fresh: 5, active: 50, cool: 500, derived: false },
+        retireAfter: 0,
+      };
     }
     const marks = Array.isArray(keys) && keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
     const rows = this.db
@@ -1500,14 +1513,40 @@ export class Store {
           ORDER BY touched DESC`,
       )
       .all(...(Array.isArray(keys) ? keys : []));
-    const edges = options.edges ?? { fresh: 5, active: 50, cool: 500 };
-    const bands = { fresh: 0, active: 0, cool: 0, cold: 0 };
+
     const entries = rows.map((row) => {
-      const p = Math.max(0, now - Number(row.touched ?? 0));
-      bands[muBand(p, edges)] += 1;
-      return { id: row.id, title: row.title, p };
+      const touched = Number(row.touched ?? 0);
+      return {
+        id: row.id,
+        title: row.title,
+        p: Math.max(0, now - touched),
+        tracked: touched > 0,
+      };
     });
-    return { now, entries, bands, retireAfter: Number(this.live('muRetireAfter') ?? 0) };
+
+    // Edges come from the observed distribution when it is large enough to describe itself, otherwise
+    // from the fixed hypotheses. `deriveBandEdges` owns that fallback so it cannot differ between the
+    // panel, doctor and the evaluation.
+    const known = entries.filter((entry) => entry.tracked).map((entry) => entry.p);
+    const mode = options.bandEdges ?? this.live('muBandEdges') ?? 'auto';
+    let edges = options.edges;
+    if (edges === undefined) {
+      edges = mode === 'fixed' ? { fresh: 5, active: 50, cool: 500, derived: false } : deriveBandEdges(known);
+    }
+
+    const bands = { fresh: 0, active: 0, cool: 0, cold: 0 };
+    for (const entry of entries) {
+      if (!entry.tracked) continue;
+      bands[muBand(entry.p, edges)] += 1;
+    }
+    return {
+      now,
+      entries,
+      bands,
+      untracked: entries.filter((entry) => !entry.tracked).length,
+      edges,
+      retireAfter: Number(this.live('muRetireAfter') ?? 0),
+    };
   }
 
   /**

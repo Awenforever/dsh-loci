@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.0.5] — 2026-11-17
+
+Band edges come from the distribution; retirement is refused by rule.
+
+### The distribution was lying about age
+
+Percentiles over the live store put half the entries at ~73 MU. The cause was not age: the v7 migration
+stamped existing rows with the counter's **starting value**, so `mu_touched = 0` meant *never observed*
+rather than *touched at MU zero*, and those entries sat at `p = muNow` — the largest possible distance —
+dominating every high percentile while saying nothing about how old they were. Counting them turned 7
+cool entries into 12.
+
+`muPositions` now reports `untracked` separately and keeps those entries out of the band counts and out
+of the edge derivation. `doctor` says `16 tracked · 5 without MU history` instead of pretending the five
+are the oldest.
+
+### Edges, derived
+
+`muBandEdges: 'auto'` derives the edges from observed distances: lower quartile, median, 95th percentile,
+with each edge held at least 1.5× above the previous one. Below twenty samples it falls back to the fixed
+5 / 50 / 500, because a percentile over sixteen entries describes those sixteen and nothing else — a
+display that jumps while the store is young is worse than a stated hypothesis.
+
+### Retirement, declined rather than calibrated
+
+`muRetireAfter` stays **0**, and the reason is now a rule rather than an omission: a threshold read off
+the current tail retires the tail, which recomputes the tail, which retires more. That is a ratchet that
+empties the store one quantile at a time. Retirement needs a criterion from *use* — or an operator
+decision — and distance alone cannot supply it. `doctor` now reads `retirement off (not derived from
+distance)`.
+
+### Capability note, recorded because it changes how UI gets verified
+
+The web UI at `127.0.0.1:24547` answers **401 to `/` itself**, so an unauthenticated headless browser can
+only screenshot a login wall. The persisted operator cookie could not be reused either: Edge is running
+and holds `Default/Network/Cookies` exclusively (`EBUSY`). `scripts/diag/gui-probe.mjs` is the probe that
+established this, and it is kept because the answer will change the moment the desktop app is relaunched
+with `--remote-debugging-port`.
+
+317 tests, coverage lines 90.7 / branches 70.8 / functions 85.8.
+
 ## [5.0.4] — 2026-11-17
 
 Production instrumentation, and the first defect it found.

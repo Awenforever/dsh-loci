@@ -196,11 +196,23 @@ export const DEFAULTS = Object.freeze({
   /**
    * Retire an entry once it is this many memory units from the working set. `0` disables retirement.
    *
-   * Left at 0 on purpose. The threshold has to come from a measured distribution of real distances;
-   * guessing it would repeat the mistake already paid for with `SLICE_BUDGET_BYTES`, which is still an
-   * unmeasured number three releases later.
+   * Left at 0 on purpose, and **not** derived from the observed distance distribution. A threshold read
+   * off the current tail retires the tail, which recomputes the tail, which retires more — a ratchet
+   * that empties the store one quantile at a time. Retirement needs a criterion from *use* (or from an
+   * operator decision), not from distance.
    */
   muRetireAfter: 0,
+  /**
+   * Where the four distance bands sit: `'auto'` derives them from the observed distribution, `'fixed'`
+   * uses the 5 / 50 / 500 hypotheses.
+   *
+   * `auto` is the default because the right numbers depend on how fast this store's clock moves, which
+   * is a property of how the person works rather than of the plugin. It falls back to the fixed edges
+   * below twenty samples, where a percentile describes the sample rather than the distribution.
+   * Entries with no MU history (`mu_touched = 0`) are excluded from the derivation — they sit at
+   * `p = muNow` and would otherwise dominate the high percentiles while saying nothing about age.
+   */
+  muBandEdges: 'auto',
   /** Allow `op:'purge'` to physically delete revisions. */
   allowHardDelete: false,
   /**
@@ -296,6 +308,7 @@ function buildSchema() {
     muAddWeight: z.number().min(0).max(100).default(DEFAULTS.muAddWeight).volatile(),
     muUseWeight: z.number().min(0).max(100).default(DEFAULTS.muUseWeight).volatile(),
     muRetireAfter: z.number().min(0).max(1e9).default(DEFAULTS.muRetireAfter).volatile(),
+    muBandEdges: z.union(['auto', 'fixed']).default(DEFAULTS.muBandEdges).volatile(),
     allowHardDelete: z.boolean().default(DEFAULTS.allowHardDelete),
     updateCheck: z.boolean().default(DEFAULTS.updateCheck).volatile(),
     updateRegistry: z.string().default(DEFAULTS.updateRegistry).volatile(),

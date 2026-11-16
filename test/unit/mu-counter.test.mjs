@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { composeSliceMessage, composeStable } from '../../src/host/recall/compose.js';
 import { DEFAULTS } from '../../src/host/config.js';
-import { muBand, muDelta } from '../../src/host/store/mu.js';
+import { deriveBandEdges, muBand, muDelta, quantile } from '../../src/host/store/mu.js';
 import { openTestStore, workspaceFields } from '../helpers.mjs';
 
 /**
@@ -142,4 +142,57 @@ test('the same entry reports the same age in the core and in the slice', (t) => 
   assert.ok(sliceAge !== undefined, 'the slice states an age');
   // Both entries are the same row and neither has been injected, so both must read the same distance.
   assert.equal(coreAge.trim(), sliceAge.trim(), 'one entry must not carry two ages');
+});
+
+// ---------------------------------------------------------------- band calibration, from real data
+//
+// The live store forced two corrections. First, `mu_touched = 0` means "no MU history" rather than
+// "touched at MU zero": the v7 migration stamped existing rows with the counter's starting value, so
+// they sit at p = muNow and dominate every high percentile while saying nothing about age — counting
+// them turned 7 cool entries into 12. Second, edges derived from the distribution are only meaningful
+// on entries that were actually observed.
+
+test('quantile interpolates instead of snapping to an element', () => {
+  const sorted = [0, 10, 20, 30];
+  assert.equal(quantile(sorted, 0), 0);
+  assert.equal(quantile(sorted, 1), 30);
+  assert.equal(quantile(sorted, 0.5), 15);
+  assert.equal(quantile(sorted, 0.25), 7.5);
+  assert.equal(quantile([], 0.5), 0);
+});
+
+test('band edges are derived from the observed distribution once there are enough samples', () => {
+  const distances = Array.from({ length: 40 }, (_, index) => index * 5);
+  const edges = deriveBandEdges(distances);
+  assert.equal(edges.derived, true);
+  assert.ok(edges.fresh > 40 && edges.fresh < 60, `fresh was ${edges.fresh}`);
+  assert.ok(edges.active > edges.fresh * 1.4, 'active stays above fresh');
+  assert.ok(edges.cool > edges.active * 1.4, 'cool stays above active');
+});
+
+test('too few samples fall back to the fixed edges rather than describing the sample', () => {
+  const edges = deriveBandEdges(Array.from({ length: 16 }, (_, index) => index * 5));
+  assert.equal(edges.derived, false);
+  assert.deepEqual([edges.fresh, edges.active, edges.cool], [5, 50, 500]);
+});
+
+test('entries with no MU history are counted apart and kept out of the bands', (t) => {
+  const { store, scopes } = openTestStore(t);
+  const touched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
+  const untouched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'c', body: 'd' });
+  for (let i = 0; i < 5; i += 1) store.recordInjection({ bytes: 1, listed: 0, hidden: 0, ids: [] });
+  store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [touched.entry.id] });
+  store.db.prepare('UPDATE memory_usage SET mu_touched = 0 WHERE id = ?').run(untouched.entry.id);
+
+  const positions = store.muPositions({ scopeKeys: [scopes.workspace] });
+  assert.equal(positions.untracked, 1, 'the untouched entry is reported apart');
+  const counted = positions.bands.fresh + positions.bands.active + positions.bands.cool + positions.bands.cold;
+  assert.equal(counted, 1, 'bands describe only entries that were observed');
+});
+
+test('retirement is not derived from the band edges', () => {
+  assert.equal(DEFAULTS.muRetireAfter, 0);
+  assert.equal(DEFAULTS.muBandEdges, 'auto');
+  const edges = deriveBandEdges(Array.from({ length: 40 }, (_, index) => index * 5));
+  assert.equal(Object.keys(edges).includes('retire'), false, 'the derivation has no opinion on retirement');
 });

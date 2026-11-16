@@ -102,13 +102,17 @@ export function runDoctor(options) {
   try {
     const positions = store.muPositions({});
     const bands = positions.bands;
-    const total = positions.entries.length;
+    const tracked = positions.entries.length - positions.untracked;
+    const history = positions.untracked > 0 ? ` · ${positions.untracked} without MU history` : '';
+    const edges = positions.edges?.derived
+      ? `bands from ${tracked} observed (${positions.edges.fresh.toFixed(0)}/${positions.edges.active.toFixed(0)}/${positions.edges.cool.toFixed(0)} MU)`
+      : 'bands fixed 5/50/500 (too few samples to derive)';
     checks.push(
       check(
         'memory unit',
         'ok',
-        `${positions.now.toFixed(1)} MU · ${total} verified (fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold}) · retirement ${
-          positions.retireAfter > 0 ? `after ${positions.retireAfter} MU` : 'off (threshold not calibrated)'
+        `${positions.now.toFixed(1)} MU · ${tracked} tracked${history} · fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold} · ${edges} · retirement ${
+          positions.retireAfter > 0 ? `after ${positions.retireAfter} MU` : 'off (not derived from distance)'
         }`,
       ),
     );

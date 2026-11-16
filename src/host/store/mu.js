@@ -138,3 +138,47 @@ export function muBand(p, edges = { fresh: 5, active: 50, cool: 500 }) {
   if (p < edges.cool) return 'cool';
   return 'cold';
 }
+
+/**
+ * The value at a fraction of a sorted list, linearly interpolated.
+ *
+ * @param sorted - ascending values.
+ * @param fraction - 0..1.
+ * @returns the interpolated value, or 0 for an empty list.
+ */
+export function quantile(sorted, fraction) {
+  if (!Array.isArray(sorted) || sorted.length === 0) return 0;
+  if (sorted.length === 1) return sorted[0];
+  const position = Math.max(0, Math.min(1, Number(fraction) || 0)) * (sorted.length - 1);
+  const low = Math.floor(position);
+  const high = Math.ceil(position);
+  if (low === high) return sorted[low];
+  return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+}
+
+/**
+ * Band edges derived from the distances actually observed.
+ *
+ * Percentiles rather than constants, because the right numbers depend on how fast this store's clock
+ * moves, which is a property of how the person works rather than of the plugin. `fresh` is the lower
+ * quartile because a quarter of entries being within easy reach is roughly what "working set" means;
+ * `active` is the median; `cool` is the 95th percentile so the cold band is the last 5% by definition.
+ *
+ * **Small samples fall back to the fixed edges.** With fewer than twenty distances a percentile is a
+ * description of the sample, not of the distribution, and pretending otherwise would make the display
+ * jump around while the store is young.
+ *
+ * Retirement is deliberately *not* derived from these — see the note in `store.muPositions`.
+ *
+ * @param distances - ascending distances in MU, entries with a real MU history only.
+ * @returns `{fresh, active, cool, derived}`.
+ */
+export function deriveBandEdges(distances) {
+  const fixed = { fresh: 5, active: 50, cool: 500, derived: false };
+  if (!Array.isArray(distances) || distances.length < 20) return fixed;
+  const sorted = [...distances].sort((a, b) => a - b);
+  const fresh = Math.max(0.5, quantile(sorted, 0.25));
+  const active = Math.max(fresh * 1.5, quantile(sorted, 0.5));
+  const cool = Math.max(active * 1.5, quantile(sorted, 0.95));
+  return { fresh, active, cool, derived: true };
+}
