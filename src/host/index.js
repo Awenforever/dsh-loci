@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.12.0';
+export const VERSION = '4.12.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
