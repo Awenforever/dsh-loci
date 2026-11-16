@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.6.0] — 2026-11-16
+
+The rescue ran in real use, and the question it was handed was empty.
+
+### What happened
+
+The first live `recall-rewrite` event after 4.5.1 was:
+
+```
+recall-rewrite-skip  reason: "query too short"
+```
+
+Every other part of the chain worked — the section left its note, `agent/pre-step` picked it up in
+time for the same turn, and the rescue decided to rewrite — and then it was handed an empty string.
+
+### Why
+
+The question came from `capture.lastUserText`, and capture deliberately ignores messages whose
+`source.kind` is not `user`: durable extraction must never treat an injected prompt as something the
+person said. Retrieval has the opposite requirement. A turn opened by a harness-injected message
+still has a question worth searching for, and reading nothing there means the section always misses
+and the rescue always has nothing to rewrite.
+
+Two surfaces, two different filters, and one of them had borrowed the other's.
+
+### Changed
+
+- **A dedicated per-session tracker** for the newest `user/message` text, registered on
+  `session/event` without capture's source filter. It is the section's source of truth and capture
+  remains untouched, so durable extraction still refuses injected prompts.
+- **`recall-rewrite-skip` records `queryChars`** — the length, never the text. That is enough to
+  tell "the section could not see the question" from "the model declined", which are the two
+  possibilities this diagnostic existed to separate, without putting a conversation in the audit log.
+
+### Note
+
+This is the same class of mistake as the last four releases: a component silently doing nothing
+because one filter was borrowed from a neighbour with different needs. The difference is that the
+previous ones took a release each to find, and this one was named by its own first audit line —
+because the diagnostic was put where the failure happened rather than next to it.
+
 ## [4.5.1] — 2026-11-16
 
 A rescue that finds nothing is now recorded.

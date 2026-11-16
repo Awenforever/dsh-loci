@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.5.1';
+export const VERSION = '4.6.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -57,6 +57,25 @@ function makeLogger(ctx) {
     error: (message) => write('error', message),
     debug: (message) => write('debug', message),
   };
+}
+
+/**
+ * Extract the text of one message's content blocks.
+ *
+ * Same shape as {@link firstUserText} but for a single content array, which is what a
+ * `user/message` event carries.
+ *
+ * @param content - message content, string or blocks.
+ * @returns the joined text, or `''`.
+ */
+function firstTextOf(content) {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
 }
 
 /**
@@ -108,6 +127,16 @@ export function apply(ctx, rawConfig = {}) {
   // handler that uses it for the rewrite rescue. A mutable holder rather than a closure variable
   // because the two live in different Cordis scopes.
   const modelRoute = { complete: undefined };
+  /**
+   * The most recent user message text per session, tracked here rather than through `capture`.
+   *
+   * `capture` deliberately ignores messages whose `source.kind` is not `user`, because durable
+   * extraction must not treat an injected prompt as something the person said. Retrieval has the
+   * opposite requirement: a turn opened by a harness-injected message still has a question worth
+   * searching for, and reading nothing there made the rewrite rescue report "query too short" on
+   * every goal round while every other part of the chain worked.
+   */
+  const lastUserText = new Map();
   // Record which Harness this store is actually running on. `engines.dsh` is a
   // range; this field is the only one that says which point release met the file,
   // so a support report can be checked instead of guessed at.
@@ -172,9 +201,9 @@ export function apply(ctx, rawConfig = {}) {
         scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
         scopeLabel: `workspace:${scopes.labels.workspace}`,
         // What the slice retrieves against. `PromptSection.text` receives only `{scope,
-        // signal}`, so the question has to be handed in from here; capture already buffers
-        // user messages, and it buffers regardless of `captureMode`.
-        lastUserText: capture?.lastUserText?.(session.id),
+        // signal}`, so the question has to be handed in from here. The dedicated tracker wins over
+        // the capture buffer because capture filters by source kind and this surface must not.
+        lastUserText: lastUserText.get(session.id) ?? capture?.lastUserText?.(session.id),
       };
     },
   });
@@ -305,6 +334,21 @@ export function apply(ctx, rawConfig = {}) {
           modelRoute.complete = undefined;
         };
       }, 'loci: extractor model route'),
+    ),
+  );
+
+  // Track the newest user-message text per session, independent of `capture`'s source filtering.
+  // Registration order matters only in that this must exist before the first assembly.
+  disposers.push(
+    ctx.effect(() =>
+      ctx.on('session/event', (session, event) => {
+        if (event?.type !== 'user/message') return;
+        const text = firstTextOf(event.data?.content);
+        if (text.length === 0) return;
+        if ((session?.header?.delegationDepth ?? 0) > 0) return;
+        if (lastUserText.size >= 256) lastUserText.clear();
+        lastUserText.set(session.id, text);
+      }),
     ),
   );
 

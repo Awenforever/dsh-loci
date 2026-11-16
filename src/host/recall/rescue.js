@@ -97,7 +97,13 @@ export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, comple
   const rewritten = await rewriteQuery({ query: note.query, hints, complete });
   if (rewritten.error !== undefined) {
     log?.debug?.(`loci: rewrite skipped: ${rewritten.error}`);
-    audit(store, 'recall-rewrite-skip', { sessionId, reason: rewritten.error });
+    audit(store, 'recall-rewrite-skip', {
+      sessionId,
+      reason: rewritten.error,
+      // The length, not the text: enough to tell "the section could not see the question" from
+      // "the model declined", without putting a conversation into the audit log.
+      queryChars: note.query.length,
+    });
     return { ...skipped, error: rewritten.error };
   }
 
