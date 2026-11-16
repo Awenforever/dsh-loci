@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.3] — 2026-11-16
+
+The model route, rebuilt so its failure is visible — and the latent fault behind four silent releases.
+
+### What the diagnostics proved
+
+Instrumenting the route showed `llm_route_seen` written on every boot and **nothing after it**.
+Execution stopped at the line that built the call function. That fault was not new: it had been in
+the plugin since the extractor was written, and because `extractMode` is off by default nothing
+ever exercised it — it simply made every consumer of the route inert, silently.
+
+### Changed
+
+- **`createCompleter`** replaces the shared helper for the curator's path. It wraps every step that
+  can throw — reading a property off a traced service is itself a throw site, which is why the old
+  `typeof llm.stream === 'function'` expression was where execution died — and returns a reason
+  rather than `undefined` alone.
+- **Each step is recorded**: `llm_route_seen`, `llm_selection` (which provider/model it resolved),
+  `llm_stream`, `llm_complete`. Four markers instead of one, because "no call function" and "no
+  route" need different fixes and the previous releases could not tell them apart.
+- The model selection is read defensively: a getter on a traced context can throw, and a throw
+  there aborted the whole callback.
+
+### The rule that comes out of this
+
+Four releases (4.4.0–4.4.3) went to one failure mode: **a silent no-op that reads as success**.
+The standing rule is now explicit — an optional integration must record that it did not run, and
+where it stopped. Absence is not agreement.
+
 ## [4.4.2] — 2026-11-16
 
 Two more facts recorded, because the previous release narrowed the silence but did not end it.

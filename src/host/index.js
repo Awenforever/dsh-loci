@@ -18,16 +18,17 @@ import { createIndexSection, renderAssistBlock } from './inject/index-section.js
 import { createCurationTrigger } from './record/trigger.js';
 import { CURATOR_SYSTEM } from './record/curator.js';
 import { runCuratorProbe } from './record/probe.js';
+import { createCompleter } from './record/model-route.js';
 import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
 import { UpdateChecker } from './update.js';
-import { Extractor, completeViaHost } from './extract/extractor.js';
+import { Extractor } from './extract/extractor.js';
 import { detectHostVersion, hostLineOf } from './host-version.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.2';
+export const VERSION = '4.4.3';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -226,18 +227,27 @@ export function apply(ctx, rawConfig = {}) {
         } catch {
           /* the marker is a diagnostic, never a prerequisite */
         }
-        const complete = completeViaHost(child.llm, {
-          provider: child.agent?.config?.provider ?? undefined,
-          model: child.agent?.config?.model ?? undefined,
-        });
-        // Whether a usable call function was produced is its own fact, separate from whether the
-        // route existed: `completeViaHost` returns undefined when the service has no `stream`, and
-        // that leaves every downstream consumer silently inert.
+        // Read the model selection defensively: a getter on a traced context can throw, and a
+        // throw here is what previously stopped the whole route at the line below.
+        const note = (step, detail) => {
+          try {
+            writeMeta(store.db, `llm_${step}`.replace(/[^a-z0-9_]/gi, '_').slice(0, 60), String(detail));
+          } catch {
+            /* diagnostic only */
+          }
+        };
+        let provider;
+        let model;
         try {
-          writeMeta(store.db, 'llm_complete', complete === undefined ? 'undefined' : 'function');
-        } catch {
-          /* diagnostic only */
+          provider = child.agent?.config?.provider ?? undefined;
+          model = child.agent?.config?.model ?? undefined;
+          note('selection', `${provider ?? '(none)'} / ${model ?? '(none)'}`);
+        } catch (error) {
+          note('selection_error', String(error?.message ?? error));
         }
+        const route = createCompleter({ llm: child.llm, provider, model, record: note });
+        const complete = route.complete;
+        note('complete', route.reason);
         if (complete === undefined) return () => {};
         extractor.complete = complete;
         // Curation reuses the same route: one model transport, two consumers. Registering the
