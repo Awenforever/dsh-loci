@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.12.1] — 2026-11-16
+
+Two states the reset exposed within a minute of 4.12.0 shipping.
+
+- A store holding only session summaries — candidates of a kind that can never be reviewed and never
+  injected — counted as non-empty, because `heads` counts rows, so the card rendered its header and
+  nothing else. The empty state now depends on what is **usable**: verified, pending and disputed all
+  zero.
+- The section gauge rendered whenever there were rows, showing `0 / 3584 B` when no prompt had been
+  assembled since the reset. That reads as a measurement when it is an absence of one, so it now
+  requires an actual last injection.
+
+Both were visible only against a real post-reset store, which is why the reset and the card changed
+together.
+
 ## [4.12.0] — 2026-11-16
 
 The card says what its numbers mean, and stops spending a row on the ones that repeat.
