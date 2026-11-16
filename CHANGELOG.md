@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.8.1] — 2026-11-16
+
+Does the curation listener receive anything at all.
+
+Three triggers have now been wired for curation and none of them ran: `agent/disposed` on the injected
+child, `agent/disposed` on the main context, and `turn/end` on the main context. Each was a reasonable
+inference about which event carries a finished conversation, and each was wrong in a way no amount of
+further inference could settle.
+
+So this release asks the smaller question first — the one that should have preceded the first of the
+three: **does this listener receive anything at all?** `session_event_seen` in `meta` is a histogram of
+every `session/event` type reaching the listener, written on the first event of any kind. Empty means
+the listener is not attached; the types present but without `turn/end` means that event does not exist;
+`turn/end` present with curation still absent means the fault is downstream, and the audit now says
+which step.
+
+`curate-start` is written **before** the work rather than after, because an outcome recorded only on
+success cannot distinguish "never called", "threw", and "returned nothing" — the three cases that have
+each cost a release.
+
+No behaviour change.
+
 ## [4.8.0] — 2026-11-16
 
 Curation triggers on an event that is proven to arrive.
