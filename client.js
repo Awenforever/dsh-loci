@@ -1210,7 +1210,7 @@ window.__ModuleLoader__.load({
                     h('div', { className: 'loci-section' }, t('panel.distance')),
                     h(
                       'div',
-                      { className: 'loci-cells' },
+                      { className: 'loci-grid' },
                       cell('fresh', data.mu.bands?.fresh ?? 0),
                       cell('active', data.mu.bands?.active ?? 0),
                       cell('cool', data.mu.bands?.cool ?? 0),
