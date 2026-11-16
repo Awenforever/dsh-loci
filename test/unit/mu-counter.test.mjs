@@ -110,3 +110,36 @@ test('the defaults keep retirement off and both weights neutral', () => {
   assert.equal(DEFAULTS.workingTtlDays, 0, 'wall-clock expiry is gone');
   assert.equal(DEFAULTS.candidateTtlDays, 0);
 });
+
+test('the same entry reports the same age in the core and in the slice', (t) => {
+  // Shipped once with two different answers: the core joined `memory_usage` and found the real stamp,
+  // while the slice's candidate query selected `updated_at` and left `mu_touched` undefined, so every
+  // sliced entry read as "as far away as the clock has ever got". One entry, two ages, in one prompt.
+  const { store, scopes } = openTestStore(t);
+  store.write({
+    ...workspaceFields(scopes),
+    status: 'verified',
+    trustSource: 'user',
+    kind: 'rule',
+    title: '删除前做断言',
+    body: '先校验路径。',
+  });
+  // Age the clock so a real distance exists rather than a zero that hides the bug.
+  for (let i = 0; i < 5; i += 1) {
+    store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [] });
+  }
+  const stable = composeStable({ store, scopeKeys: [scopes.workspace], scopeLabel: 'x' });
+  const slice = composeSliceMessage({
+    store,
+    scopeKeys: [scopes.workspace],
+    scopeLabel: 'x',
+    query: '删除前做断言',
+  });
+  const ageIn = (text) => (text.match(/·\s(now|\d+(?:\.\d+)? MU ago)\s·/) ?? [])[0];
+  const coreAge = ageIn(stable.text);
+  const sliceAge = ageIn(slice.text);
+  assert.ok(coreAge !== undefined, 'the core states an age');
+  assert.ok(sliceAge !== undefined, 'the slice states an age');
+  // Both entries are the same row and neither has been injected, so both must read the same distance.
+  assert.equal(coreAge.trim(), sliceAge.trim(), 'one entry must not carry two ages');
+});

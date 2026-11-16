@@ -225,7 +225,8 @@ function scanScope({ store, scopeKeys, terms }) {
   }
   const rows = store.db
     .prepare(
-      `SELECT m.id, m.kind, m.title, m.body, m.updated_at,
+      `SELECT m.id, m.kind, m.title, m.body,
+              COALESCE(u.mu_touched, 0)   AS mu_touched,
               COALESCE(u.inject_count, 0) AS injections,
               COALESCE(u.read_count, 0)   AS reads
          FROM memory m
@@ -381,10 +382,16 @@ export function composeSliceMessage({
   if (slice.lines.length === 0) return { text: '', bytes: 0, slice, ids: [] };
   const label =
     slice.tier === 'loose' ? 'Shares terms with what you just asked:' : 'Relevant to what you just asked:';
+  // The unit has to be explained wherever a distance appears, and this block is injected as its own
+  // message — a model reading it may never see the section's legend. A line reading `now` carries no
+  // "MU" at all, so in that case the explanation is appended; when every line already says `MU ago`,
+  // the word is doing that job and the hint would be paying bytes to repeat itself.
+  const explainsItself = slice.lines.some((line) => line.includes('MU ago'));
+  const hint = explainsItself ? '' : '\nages are in MU (units of work, not dates)';
   const text =
     `<loci-recall note="possibly relevant; confirm with loci_get before relying on it" scope="${scopeLabel}">\n` +
     `${label}\n` +
-    `${slice.lines.join('\n')}\n` +
+    `${slice.lines.join('\n')}${hint}\n` +
     `</loci-recall>`;
   return { text, bytes: Buffer.byteLength(text, 'utf8'), slice, ids: [...slice.ids] };
 }

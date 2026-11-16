@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.0.2] — 2026-11-17
+
+One entry, two ages — in the same prompt.
+
+### The bug
+
+The same memory rendered as `now` in the always-on core and as `13 MU ago` in the per-turn slice. The
+core's query joined `memory_usage` and found the real stamp; the slice's candidate query still selected
+`updated_at` and left `mu_touched` undefined, and `undefined` read as zero — so every sliced entry
+reported "as far away as the clock has ever got".
+
+It was found by rendering the live prompt instead of reading the code, which is the only way a
+disagreement between two queries that both look correct can surface.
+
+### Fixed
+
+- The candidate query selects `COALESCE(u.mu_touched, 0)`, so both surfaces read the same stamp.
+- **The unit is explained wherever a distance appears.** A line saying `now` contains no "MU" at all, and
+  the slice is injected as its own message, where a model may never see the section's legend. The slice
+  now appends `ages are in MU (units of work, not dates)` when no line already says `MU ago` — paying
+  those bytes only in the case where the word is genuinely absent.
+- A regression test pins both: one entry must not carry two ages, and no block may state a distance
+  without stating its unit.
+
+307 tests, coverage lines 90.6 / branches 70.6 / functions 85.6.
+
 ## [5.0.1] — 2026-11-17
 
 The panel gets the clock.
