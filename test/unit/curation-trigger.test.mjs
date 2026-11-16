@@ -41,9 +41,10 @@ function makeTrigger(store, overrides = {}) {
 
 const rootAgent = (id = 'session-root') => ({ session: { id, header: { delegationDepth: 0, cwd: process.cwd() } } });
 
-test('off by default: the extractor stays the only writer', async (t) => {
+test('turning curation off keeps the extractor as the only writer', async (t) => {
   const { store } = openTestStore(t);
-  const { handler } = makeTrigger(store);
+  // Default is on since 4.4.0; this pins that switching it off still means off.
+  const { handler } = makeTrigger(store, { curatorMode: 'off' });
   const result = await handler(rootAgent());
   assert.equal(result.ran, false);
   assert.equal(result.reason, 'off');

@@ -72,12 +72,14 @@ export const DEFAULTS = Object.freeze({
    *
    * `off` keeps the rule extractor as the only writer. `session-end` runs one curation pass when
    * a conversation is disposed: the transcript goes to a model, the model returns strict JSON,
-   * and the reply is validated here before anything is written.
+   * and the reply is validated before anything is written.
    *
-   * Off by default until the transport that reaches a model has been exercised in a real Host.
-   * Turning it on is a config change, not a code change.
+   * On by default since 4.4.0. The rule extractor measures 100% precision and 50% recall — it is
+   * a good filter and a bad judge — so leaving it as the only writer means half of what a careful
+   * reader would keep is never recorded. The cost is one model call per finished conversation,
+   * and the pass spends nothing when there is nothing to read.
    */
-  curatorMode: 'off',
+  curatorMode: 'session-end',
   /** Byte ceiling for that assist block. */
   recallAssistBytes: 512,
   /** 'rules' | 'off' — deterministic durable-fact capture at turn end. */

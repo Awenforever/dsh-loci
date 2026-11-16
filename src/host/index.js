@@ -16,6 +16,7 @@ import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
 import { createCurationTrigger } from './record/trigger.js';
 import { CURATOR_SYSTEM } from './record/curator.js';
+import { runCuratorProbe } from './record/probe.js';
 import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
 import { UpdateChecker } from './update.js';
@@ -25,7 +26,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.3.0';
+export const VERSION = '4.4.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -237,6 +238,12 @@ export function apply(ctx, rawConfig = {}) {
         const offDisposed = child.on('agent/disposed', async ({ agent } = {}) => {
           await curateOnDispose(agent);
         });
+        // The decision layer's only unmeasured property was whether the model actually judges
+        // well. This runs one real pass against a fixed transcript, once per version, and stores
+        // the outcome so it can be read instead of assumed. It writes no memory.
+        if (read('curatorMode') !== 'off') {
+          void runCuratorProbe({ store, complete, pluginVersion: VERSION, log }).catch(() => {});
+        }
         return () => {
           offDisposed?.();
           extractor.complete = undefined;

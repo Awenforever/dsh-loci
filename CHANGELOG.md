@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.0] — 2026-11-16
+
+A model now decides what to remember, and its judgement is measured.
+
+### Changed
+
+- **`curatorMode` defaults to `session-end`.** When a conversation ends, one curation pass reads
+  the transcript, asks a model what was durable, and writes what survives validation. The rule
+  extractor stops being the only writer.
+  The reason is measured: rules score **100% precision and 50% recall** — a good filter, a bad
+  judge — so leaving them as the sole writer means half of what a careful reader keeps is never
+  recorded. Cost is one model call per finished conversation; the pass spends nothing when there is
+  nothing to read, and refuses delegated steps.
+
+### Added — the judgement is now observable
+
+- **`runCuratorProbe`** runs one real curation pass at activation, over a fixed transcript, and
+  stores the outcome in `meta` and in the audit log. It writes no memory — measuring the judgement
+  by polluting the store would be the product testing itself with itself.
+- The transcript is deliberately the case the rules lose (`以后部署先走灰度`,
+  `永远不要在周五发版`) plus noise that must not be kept (`按钮颜色`). A test asserts those exact
+  sentences are still there, because replacing them with ones the extractor matches would let the
+  probe pass while proving nothing.
+- It runs **once per plugin version**, so it costs one model call rather than one per activation,
+  and it reports a wrong judgement as wrong: a model that keeps the noise and misses the rule comes
+  back `ok: false` with `missed: [...]`.
+
+### Why a self-test rather than a benchmark
+
+The honest statement before this release was "the contract, the validation and the write path are
+tested; the model's actual judgement is unknown". A fixture would have measured the fixture. Running
+the real route once, on a case chosen for its failure mode, turns an assumption into a record.
+
+274 tests, coverage lines 88.7 / branches 69.5 / functions 81.7.
+
 ## [4.3.0] — 2026-11-16
 
 Memory can flow again. S4 of the v4 architecture.

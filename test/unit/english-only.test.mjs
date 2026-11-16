@@ -18,6 +18,10 @@ const CJK = /[\u4e00-\u9fff]/;
 const PATTERN_DATA = new Set([
   join('src', 'host', 'capture', 'capture.js'), // matches Chinese statements in the input
   join('src', 'host', 'inject', 'sanitize.js'), // matches Chinese injection/secret shapes
+  // The curator probe carries a fixed synthetic transcript: it stands in for what a user said,
+  // and the whole point of that transcript is that it is the phrasing the rule extractor misses
+  // — which, for this product's actual users, is Chinese.
+  join('src', 'host', 'record', 'probe.js'),
 ]);
 
 function walk(dir) {
