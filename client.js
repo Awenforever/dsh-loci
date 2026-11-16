@@ -40,12 +40,19 @@ window.__ModuleLoader__.load({
       'card.empty': 'Nothing saved yet',
       'card.metrics': 'Memory at a glance',
       'card.emptyHint': 'Ask the agent to remember something, then confirm it here.',
-      'card.verified': 'Verified',
-      'card.pending': 'Pending',
-      'card.disputed': 'Disputed',
-      'card.injected': 'Injected',
-      'card.opened': 'Opened',
-      'card.dead': 'Dead',
+      'card.verified': 'verified',
+      'card.pending': 'pending',
+      'card.disputed': 'disputed',
+      'card.injected': 'injected',
+      'card.opened': 'opened',
+      'card.verifiedTip': 'Saved facts that can enter the prompt now',
+      'card.pendingTip': 'Saved facts of a kind that needs your approval first',
+      'card.disputedTip': 'Marked wrong: kept in history, never injected',
+      'card.injectedTip': 'Times a saved fact was included in a prompt',
+      'card.openedTip': 'Times one was then looked up in full',
+      'card.budget': 'section',
+      'card.budgetTip': 'Bytes the memory section took in the last prompt, against its budget',
+      'card.review': 'Review',
       'card.pendingHint': '{n} item(s) waiting for you in Review.',
       'card.latest': 'Latest',
       'card.updated': 'updated',
@@ -195,18 +202,16 @@ window.__ModuleLoader__.load({
 .loci-card-dot.is-error { background: var(--dsw-alias-state-error-primary); }
 .loci-card-meta { flex: 1 1 auto; min-width: 0; font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .loci-card-mark { display: flex; align-items: center; color: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
-.loci-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 8px; width: 100%; }
-.loci-card-metric { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.loci-card-metric-label { font-size: 8px; color: var(--dsw-alias-label-secondary); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.loci-card-metric-value { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
-.loci-card-metric-value.is-warn { color: var(--dsw-alias-state-warn-primary); }
-.loci-card-metric-value.is-error { color: var(--dsw-alias-state-error-primary); }
 .loci-card-barline { display: flex; align-items: center; gap: 6px; width: 100%; }
 .loci-card-bar { position: relative; flex: 1 1 auto; min-width: 20px; height: 5px; border-radius: 999px; background: var(--dsw-alias-border-l1); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1); overflow: hidden; }
 .loci-card-bar-fill { position: relative; height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary); min-width: 2px; }
 .loci-card-bar-fill.is-warn { background: var(--dsw-alias-state-warn-primary); }
 .loci-card-bar-label { font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
-.loci-card-foot { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 8.5px; color: var(--dsw-alias-label-secondary); }
+.loci-card-stats { display: flex; align-items: baseline; gap: 5px; width: 100%; font-size: 9px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; }
+.loci-card-stats b { font-weight: 600; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.loci-card-stats .is-warn b { color: var(--dsw-alias-state-warn-primary); }
+.loci-card-stats .is-error b { color: var(--dsw-alias-state-error-primary); }
+.loci-card-sep { opacity: .45; }
 .loci-card-foot-grow { flex: 1 1 auto; }
 .loci-card-empty { font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
 .loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
@@ -498,7 +503,6 @@ window.__ModuleLoader__.load({
       const usage = Array.isArray(data?.usage) ? data.usage : [];
       const injected = usage.reduce((total, row) => total + Number(row.injections ?? 0), 0);
       const opened = usage.reduce((total, row) => total + Number(row.reads ?? 0), 0);
-      const dead = usage.filter((row) => Number(row.injections ?? 0) > 0 && Number(row.reads ?? 0) === 0).length;
       // What the agent currently understands, newest first. Numbers answer "how much";
       // this answers "what".
       const top = knowledge.data?.items?.[0];
@@ -521,13 +525,6 @@ window.__ModuleLoader__.load({
 
       const dotClass = stats.error !== undefined ? 'is-error' : pending > 0 || disputed > 0 ? 'is-warn' : '';
       const stamp = data === undefined ? '' : stampOf(injection?.ts ?? data.generatedAt ?? Date.now());
-      const metric = (label, value, tone) =>
-        h(
-          'div',
-          { className: 'loci-card-metric' },
-          h('span', { className: 'loci-card-metric-label' }, label),
-          h('span', { className: `loci-card-metric-value${tone ? ` ${tone}` : ''}` }, String(value)),
-        );
 
       return h(
         'div',
@@ -561,13 +558,7 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'loci-card-empty' }, t('card.empty')),
                   h('div', { className: 'loci-card-hint' }, t('card.emptyHint')),
                 )
-              : h(
-                  'div',
-                  { className: 'loci-card-grid' },
-                  metric(t('card.verified'), verified),
-                  metric(t('card.pending'), pending, pending > 0 ? 'is-warn' : ''),
-                  metric(t('card.disputed'), disputed, disputed > 0 ? 'is-error' : ''),
-                ),
+              : null,
         data !== undefined && latest !== null
           ? h(
               'div',
@@ -579,7 +570,7 @@ window.__ModuleLoader__.load({
         data !== undefined && entries > 0 && budget > 0
           ? h(
               'div',
-              { className: 'loci-card-barline' },
+              { className: 'loci-card-barline', title: t('card.budgetTip') },
               h(
                 'div',
                 { className: 'loci-card-bar', role: 'presentation' },
@@ -588,18 +579,49 @@ window.__ModuleLoader__.load({
                   style: { width: `${Math.max(indexBytes > 0 ? 2 : 0, Math.min(100, Math.round((indexBytes / budget) * 100)))}%` },
                 }),
               ),
-              h('span', { className: 'loci-card-bar-label' }, `${indexBytes} / ${budget} B`),
+              h('span', { className: 'loci-card-bar-label' }, `${t('card.budget')} ${indexBytes} / ${budget} B`),
             )
           : null,
-        data !== undefined && injected > 0
-          ? h(
-              'div',
-              { className: 'loci-card-foot' },
-              h('span', null, `${t('card.injected')} ${injected}`),
-              h('span', null, `${t('card.opened')} ${opened}`),
-              dead > 0 ? h('span', null, `${t('card.dead')} ${dead}`) : null,
-              h('span', { className: 'loci-card-foot-grow' }),
-            )
+        // All the counts in one line, because they answer one question between them: what is in this
+        // store, and is it being used. They used to sit in a three-column grid at the top *and* a
+        // footer at the bottom, which spent a row on each.
+        //
+        // `disputed` appears only when it is non-zero: it is an alarm, not a statistic, and a
+        // permanent zero trains the eye to skip the line. The old `dead` count is gone — it was
+        // derived (injected but never opened), and while nothing is ever opened it is simply the
+        // number of injected entries, i.e. the same fact twice.
+        data !== undefined && (verified > 0 || pending > 0 || disputed > 0 || injected > 0)
+          ? (() => {
+              // One line, built from a list rather than written out, so the separators cannot get out
+              // of step with which counts are present.
+              const items = [
+                { value: verified, label: t('card.verified'), tip: t('card.verifiedTip'), tone: '' },
+                { value: pending, label: t('card.pending'), tip: t('card.pendingTip'), tone: pending > 0 ? 'is-warn' : '' },
+                ...(disputed > 0
+                  ? [{ value: disputed, label: t('card.disputed'), tip: t('card.disputedTip'), tone: 'is-error' }]
+                  : []),
+                ...(injected > 0
+                  ? [
+                      { value: injected, label: t('card.injected'), tip: t('card.injectedTip'), tone: '' },
+                      { value: opened, label: t('card.opened'), tip: t('card.openedTip'), tone: '' },
+                    ]
+                  : []),
+              ];
+              return h(
+                'div',
+                { className: 'loci-card-stats' },
+                ...items.flatMap((item, index) => [
+                  index > 0 ? h('span', { className: 'loci-card-sep', 'aria-hidden': true }, '·') : null,
+                  h(
+                    'span',
+                    { className: item.tone, title: item.tip },
+                    h('b', null, String(item.value)),
+                    ` ${item.label}`,
+                  ),
+                ]),
+                h('span', { className: 'loci-card-foot-grow' }),
+              );
+            })()
           : null,
         pending > 0
           ? h(
@@ -607,13 +629,14 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: 'loci-card-hint loci-card-hint-action',
+                title: t('card.pendingHint').replace('{n}', String(pending)),
                 onClick: (event) => {
                   event.stopPropagation();
                   requestedTab = 'review';
                   open?.();
                 },
               },
-              t('card.pendingHint').replace('{n}', String(pending)),
+              `${t('card.review')} ${pending} →`,
             )
           : null,
       );

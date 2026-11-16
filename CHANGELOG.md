@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.12.0] — 2026-11-16
+
+The card says what its numbers mean, and stops spending a row on the ones that repeat.
+
+### What each figure is
+
+- **verified** — saved facts that can enter the prompt right now, in the current scope. The only
+  number that answers "how much memory is active".
+- **pending** — candidates of a kind that needs approval first (`rule`, `semantic`, `procedural`). A
+  session summary is never counted, because a summary of the past is history, not a claim.
+- **disputed** — marked wrong. Kept in history, never injected.
+- **injected** — times a saved fact was included in a prompt, cumulative.
+- **opened** — times one was then looked up in full, cumulative.
+
+### What changed on the card
+
+- **One line instead of two rows.** The three large metrics sat at the top and a footer of three more
+  sat at the bottom, which spent a row on each. They answer one question between them, so they are
+  now one line at the bottom. 140 px → 109 px at the same width.
+- **`dead` is gone.** It counted entries injected but never opened — which, while nothing is ever
+  opened, is simply the number of injected entries. The same fact twice. It survives in the panel's
+  statistics view, where a breakdown belongs.
+- **`disputed` appears only when it is not zero.** It is an alarm, not a statistic, and a permanent
+  zero trains the eye to skip the line it is on.
+- **The bar is labelled.** `518 / 3584 B` on its own invited the reading "memory is 14% full"; it is
+  the bytes the memory *section* took in the last prompt against that section's budget, and it now
+  says `section` and carries a tooltip. It never describes how much memory is *stored*.
+- **Every count has a tooltip** naming exactly what it measures, because the card is where the
+  question "what am I looking at" gets asked.
+- **The review button is a button**: `Review 2 →` instead of a sentence in a box.
+
+### Verified visually, not by assumption
+
+`scripts/diag/card-preview.mjs` renders the old layout, the new one and the empty state at the card's
+real width, with the CSS extracted from `client.js` rather than retyped, and screenshots them with the
+browser already on the machine. Measured heights: before 140 px, after 109 px, empty 71 px.
+
 ## [4.11.0] — 2026-11-16
 
 Both halves are now closed in real use, and the relevance figure is finally honest.
