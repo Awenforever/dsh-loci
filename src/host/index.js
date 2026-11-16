@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.9.0';
+export const VERSION = '4.10.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -137,6 +137,16 @@ export function apply(ctx, rawConfig = {}) {
    * every goal round while every other part of the chain worked.
    */
   const lastUserText = new Map();
+  /**
+   * A short transcript per session, kept here for the same reason `lastUserText` is.
+   *
+   * `capture` filters `user/message` by `source.kind === 'user'`, which is right for durable
+   * extraction and wrong for anything that needs the conversation: curation kept reporting
+   * "nothing to read" while the session demonstrably had a transcript. This buffer keeps what the
+   * events actually carry, bounded, and the capture buffer stays exactly as it was.
+   */
+  const transcripts = new Map();
+  const TRANSCRIPT_KEEP = 40;
   /** What the tracker has seen, so a silent no-op can be told from a wrong shape. */
   const trackerSeen = { messages: 0, shapes: new Set(), sources: new Set() };
   /**
@@ -306,6 +316,7 @@ export function apply(ctx, rawConfig = {}) {
           callModel: async ({ prompt }) => complete({ system: CURATOR_SYSTEM, prompt }),
           resolveScopes,
           log,
+          transcriptOf: (sessionId) => transcripts.get(sessionId),
         });
         // Published for the outer handler, which owns the listener: a listener registered on an
         // injected child scope did not receive `agent/disposed` for ordinary conversations, so
@@ -379,6 +390,26 @@ export function apply(ctx, rawConfig = {}) {
         if ((session?.header?.delegationDepth ?? 0) > 0) return;
         if (lastUserText.size >= 256) lastUserText.clear();
         lastUserText.set(session.id, text);
+        const transcript = transcripts.get(session.id) ?? [];
+        transcript.push({ role: 'user', text });
+        if (transcript.length > TRANSCRIPT_KEEP) transcript.shift();
+        if (transcripts.size >= 256) transcripts.clear();
+        transcripts.set(session.id, transcript);
+      }),
+    ),
+  );
+  disposers.push(
+    ctx.effect(() =>
+      ctx.on('session/event', (session, event) => {
+        if (event?.type !== 'assistant/message') return;
+        if ((session?.header?.delegationDepth ?? 0) > 0) return;
+        const text = firstTextOf(event.data?.message?.content) || firstTextOf(event.data?.content);
+        if (text.length === 0) return;
+        const transcript = transcripts.get(session.id) ?? [];
+        transcript.push({ role: 'assistant', text });
+        if (transcript.length > TRANSCRIPT_KEEP) transcript.shift();
+        if (transcripts.size >= 256) transcripts.clear();
+        transcripts.set(session.id, transcript);
       }),
     ),
   );

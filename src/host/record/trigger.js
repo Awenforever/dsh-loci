@@ -24,7 +24,7 @@ const TRANSCRIPT_CAP = 120;
  *   `resolveScopes`, `log`, `now`.
  * @returns an async `(agent) => result` handler; never throws into the disposal path.
  */
-export function createCurationTrigger({ store, config, capture, callModel, resolveScopes, log, now }) {
+export function createCurationTrigger({ store, config, capture, callModel, resolveScopes, log, now, transcriptOf }) {
   return async function curateOnDispose(agent) {
     const session = agent?.session;
     if (session === undefined) return { ran: false, reason: 'no session' };
@@ -35,7 +35,12 @@ export function createCurationTrigger({ store, config, capture, callModel, resol
     if ((session.header?.delegationDepth ?? 0) > 0 || session.header?.origin === 'subagent') {
       return { ran: false, reason: 'not a root conversation' };
     }
-    const messages = capture?.messagesOf?.(session.id) ?? [];
+    // The transcript comes from the caller when it can supply one.
+    //
+    // `capture` buffers only messages whose `source.kind` is `user`, which is correct for durable
+    // extraction and wrong here: curation kept reporting "nothing to read" for conversations that
+    // demonstrably had a transcript, because most `user/message` events are harness-injected.
+    const messages = transcriptOf?.(session.id) ?? capture?.messagesOf?.(session.id) ?? [];
     if (messages.length < 2) return { ran: false, reason: 'nothing to read' };
     const candidates = prefilter(messages.slice(-TRANSCRIPT_CAP));
     if (candidates.length === 0) return { ran: false, reason: 'no candidate sentence' };
