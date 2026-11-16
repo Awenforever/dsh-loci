@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.7.1] — 2026-11-16
+
+Curation now runs where the event actually arrives.
+
+### The observation
+
+A short conversation was created on purpose to make `agent/disposed` fire with real content. The
+session summary was written — so the event arrived — and **no curator-sourced entry appeared**.
+`curatorMode` was `session-end`, the model route was healthy, and the probe had passed four releases
+running.
+
+### The cause
+
+The curation listener was registered on the **injected child** of `llm`:
+
+```
+ctx.inject(['llm', 'agentDefaultModel'], (child) => {
+  child.on('agent/disposed', ...)   // never fired for ordinary conversations
+})
+```
+
+Capture's listener, on the main `ctx`, receives the same event without difficulty. Whatever the
+scoping rule is, the practical reading is the same one that cost six releases already: **do not assume
+a listener on an injected child sees what a listener on the main context sees.** It moved to the main
+context, next to capture's, and the route is published to it through a small holder.
+
+### Also
+
+- **Curation is recorded in the audit either way**: `{ran, reason, written}`. "Did not run" and "ran
+  and kept nothing" are different results, and every silent failure in this project has been the two
+  being indistinguishable.
+
+### A separate finding, recorded here because it is real
+
+The short conversation's own `loci_write` landed as `candidate` rather than `verified`, and the
+reason is worth writing down: the quote it supplied contained a zero-width space, which
+sanitisation strips. A stripped zero-width space removes a character from the middle of the quote, so
+what remains is no longer a **contiguous** substring of the raw message and the verbatim gate correctly
+refuses it. The gate is right; the lesson is that a quote copied from text containing invisible
+characters can fail for a reason no one can see.
+
+293 tests, coverage lines 89.1 / branches 70.2 / functions 83.0.
+
 ## [4.7.0] — 2026-11-16
 
 The reason the rescue kept receiving nothing, and the one surface that can see the question.

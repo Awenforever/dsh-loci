@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.7.0';
+export const VERSION = '4.7.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -139,6 +139,14 @@ export function apply(ctx, rawConfig = {}) {
   const lastUserText = new Map();
   /** What the tracker has seen, so a silent no-op can be told from a wrong shape. */
   const trackerSeen = { messages: 0, shapes: new Set(), sources: new Set() };
+  /**
+   * The curation trigger and the route it needs, published from the injection scope.
+   *
+   * `agent/disposed` is listened for on the main context, next to capture's listener, because that
+   * is where the event demonstrably arrives — a listener on the injected child of `llm` did not
+   * receive it for ordinary conversations, so curation silently never ran.
+   */
+  const curation = { trigger: undefined };
   // Record which Harness this store is actually running on. `engines.dsh` is a
   // range; this field is the only one that says which point release met the file,
   // so a support report can be checked instead of guessed at.
@@ -299,9 +307,11 @@ export function apply(ctx, rawConfig = {}) {
           resolveScopes,
           log,
         });
-        const offDisposed = child.on('agent/disposed', async ({ agent } = {}) => {
-          await curateOnDispose(agent);
-        });
+        // Published for the outer handler, which owns the listener: a listener registered on an
+        // injected child scope did not receive `agent/disposed` for ordinary conversations, so
+        // curation never ran even though every other part of the route worked. The main context is
+        // where capture's listener lives and where the same event demonstrably arrives.
+        curation.trigger = curateOnDispose;
         // The decision layer's only unmeasured property was whether the model actually judges
         // well. This runs one real pass against a fixed transcript, once per version, and stores
         // the outcome so it can be read instead of assumed. It writes no memory.
@@ -331,7 +341,7 @@ export function apply(ctx, rawConfig = {}) {
             });
         }
         return () => {
-          offDisposed?.();
+          curation.trigger = undefined;
           extractor.complete = undefined;
           modelRoute.complete = undefined;
         };
@@ -369,6 +379,33 @@ export function apply(ctx, rawConfig = {}) {
         if ((session?.header?.delegationDepth ?? 0) > 0) return;
         if (lastUserText.size >= 256) lastUserText.clear();
         lastUserText.set(session.id, text);
+      }),
+    ),
+  );
+
+  // Curation runs when a conversation ends, on the main context.
+  //
+  // The listener lives here, beside capture's, because that is where `agent/disposed` demonstrably
+  // arrives: registered on the injected `llm` child it never fired for ordinary conversations, so
+  // curation silently never ran while every other part of the route was healthy. The run is also
+  // recorded in the audit either way — "did not run" and "ran and kept nothing" are different
+  // results, and this project has spent six releases confusing the two.
+  disposers.push(
+    ctx.effect(() =>
+      ctx.on('agent/disposed', async ({ agent } = {}) => {
+        const outcome = curation.trigger === undefined
+          ? { ran: false, reason: 'no model route' }
+          : await curation.trigger(agent);
+        try {
+          store.audit.append('curate', {
+            sessionId: agent?.session?.id ?? null,
+            ran: outcome?.ran === true,
+            reason: outcome?.reason ?? null,
+            written: Array.isArray(outcome?.written) ? outcome.written.length : 0,
+          });
+        } catch {
+          /* the audit is best-effort */
+        }
       }),
     ),
   );
