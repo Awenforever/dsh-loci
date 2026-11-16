@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.5.0] — 2026-11-16
+
+Recall gets a second chance in the model's own words. The last piece of "忆".
+
+### The measured gap this closes
+
+The lexical slice misses about **40%** of reworded questions at 600 entries, and no admission
+threshold fixes it: `atlas 要发新版本` and `atlas 服务上线先走灰度` share exactly one token. A
+tokenizer cannot bridge that gap. A model can — it knows those are the same question and can say so
+in the words the store already uses.
+
+Measured with an **oracle** rather than a fixture (`scripts/eval-memory.mjs`, part A3), because a
+fixture would measure the fixture: of the questions the slice missed, **100%** would be recovered by
+a correct rewrite — 76 of 76 at 200 entries, 115 of 115 at 600. The ceiling is an upper bound, not a
+result, and it settles the design question: rewriting is sufficient in principle, so the remaining
+work is only how close a real model gets.
+
+### How it works, and why it is shaped this way
+
+The ordering in the Host is what makes this possible at all: `systemPrompt.assemble` runs **before**
+the `agent/pre-step` waterfall. A prompt section's `text` is synchronous and its context carries no
+session, so the section cannot ask a model anything. It can, however, leave a note — and the
+waterfall, which *can* await, acts on that note in time for the same turn.
+
+- **`recordLastSlice` / `lastSliceOf`** — the note: what tier the render reached and what was asked.
+  Bounded and short-lived, because it is a handoff, not state.
+- **`rewriteQuery`** — turns the question into up to three alternative phrasings, with the store's
+  own vocabulary offered as a hint. The original is excluded.
+- **`rescueMiss`** — the guards, which matter more than the feature: **only on a genuine miss** (a
+  rewrite when the slice answered would spend a call to second-guess a correct answer), **once per
+  turn**, and the rescue is **added**, never substituted for what the section already said.
+- **`recallRewrite: 'on-miss' | 'off'`**, default `on-miss`. The cost is one model call per missed
+  turn and nothing at all on a hit.
+
+### Rejected shapes
+
+- A paragraph-long "query": rejected by length, because a rewrite is a search string and a
+  paragraph is a sign the model did something else.
+- A single line of prose: rejected, because it means the model declined — turning "no idea" into a
+  search would spend a retrieval to learn nothing. A multi-line list is still accepted.
+- Rewriting on every turn: rejected on cost, and on the risk of replacing a right answer.
+
+### Honest boundary
+
+The rescue is measured against an oracle, not a live model. Whether the deployed model rewrites as
+well as the oracle is a separate question, answered empirically by whether `recall-rewrite` audit
+rows appear with non-zero ids in ordinary use.
+
+287 tests, coverage lines 89.1 / branches 70.1 / functions 83.0.
+
 ## [4.4.5] — 2026-11-16
 
 The empty reply, and the line that caused it.

@@ -539,12 +539,69 @@ async function measureRecallSlice(sizes) {
   return results;
 }
 
+/**
+ * A3. The rewrite rescue — can a model bridge a gap the tokenizer cannot?
+ *
+ * No model is called here, and that is deliberate rather than a shortcut: the question this
+ * answers is *whether rewriting is sufficient in principle*, which is testable with an oracle.
+ * A fixture standing in for the model would measure the fixture; an oracle measures the ceiling.
+ *
+ * The oracle is generous on purpose — it is handed the stored title and asked for a phrasing that
+ * would match it — so the number is an upper bound. If even the oracle cannot lift the miss rate,
+ * the design is wrong and no model would save it. If the oracle lifts it a lot, the remaining
+ * question is only how close a real model gets, which the activation probe answers empirically.
+ */
+async function measureRewriteCeiling(sizes) {
+  const results = [];
+  for (const size of sizes) {
+    const measured = buildCorpus(Math.min(size, MEASURED_CAP));
+    const filler = buildFiller(Math.max(0, size - measured.length));
+    const { store, home, scopes } = seedStore(measured, filler);
+    try {
+      let missed = 0;
+      let recovered = 0;
+      for (const fact of measured) {
+        const before = composeRecall({
+          store,
+          scopeKeys: [scopes.workspace],
+          scopeLabel: scopes.labels.workspace,
+          query: fact.hard,
+        });
+        if (before.text.includes(fact.title)) continue;
+        missed += 1;
+        // The oracle: the words the entry was actually written with. This is the best any rewriter
+        // could do, because it is the answer the rewriter is trying to guess.
+        const rewritten = composeRecall({
+          store,
+          scopeKeys: [scopes.workspace],
+          scopeLabel: scopes.labels.workspace,
+          query: fact.natural,
+        });
+        if (rewritten.text.includes(fact.title)) recovered += 1;
+      }
+      results.push({
+        size,
+        measured: measured.length,
+        missed,
+        recovered,
+        // Share of the misses that a correct rewrite would have rescued.
+        ceiling: missed === 0 ? 1 : recovered / missed,
+      });
+    } finally {
+      store.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+  return results;
+}
+
 const recall = await measureRecall([40, 200, 600]);
 const slice = await measureRecallSlice([40, 200, 600]);
+const rewriteCeiling = await measureRewriteCeiling([200, 600]);
 const capture = measureCapture();
 const gate = measureGate(120);
 
-const report = { recall, slice, capture, gate };
+const report = { recall, slice, rewriteCeiling, capture, gate };
 
 if (asJson) {
   console.log(JSON.stringify(report, null, 2));
@@ -578,6 +635,19 @@ if (asJson) {
   }
   console.log('\n  natural-found / hard-found = the needed entry is in the section at all (not just rank 1).');
   console.log('  loose tier = recovered by the second-chance pass after the strict pass returned nothing.');
+
+  console.log('\n=== A3. Rewrite rescue — is rephrasing enough to close the gap? ===');
+  console.log('  store   measured   missed   recovered-by-rewrite   ceiling');
+  for (const row of rewriteCeiling) {
+    console.log(
+      `  ${String(row.size).padStart(5)}  ${String(row.measured).padStart(9)}  ${String(row.missed).padStart(7)}  ` +
+        `${String(row.recovered).padStart(21)}  ${pct(row.ceiling).padStart(8)}`,
+    );
+  }
+  console.log('\n  ceiling = of the questions the slice missed, the share a correct rewrite would rescue.');
+  console.log('  Measured with an oracle (the entry\'s own wording), so it is an upper bound, not a result.');
+  console.log('  If this were low, no rewriter could help; the real model\'s distance from it is what');
+  console.log('  the activation probe reports.');
 
   console.log('\n=== B. 记 (record) — can rules extract durable statements? ===');
   for (const row of capture.rows) {

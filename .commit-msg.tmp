@@ -1,20 +1,24 @@
-fix(record): read the model selection from agentDefaultModel (4.4.5)
+feat(recall): rewrite a missed question in the model's own words (4.5.0)
 
-rawHead came back empty, which moved the fault from parsing to the call itself. The marker written
-beside it said why: llm_selection_error "cannot get property agent without inject".
+The lexical slice misses about 40% of reworded questions at 600 entries and no admission threshold
+fixes it - "atlas 要发新版本" and "atlas 服务上线先走灰度" share exactly one token. A tokenizer cannot
+bridge that; a model can.
 
-The plugin has no agent of its own, so child.agent throws. provider and model were therefore both
-undefined, the request named no route, the service returned an empty stream, and the parser reported
-"reply is not JSON" - sending three releases of diagnosis after the wrong subsystem.
+Measured with an oracle rather than a fixture, because a fixture would measure the fixture: of the
+questions the slice missed, 100% would be recovered by a correct rewrite - 76 of 76 at 200 entries,
+115 of 115 at 600. That settles the design question (rewriting is sufficient in principle) and
+leaves only how close a real model gets.
 
-The selection now comes from agentDefaultModel, injected alongside llm: a background pass has no
-conversation to inherit a model from, and the default selection is exactly what running outside a
-turn means. The stream is also counted, because "streamed nothing" and "streamed frames this code
-cannot read" are different faults with different fixes.
+The ordering in the Host is what makes this possible: systemPrompt.assemble runs before the
+agent/pre-step waterfall. A section's text is synchronous with no session, so it cannot ask a model -
+but it can leave a note, and the waterfall, which can await, acts on it in time for the same turn.
 
-Four releases to get one model call working, and the deciding information was a single error string
-that only appeared when the diagnostic was placed inside the failing expression rather than beside
-it. A helper that swallows its own reason for failing sends every later investigation to the wrong
-place.
+Guards matter more than the feature: only on a genuine miss, once per turn, and the rescue is added
+rather than substituted for what the section already said. recallRewrite defaults to on-miss, costing
+one model call per missed turn and nothing on a hit.
 
-276 tests, coverage lines 88.8 / branches 69.9 / functions 82.2.
+Rejected: paragraph-long "queries" (a paragraph means the model did something else), a single line of
+prose (it means the model declined), and rewriting on every turn (cost, and the risk of replacing a
+right answer).
+
+287 tests, coverage lines 89.1 / branches 70.1 / functions 83.0.

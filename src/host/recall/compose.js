@@ -253,6 +253,41 @@ function pack(hits, budgetBytes, now) {
 }
 
 /**
+ * The last slice result per session, so a surface that runs *after* assembly can rescue a miss.
+ *
+ * Ordering is what makes this necessary and what makes it work: `systemPrompt.assemble` runs
+ * before the `agent/pre-step` waterfall, so the section cannot ask the model anything — its
+ * `text` is synchronous — but it can leave a note for the waterfall, which is asynchronous and
+ * runs immediately afterwards, in time for this same turn.
+ *
+ * Kept small and bounded: it is a short-lived handoff, not state.
+ */
+const lastSlice = new Map();
+
+/** Remember what one render produced. */
+export function recordLastSlice(sessionId, entry) {
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return;
+  if (lastSlice.size >= 64) lastSlice.clear();
+  lastSlice.set(sessionId, { ...entry, at: Date.now() });
+}
+
+/**
+ * What the most recent render for this session produced.
+ * @param sessionId - the session.
+ * @param maxAgeMs - ignore anything older than this, so a stale note cannot trigger a rewrite.
+ * @returns `{tier, query, ids, at}` or `undefined`.
+ */
+export function lastSliceOf(sessionId, maxAgeMs = 30_000) {
+  const entry = lastSlice.get(sessionId);
+  if (entry === undefined) return undefined;
+  if (Date.now() - entry.at > maxAgeMs) {
+    lastSlice.delete(sessionId);
+    return undefined;
+  }
+  return entry;
+}
+
+/**
  * Compose the whole section.
  *
  * @param options - `store`, `scopeKeys`, `scopeLabel`, `query` (the user's current message),

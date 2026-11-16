@@ -15,8 +15,7 @@ import { Store } from './store/store.js';
 import { writeMeta } from './store/schema.js';
 import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
-import { createCurationTrigger } from './record/trigger.js';
-import { CURATOR_SYSTEM } from './record/curator.js';
+import { createCurationTrigger } from './record/trigger.js';import { CURATOR_SYSTEM } from './record/curator.js';
 import { runCuratorProbe } from './record/probe.js';
 import { createCompleter } from './record/model-route.js';
 import { registerTools } from './tools/tools.js';
@@ -26,9 +25,10 @@ import { Extractor } from './extract/extractor.js';
 import { detectHostVersion, hostLineOf } from './host-version.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
+import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.5';
+export const VERSION = '4.5.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -104,6 +104,10 @@ export function apply(ctx, rawConfig = {}) {
   log.info(`loci: using ${memoryRoot}`);
 
   let capture;
+  // The model route, shared between the injection scope that builds it and the `agent/pre-step`
+  // handler that uses it for the rewrite rescue. A mutable holder rather than a closure variable
+  // because the two live in different Cordis scopes.
+  const modelRoute = { complete: undefined };
   // Record which Harness this store is actually running on. `engines.dsh` is a
   // range; this field is the only one that says which point release met the file,
   // so a support report can be checked instead of guessed at.
@@ -247,6 +251,9 @@ export function apply(ctx, rawConfig = {}) {
         const route = createCompleter({ llm: child.llm, provider, model, record: note });
         const complete = route.complete;
         note('complete', route.reason);
+        // Published for handlers registered outside this injection scope — the rewrite rescue
+        // lives on `agent/pre-step`, which is a sibling of this callback, not a child of it.
+        modelRoute.complete = complete;
         if (complete === undefined) return () => {};
         extractor.complete = complete;
         // Curation reuses the same route: one model transport, two consumers. Registering the
@@ -295,8 +302,62 @@ export function apply(ctx, rawConfig = {}) {
         return () => {
           offDisposed?.();
           extractor.complete = undefined;
+          modelRoute.complete = undefined;
         };
       }, 'loci: extractor model route'),
+    ),
+  );
+
+  // The rewrite rescue: when the synchronous slice found nothing, ask the model for other words.
+  //
+  // This runs on every turn, not once per session, because a miss can happen on any question. It
+  // costs a model call only when the slice missed, and only once per turn — the guard lives in the
+  // rescue module and keys off the note the section left behind.
+  //
+  // The ordering is what makes it possible at all: `systemPrompt.assemble` runs *before* this
+  // waterfall, so the section can leave a note and this handler, which can await, acts on it in
+  // time for the same turn.
+  disposers.push(
+    ctx.effect(
+      () =>
+        ctx.on('agent/pre-step', async (payload, next) => {
+          const decision = await next();
+          try {
+            if (read('recallRewrite') !== 'on-miss') return decision;
+            if (decision?.kind !== 'enter' || payload?.step !== 1) return decision;
+            const session = payload?.agent?.session;
+            if (session === undefined || (session.header?.delegationDepth ?? 0) > 0) return decision;
+            if (store.injectionExemptReason(session.id) !== undefined) return decision;
+            if (modelRoute.complete === undefined) return decision;
+            const scopes = resolveScopes({ sessionId: session.id, cwd: session.header?.cwd });
+            const rescue = await rescueMiss({
+              store,
+              sessionId: session.id,
+              scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
+              scopeKey: scopes.workspace,
+              complete: modelRoute.complete,
+              now: Date.now(),
+              log,
+            });
+            if (rescue.rescued !== true || rescue.text.length === 0) return decision;
+            // Appended as its own message rather than merged into the section: the section is
+            // already rendered, and the rescue is by nature a correction to it.
+            return {
+              ...decision,
+              messages: [
+                ...decision.messages,
+                {
+                  role: 'user',
+                  source: { kind: 'user' },
+                  content: [{ type: 'text', text: rescue.text }],
+                },
+              ],
+            };
+          } catch (error) {
+            log?.debug?.(`loci: rewrite rescue failed: ${String(error?.message ?? error)}`);
+            return decision;
+          }
+        }),
     ),
   );
 

@@ -16,7 +16,7 @@
  * @module dsh-loci/inject/index-section
  */
 import { search } from '../store/search.js';
-import { composeRecall } from '../recall/compose.js';
+import { composeRecall, recordLastSlice } from '../recall/compose.js';
 import { indexTitle, renderSafe } from './sanitize.js';
 
 /** Stable section name; other plugins can target it. */
@@ -247,6 +247,14 @@ export function createIndexSection(options) {
         scopeLabel: context.scopeLabel,
         query,
         now: Date.now(),
+      });
+      // Leave a note for `agent/pre-step`, which runs right after assembly and can await a model.
+      // This is the handoff that makes query rewriting possible at all: the section itself cannot
+      // ask the model anything.
+      recordLastSlice(context.sessionId, {
+        tier: composed.slice.tier,
+        query,
+        ids: composed.ids,
       });
       record(context, {
         bytes: composed.bytes,

@@ -68,6 +68,17 @@ export const DEFAULTS = Object.freeze({
    */
   recallMode: 'slice',
   /**
+   * Whether a missed retrieval may be rescued by asking a model for other words.
+   *
+   * `on-miss` (default): when the synchronous slice found nothing, one model call turns the
+   * question into a few alternative phrasings and searches again. Measured reason: about 40% of
+   * reworded questions miss at 600 entries and no admission threshold fixes it, because the two
+   * strings share a single token. A tokenizer cannot bridge that; a model can.
+   *
+   * `off`: no model call on a miss. Nothing else changes.
+   */
+  recallRewrite: 'on-miss',
+  /**
    * Who decides what to remember.
    *
    * `off` keeps the rule extractor as the only writer. `session-end` runs one curation pass when
@@ -177,6 +188,7 @@ export const ENUMS = Object.freeze({
   defaultScope: ['auto', 'session', 'workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
   recallMode: ['slice', 'index'],
+  recallRewrite: ['on-miss', 'off'],
   /**
    * When a model decides what to remember, instead of a regular expression deciding it.
    *
@@ -206,6 +218,7 @@ function buildSchema() {
     indexLineMaxChars: z.number().step(1).min(40).max(400).default(DEFAULTS.indexLineMaxChars).volatile(),
     recallAssist: z.union(ENUMS.recallAssist).default(DEFAULTS.recallAssist).volatile(),
     recallMode: z.union(ENUMS.recallMode).default(DEFAULTS.recallMode).volatile(),
+    recallRewrite: z.union(ENUMS.recallRewrite).default(DEFAULTS.recallRewrite).volatile(),
     curatorMode: z.union(ENUMS.curatorMode).default(DEFAULTS.curatorMode).volatile(),
     recallAssistBytes: z.number().step(1).min(128).max(2048).default(DEFAULTS.recallAssistBytes).volatile(),
     captureMode: z.union(ENUMS.captureMode).default(DEFAULTS.captureMode).volatile(),
