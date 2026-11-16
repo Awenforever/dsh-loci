@@ -4,6 +4,13 @@
  * The CSS is extracted from the real client.js rather than retyped, so only the DOM is written out
  * here. The DOM is small enough to keep in sync by hand, and the point of the picture is layout
  * density, which is exactly what the CSS decides.
+ *
+ * `puppeteer-core` is deliberately not a dependency of this package: it drives the Edge that is
+ * already installed, and a diagnostic that ships a browser would be a poor trade. Run it from a
+ * directory that has puppeteer-core available, with the Edge path below adjusted if needed:
+ *
+ *   mkdir "$env:TEMP\puppeteer" && cd "$env:TEMP\puppeteer" && npm i puppeteer-core
+ *   copy scripts/diag/card-preview.mjs . && node card-preview.mjs
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
