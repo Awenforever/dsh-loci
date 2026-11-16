@@ -409,9 +409,15 @@ function measureCapture() {
 /**
  * C. The gate.
  *
- * A write with the default trust path lands as `candidate`; only `verified` is injected. So the
- * number of approvals a person must perform before the corpus is usable equals the number of
- * entries, unless the write carries human provenance.
+ * How many human approvals stand between "stored" and "injectable". Measured two ways now,
+ * because the layer model makes the answer depend on where the memory goes rather than on who
+ * wrote it: a conversation-scoped memory can only reach the conversation it came from, so it
+ * does not need a person; a memory that crosses a boundary follows every other conversation
+ * into its prompt, so it does.
+ *
+ * The first version of this section measured only the cross-boundary case and read it as "the
+ * gate costs 120 approvals", which was true and also hid the fact that it was blocking
+ * everything, including memory that could never harm anything else.
  */
 function measureGate(count) {
   const home = mkdtempSync(join(tmpdir(), 'loci-eval-gate-'));
@@ -423,20 +429,20 @@ function measureGate(count) {
     pluginVersion: '4.0.0',
   });
   const scopes = resolveScopes({ sessionId: 'eval', cwd: home });
+  const measurable = (scopeKind, fact) =>
+    store.write({
+      scope: scopeKind,
+      scopeKey: scopes[scopeKind],
+      scopeLabel: scopes.labels[scopeKind],
+      kind: 'semantic',
+      trustSource: 'tool',
+      title: fact.title,
+      body: `${fact.title}。`,
+    });
   try {
     const facts = buildCorpus(count);
-    for (const fact of facts) {
-      store.write({
-        scope: 'workspace',
-        scopeKey: scopes.workspace,
-        scopeLabel: scopes.labels.workspace,
-        kind: 'semantic',
-        trustSource: 'tool',
-        title: fact.title,
-        body: `${fact.title}。`,
-      });
-    }
-    const byStatus = store.db
+    for (const fact of facts) measurable('workspace', fact);
+    const durable = store.db
       .prepare('SELECT h.status, COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord GROUP BY h.status')
       .all();
     const section = renderIndexBody({
@@ -445,12 +451,28 @@ function measureGate(count) {
       scopeLabel: scopes.labels.workspace,
       config: reader(),
     });
+    const durableByStatus = Object.fromEntries(durable.map((row) => [row.status, row.n]));
+
+    // The same claims, written into the conversation they came from.
+    const conversational = buildCorpus(count).map((fact) => ({ ...fact, title: `${fact.title}（对话内）` }));
+    for (const fact of conversational) measurable('session', fact);
+    const sessionRows = store.db
+      .prepare(
+        `SELECT h.status, COUNT(*) AS n FROM memory m JOIN memory_head h ON h.ord = m.ord
+          WHERE m.scope = 'session' GROUP BY h.status`,
+      )
+      .all();
+    const sessionByStatus = Object.fromEntries(sessionRows.map((row) => [row.status, row.n]));
+
     return {
       written: facts.length,
-      byStatus: Object.fromEntries(byStatus.map((row) => [row.status, row.n])),
-      injectable: byStatus.filter((row) => row.status === 'verified').reduce((sum, row) => sum + row.n, 0),
+      byStatus: durableByStatus,
+      injectable: durableByStatus.verified ?? 0,
       sectionBytes: section.bytes,
       listed: section.listed,
+      sessionWritten: conversational.length,
+      sessionByStatus,
+      sessionInjectable: sessionByStatus.verified ?? 0,
     };
   } finally {
     store.close();
@@ -574,7 +596,14 @@ if (asJson) {
   console.log('  and a fixture standing in for one would measure the fixture.');
 
   console.log('\n=== C. The gate — approvals needed before anything is injectable ===');
-  console.log(`  written ${gate.written} · status ${JSON.stringify(gate.byStatus)}`);
-  console.log(`  injectable ${gate.injectable} of ${gate.written} · section ${gate.sectionBytes} bytes`);
-  console.log(`  approvals required: ${gate.written - gate.injectable}`);
+  console.log('  same claims, two destinations:');
+  console.log(`    workspace  written ${gate.written} · status ${JSON.stringify(gate.byStatus)}`);
+  console.log(`               injectable ${gate.injectable} · approvals required ${gate.written - gate.injectable}`);
+  console.log(`    session    written ${gate.sessionWritten} · status ${JSON.stringify(gate.sessionByStatus)}`);
+  console.log(
+    `               injectable ${gate.sessionInjectable} · approvals required ${gate.sessionWritten - gate.sessionInjectable}`,
+  );
+  console.log('  A conversation-scoped memory can only reach the conversation it came from, so it needs');
+  console.log('  no click. A memory that crosses a boundary still does — and promotion re-opens the');
+  console.log('  gate by construction, because changing scope drops the entry back to candidate.');
 }

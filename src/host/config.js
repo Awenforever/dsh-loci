@@ -84,6 +84,20 @@ export const DEFAULTS = Object.freeze({
   captureMode: 'rules',
   /** Auto-verify a captured statement when its quote is found in the session. */
   autoVerifyCaptured: true,
+  /**
+   * Trust a conversation-scoped memory without a person signing it off.
+   *
+   * Approval exists for memory that crosses a boundary: once an entry is in the project or the
+   * workspace, a wrong one follows every other conversation into its prompt. Inside the
+   * conversation it came from, the blast radius is that conversation, so the click adds no
+   * information — and demanding it is what froze the product: on the live store thirteen
+   * captured candidates could never be reviewed, so nothing was ever promoted and exactly one
+   * entry ever reached a prompt.
+   *
+   * Promotion out of the conversation still requires approval, by construction: changing scope
+   * re-opens verification on the next write.
+   */
+  autoVerifyConversationMemory: true,
   /** Most capture passes per session. */
   captureMaxPerSession: 3,
   /** How long after a completed turn the capture pass runs. */
@@ -194,6 +208,7 @@ function buildSchema() {
     recallAssistBytes: z.number().step(1).min(128).max(2048).default(DEFAULTS.recallAssistBytes).volatile(),
     captureMode: z.union(ENUMS.captureMode).default(DEFAULTS.captureMode).volatile(),
     autoVerifyCaptured: z.boolean().default(DEFAULTS.autoVerifyCaptured).volatile(),
+    autoVerifyConversationMemory: z.boolean().default(DEFAULTS.autoVerifyConversationMemory).volatile(),
     captureMaxPerSession: z.number().step(1).min(0).max(20).default(DEFAULTS.captureMaxPerSession).volatile(),
     captureDebounceMs: z.number().step(500).min(0).max(600000).default(DEFAULTS.captureDebounceMs).volatile(),
     captureMaxPerStatementChars: z.number().step(1).min(40).max(400).default(DEFAULTS.captureMaxPerStatementChars).volatile(),

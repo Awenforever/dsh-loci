@@ -1763,6 +1763,25 @@ export class Store {
     // An import or a session summary is not testimony: neither is something the
     // user just said, so neither can be verified by a quote.
     if (trustSource === 'import' || trustSource === 'summary') return 'candidate';
+    // A conversation-scoped memory does not need a person to sign it off.
+    //
+    // Approval exists for a memory that crosses a boundary: once it is in a project or the
+    // workspace, a wrong one follows every other conversation into a prompt. Inside the
+    // conversation it came from, the blast radius is that conversation, so a click adds no
+    // information — and requiring one is what froze this product: on the live store, thirteen
+    // captured candidates could never be reviewed (review covers rule/semantic/procedural and
+    // accepts neither episodic nor session-scoped writes), so nothing was ever promoted and
+    // exactly one entry ever reached a prompt.
+    //
+    // Promotion re-opens verification by construction, not by a separate rule: moving an entry
+    // to another scope makes `sameScope` false on the next write, which drops it back to
+    // candidate. A fact that leaves its conversation still has to earn its way out.
+    if (
+      input.scope === 'session' &&
+      this.live('autoVerifyConversationMemory') !== false
+    ) {
+      return 'verified';
+    }
     // A rule the capture layer lifted out of the user's own message **is**
     // testimony — it carries the sentence verbatim. It goes through the same
     // quote gate as a model-supplied quote instead of being parked in the review

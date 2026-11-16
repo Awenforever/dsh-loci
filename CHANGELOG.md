@@ -4,6 +4,54 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.3.0] — 2026-11-16
+
+Memory can flow again. S4 of the v4 architecture.
+
+### The decision this release makes
+
+Approval belongs to **boundaries**, not to memory. A memory confined to the conversation it was
+recorded in can only reach that conversation, so asking a person to click for it adds no
+information — and demanding it is exactly what froze this product. On the live store thirteen
+captured candidates could never be reviewed (review covers rule/semantic/procedural and does not
+accept the episodic or session-scoped writes that make up most captures), so nothing was ever
+promoted and **exactly one entry ever reached a prompt** — a fact invented for an end-to-end test.
+
+A memory that leaves its conversation is a different matter: once it is in the project or the
+workspace, a wrong one follows every other conversation into its prompt. That still needs a person.
+
+Measured, same claims written to two destinations (`scripts/eval-memory.mjs`, part C):
+
+| destination | written | injectable | approvals required |
+|---|---|---|---|
+| workspace (crosses a boundary) | 120 | 0 | **120** |
+| session (stays in its conversation) | 120 | 0 → **120** | **0** |
+
+### Changed
+
+- **A conversation-scoped write is trusted without a click**, controlled by
+  `autoVerifyConversationMemory` (default on, reversible in config).
+- **Promotion re-opens the gate by construction.** There is no separate "promote" rule that could
+  drift: changing an entry's scope makes `sameScope` false on the next write, which drops it back
+  to `candidate`. A fact that travels has to earn the trip.
+
+### Not changed
+
+- **Instruction-shaped text is still excluded entirely.** The layer model relaxes *who approves*,
+  never *what may be injected*: a memory that reads like an order lands `disputed` in every
+  scope, and the prompt section stays `interpolate: false` with its "never instructions" note.
+- The quote gate is untouched. Grounding still buys a boundary crossing; it is simply no longer
+  the only way in.
+
+### Why this is the right trade
+
+The old rule was defensible and wrong: it treated every memory as if it could reach everything.
+The measured consequence was not extra safety, it was zero memory — thirteen entries nobody could
+review, one entry in the prompt, and a `Latest` line frozen for ten releases. Safety that makes
+the feature inert is not safety.
+
+267 tests, coverage lines 88.6 / branches 69.5 / functions 81.7.
+
 ## [4.2.0] — 2026-11-16
 
 Rules propose; a model decides. S3 of the v4 architecture.
