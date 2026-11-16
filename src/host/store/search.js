@@ -41,6 +41,8 @@ const DETAIL_CHARS = Object.freeze({ snippet: 240, overview: 800, full: 8192 });
 
 /** Milliseconds in a day. */
 const DAY = 86_400_000;
+/** MU distance at which recency credit has fallen to 1/e. Uncalibrated, like the band edges. */
+const MU_RECENCY_SCALE = 50;
 
 /**
  * Encode a pagination cursor.
@@ -413,6 +415,22 @@ export async function search(store, request) {
   }
 
   const now = base.now;
+  // One clock read for the whole ranking pass: reading the memory unit inside the loop would let two
+  // candidates be scored against different instants.
+  const muNow = store.muNow();
+  // Candidate rows come from three different queries that each select their own columns, so the MU
+  // stamp is fetched once here instead of being threaded through all three.
+  const muTouches = new Map();
+  const candidateIds = [...byId.keys()];
+  if (candidateIds.length > 0) {
+    const usage = store.db
+      .prepare(
+        `SELECT id, COALESCE(mu_touched, 0) AS mu FROM memory_usage
+          WHERE id IN (${candidateIds.map(() => '?').join(', ')})`,
+      )
+      .all(...candidateIds);
+    for (const row of usage) muTouches.set(row.id, Number(row.mu));
+  }
   const ranked = [];
   for (const row of byId.values()) {
     const lexical = lexicalDetail(row, plan);
@@ -439,8 +457,13 @@ export async function search(store, request) {
     ? lexical.runHit || lexical.runSpan >= 3 || (lexical.runSpan === 2 && lexical.runSpanHub === false && lexical.runSpanInTitle)
     : lexical.coverage >= 0.5;
     if (!lexicalAdmitted && entityHits === 0 && vectorScore === 0) continue;
-    const age = Math.max(0, now - Number(row.updated_at ?? now));
-    const recency = Math.exp(-age / (30 * DAY));
+    // Distance from the working set in memory units, never calendar age.
+    //
+    // This used to be `exp(-age / (30 * DAY))`, which made a note written yesterday and never used
+    // outrank a rule in daily use written last year. "Recent" means "close to the working set", and the
+    // working set is defined by use, not by the order in which rows were written.
+    const distance = Math.max(0, muNow - Number(muTouches.get(row.id) ?? 0));
+    const recency = Math.exp(-distance / MU_RECENCY_SCALE);
     const score = lexical.score + 0.5 * Math.min(entityHits, 3) + vectorScore + 0.05 * recency;
     const hits = [];
     if (lexicalAdmitted) hits.push('lexical');

@@ -94,6 +94,28 @@ export function runDoctor(options) {
   const lastMaintenance = Number(health.migration?.to === undefined ? 0 : 0);
   checks.push(check('rows', 'ok', `${health.counts.memory} revisions · ${health.counts.memory_head} entries · ${health.counts.entity} entities`));
 
+  // The store's only clock, and how far its entries sit from the working set.
+  //
+  // Worth a row of its own because it is the one number that explains "why is this entry being
+  // recalled" — and because retiring on MU is off until a real distribution has been measured, which
+  // means a store that grows forever is expected behaviour right now and should be visible as such.
+  try {
+    const positions = store.muPositions({});
+    const bands = positions.bands;
+    const total = positions.entries.length;
+    checks.push(
+      check(
+        'memory unit',
+        'ok',
+        `${positions.now.toFixed(1)} MU · ${total} verified (fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold}) · retirement ${
+          positions.retireAfter > 0 ? `after ${positions.retireAfter} MU` : 'off (threshold not calibrated)'
+        }`,
+      ),
+    );
+  } catch (error) {
+    checks.push(check('memory unit', 'warn', `could not read: ${String(error?.message ?? error)}`));
+  }
+
   // Which Harness opened this store, and whether that version is inside the range this
   // build declares. The row used to print `[ok]` for any version at all, which made it
   // a warning surface that could never warn — the exact shape of check that survives

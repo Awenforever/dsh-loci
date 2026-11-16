@@ -163,19 +163,21 @@ MU 的增量 = LOG(w_add × 新增记忆量 + w_use × 召回活动量 + 1)
 
 第 4 条和第 5 条都**必须先测量再定，不能拍**——项目已经吃过一次"预算是拍的"的亏（`SLICE_BUDGET_BYTES = 1200` 至今没有收益测量）。
 
-### 5.1 当前实现里仍然存在的墙钟（违反 §0 的 C1–C3）
+### 5.1 墙钟审计（5.0.0 之前的三处违反，已全部消除）
 
-这是审计结果，不是推测，行号可查：
+审计与修复记录，行号对应 4.14.0：
 
-| 违反 | 位置 | 现状 | 后果 |
+| 违反 | 位置 | 曾经的现状 | 5.0.0 的处理 |
 |---|---|---|---|
-| **C1** | `store.js:1615-1632` `maintenance()` | `workingTtlDays: 7`、`candidateTtlDays: 30`，按 `created_at` 与墙钟比较后写 `valid_to` 关闭条目 | **记忆因日历而失效**。两个月没被召回、但下季度要用的口径会被删掉，理由只是"它旧了" |
-| **C2** | `search.js:443` | `recency = exp(-age / (30 * DAY))`，并参与最终排序 | 昨天刚写、从未使用的记录排在天天在用、写于去年的规则前面 |
-| **C2** | `recall/compose.js:152` `byScore` | `score → reads → updatedAt` | 上一版把 `reads` 插在 `updatedAt` 之前，只是把错误**减轻**，没有消除：最后一级仍是墙钟 |
-| **C3** | `index-section.js:135` | 注入块渲染 `as of 2026-11-16` | 模型按人类日历推理"过时了"，而我们想表达的是"离工作集多远" |
-| — | `store.js:1389` | `request_stat` 90 天清理 | 遥测，与记忆语义无关，可保留 |
+| **C1** | `store.js` `maintenance()` | `workingTtlDays: 7`、`candidateTtlDays: 30`，按 `created_at` 与墙钟比较后写 `valid_to` | 两段 `UPDATE` 删除；改为 `p > muRetireAfter`，默认 `0`（关闭，等测量） |
+| **C2** | `search.js` | `recency = exp(-age / (30 * DAY))` | `exp(-p / MU_RECENCY_SCALE)`，`MU_RECENCY_SCALE = 50`（未校准假设） |
+| **C2** | `recall/compose.js` `byScore` | `score → reads → updatedAt` | `score → reads → mu_touched` |
+| **C3** | `recall/compose.js` `renderLine` | 每条切片行渲染日历日期 | `3.2 MU ago` / `now` |
+| **C3** | `recall/compose.js` 页脚 | `as of 2026-11-16` | `ages are in MU (units of work, not dates)` |
+| **C3** | `inject/index-section.js` | 索引行与页脚均带日期 | 行不带年龄（该渲染路径无 MU 距离可用）；页脚只留指针 |
+| — | `store.js` | `request_stat` 90 天清理 | 保留：遥测，与记忆语义无关 |
 
-**结论：R28 不是"加一个功能"，而是撤掉一个正在运行的错误行为。** 其中 C1 与 C2 直接决定哪些记忆会被召回、哪些会被丢弃——它们是产品行为，不是内部细节。
+**实现情况**：schema v7（`mu_born`、`mu_touched`、`mu_event`）、`src/host/store/mu.js`、三个写入点接入、`doctor` 与 `/stats` 已输出四带分布、`eval-memory.mjs` 新增 D 段。
 
 ### 5.2 实现顺序（按依赖排列）
 

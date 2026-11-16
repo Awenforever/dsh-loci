@@ -20,6 +20,7 @@ import { backupTo, closeDatabase, integrityCheck, openDatabase, quickCheck, tabl
 import { newEntityId, newMemoryId } from './ids.js';
 import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
+import { muAdvance, muBand, muNow, muTrail } from './mu.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
 import { cleanText, normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
@@ -326,6 +327,17 @@ export class Store {
         ...lesson,
       });
       this.#linkRelations(id, 1, input.relations, now);
+      // A new memory is growth, and growth is one of the two things that move the clock. It also
+      // stamps the entry's own birth so its distance can be computed later without guessing.
+      const mu = this.#advanceMu({ add: 1, reason: 'write', now });
+      this.db.prepare('UPDATE memory SET mu_born = ? WHERE id = ?').run(mu, id);
+      this.db
+        .prepare(
+          `INSERT INTO memory_usage (id, inject_count, read_count, mu_touched)
+           VALUES (?, 0, 0, ?)
+           ON CONFLICT(id) DO UPDATE SET mu_touched = excluded.mu_touched`,
+        )
+        .run(id, mu);
       this.bumpIndexRev();
       return inserted;
     });
@@ -1377,13 +1389,19 @@ export class Store {
     // weight this product exists to find.
     if (Array.isArray(row.ids) && row.ids.length > 0) {
       const bump = this.db.prepare(
-        `INSERT INTO memory_usage (id, inject_count, read_count, last_injected_at)
-         VALUES (?, 1, 0, ?)
-         ON CONFLICT(id) DO UPDATE SET inject_count = inject_count + 1, last_injected_at = excluded.last_injected_at`,
+        `INSERT INTO memory_usage (id, inject_count, read_count, last_injected_at, mu_touched)
+         VALUES (?, 1, 0, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET inject_count = inject_count + 1,
+                                       last_injected_at = excluded.last_injected_at,
+                                       mu_touched = excluded.mu_touched`,
       );
       const now = this.now();
       withTransaction(this.db, () => {
-        for (const id of row.ids) bump.run(id, now);
+        // Being injected is what makes an entry *relevant now*, so the injection is the event that
+        // resets its distance from the working set. Time advances by the same event: activity is one
+        // of the two things that move the clock, and this is where activity happens.
+        const mu = this.#advanceMu({ use: row.ids.length, reason: 'inject', now });
+        for (const id of row.ids) bump.run(id, now, mu);
       });
     }
     this.db.prepare('DELETE FROM request_stat WHERE ts < ?').run(this.now() - 90 * 86_400_000);
@@ -1414,16 +1432,82 @@ export class Store {
   recordRead(id) {
     if (typeof id !== 'string' || id.length === 0) return;
     try {
-      this.db
-        .prepare(
-          `INSERT INTO memory_usage (id, inject_count, read_count, last_read_at)
-           VALUES (?, 0, 1, ?)
-           ON CONFLICT(id) DO UPDATE SET read_count = read_count + 1, last_read_at = excluded.last_read_at`,
-        )
-        .run(id, this.now());
+      withTransaction(this.db, () => {
+        // Looking an entry up is use, and use moves the clock and pulls the entry back toward the
+        // working set. It is the strongest signal available that a memory did something for someone.
+        const mu = this.#advanceMu({ use: 1, reason: 'read', now: this.now() });
+        this.db
+          .prepare(
+            `INSERT INTO memory_usage (id, inject_count, read_count, last_read_at, mu_touched)
+             VALUES (?, 0, 1, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET read_count = read_count + 1,
+                                           last_read_at = excluded.last_read_at,
+                                           mu_touched = excluded.mu_touched`,
+          )
+          .run(id, this.now(), mu);
+      });
     } catch {
       // A counter must never fail a read.
     }
+  }
+
+  /** Advance the memory-unit clock, with the weights the configuration chose. */
+  #advanceMu({ add = 0, use = 0, reason, now }) {
+    const result = muAdvance(this.db, {
+      add,
+      use,
+      reason,
+      now: now ?? this.now(),
+      wAdd: Number(this.live('muAddWeight') ?? 1),
+      wUse: Number(this.live('muUseWeight') ?? 1),
+    });
+    return result.to;
+  }
+
+  /** The current memory unit. The store's only clock. */
+  muNow() {
+    return muNow(this.db);
+  }
+
+  /** The most recent advances, so "why did the clock move" has an answer. */
+  muTrail(limit = 20) {
+    return muTrail(this.db, limit);
+  }
+
+  /**
+   * Where every entry in scope sits, in MU from the working set.
+   *
+   * `p = muNow - mu_touched`: zero means "relevant as of this instant", larger means further away.
+   * This is the whole of "age" in this store — there is no second definition.
+   *
+   * @param options - `scopeKeys`, `edges`.
+   * @returns `{now, entries, bands, retireAfter}`.
+   */
+  muPositions(options = {}) {
+    const now = this.muNow();
+    const keys = options.scopeKeys;
+    if (Array.isArray(keys) && keys.length === 0) {
+      return { now, entries: [], bands: { fresh: 0, active: 0, cool: 0, cold: 0 }, retireAfter: 0 };
+    }
+    const marks = Array.isArray(keys) && keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
+    const rows = this.db
+      .prepare(
+        `SELECT m.id, m.title, COALESCE(u.mu_touched, 0) AS touched, m.mu_born
+           FROM memory m
+           JOIN memory_head h ON h.ord = m.ord
+           LEFT JOIN memory_usage u ON u.id = m.id
+          WHERE h.status = 'verified' AND m.valid_to IS NULL${marks}
+          ORDER BY touched DESC`,
+      )
+      .all(...(Array.isArray(keys) ? keys : []));
+    const edges = options.edges ?? { fresh: 5, active: 50, cool: 500 };
+    const bands = { fresh: 0, active: 0, cool: 0, cold: 0 };
+    const entries = rows.map((row) => {
+      const p = Math.max(0, now - Number(row.touched ?? 0));
+      bands[muBand(p, edges)] += 1;
+      return { id: row.id, title: row.title, p };
+    });
+    return { now, entries, bands, retireAfter: Number(this.live('muRetireAfter') ?? 0) };
   }
 
   /**
@@ -1612,27 +1696,36 @@ export class Store {
     this.#assertWritable();
     const now = options.now ?? this.now();
     const summary = { expiredWorking: 0, closedCandidates: 0, reindexed: false, optimized: false };
-    const workingTtlDays = Number(this.live('workingTtlDays') ?? 7);
-    if (workingTtlDays > 0) {
-      const cutoff = now - workingTtlDays * 86_400_000;
-      const result = this.db
+    // Retirement is measured in memory units, never in days.
+    //
+    // Before 5.0.0 this ran two UPDATEs comparing `created_at` against wall clock: `working` after 7
+    // days, `candidate` after 30. That deleted memory for the crime of the calendar advancing — a
+    // quarterly rule unrecalled for two months was removed for being "old" when it was merely unused.
+    // Age here means distance from the working set in MU, and the threshold is 0 (disabled) until a
+    // real distribution has been measured.
+    const retireAfter = Number(this.live('muRetireAfter') ?? 0);
+    if (retireAfter > 0) {
+      const mu = this.muNow();
+      // A correlated subquery rather than a join: `UPDATE ... FROM` needs a newer SQLite than the
+      // runtime guarantees, and the usage row may not exist at all for an entry that was never shown.
+      const stale = `COALESCE((SELECT u.mu_touched FROM memory_usage u WHERE u.id = memory.id), 0) <= ?`;
+      const cutoffMu = mu - retireAfter;
+      const working = this.db
         .prepare(
           `UPDATE memory SET valid_to = ?, updated_at = ?
-           WHERE kind = 'working' AND valid_to IS NULL AND created_at < ? AND status <> 'deleted'`,
+            WHERE kind = 'working' AND valid_to IS NULL AND status <> 'deleted'
+              AND ${stale}`,
         )
-        .run(now, now, cutoff);
-      summary.expiredWorking = Number(result.changes ?? 0);
-    }
-    const candidateTtlDays = Number(this.live('candidateTtlDays') ?? 30);
-    if (candidateTtlDays > 0) {
-      const cutoff = now - candidateTtlDays * 86_400_000;
-      const result = this.db
+        .run(now, now, cutoffMu);
+      summary.expiredWorking = Number(working.changes ?? 0);
+      const candidates = this.db
         .prepare(
           `UPDATE memory SET valid_to = ?, updated_at = ?
-           WHERE status = 'candidate' AND valid_to IS NULL AND created_at < ?`,
+            WHERE status = 'candidate' AND valid_to IS NULL
+              AND ${stale}`,
         )
-        .run(now, now, cutoff);
-      summary.closedCandidates = Number(result.changes ?? 0);
+        .run(now, now, cutoffMu);
+      summary.closedCandidates = Number(candidates.changes ?? 0);
     }
     const coverage = this.indexCoverage();
     if (coverage.missing > 0) {

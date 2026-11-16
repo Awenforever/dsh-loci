@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS memory_usage (
   inject_count     INTEGER NOT NULL DEFAULT 0,
   read_count       INTEGER NOT NULL DEFAULT 0,
   last_injected_at INTEGER,
-  last_read_at     INTEGER
+  last_read_at     INTEGER,
+  mu_touched       REAL
 );
 CREATE INDEX IF NOT EXISTS ix_memory_usage_inject ON memory_usage (inject_count DESC);
 CREATE INDEX IF NOT EXISTS ix_memory_usage_read ON memory_usage (read_count DESC);
@@ -50,6 +51,18 @@ export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- v7: the trail behind the memory-unit counter. The counter lives in meta; this table only exists so
+-- "why did the clock move" has an answer. The at column is wall clock, for a human reading the log,
+-- and is never a criterion: no code path in this product decides anything from it.
+CREATE TABLE IF NOT EXISTS mu_event (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  at     INTEGER NOT NULL,
+  mu     REAL NOT NULL,
+  add_n  INTEGER NOT NULL,
+  use_n  INTEGER NOT NULL,
+  reason TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS memory (
@@ -90,6 +103,8 @@ CREATE TABLE IF NOT EXISTS memory (
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
   deleted_at     INTEGER,
+  -- v7: the memory unit this entry was born at. The store's only clock.
+  mu_born        REAL,
   UNIQUE (id, revision)
 );
 
@@ -216,6 +231,13 @@ export const META_KEYS = Object.freeze({
   createdAt: 'created_at',
   indexRev: 'index_rev',
   lastMaintenance: 'last_maintenance',
+  /**
+   * The Memory Unit counter — the only clock this store has.
+   *
+   * There is no independent notion of time in dsh-loci: MU *is* time. A wall-clock timestamp may appear
+   * in a row, but never as a criterion — only as a note for a person reading the log.
+   */
+  muNow: 'mu_now',
   /** The Harness version this store has been used with, recorded at activation. */
   hostVersion: 'host_version',
 });

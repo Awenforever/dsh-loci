@@ -607,13 +607,42 @@ async function measureRewriteCeiling(sizes) {
   return results;
 }
 
+/**
+ * D. The clock.
+ *
+ * How far from the working set does each entry sit, measured in memory units. There is no wall clock
+ * here: "old" can only mean a distance. The band edges are hypotheses, and retirement is off until one
+ * of them is justified by data — this section exists so that argument can be had with numbers.
+ */
+function measureMu() {
+  const measured = buildCorpus(Math.min(600, MEASURED_CAP));
+  const { store, home, scopes } = seedStore(measured, buildFiller(Math.max(0, 600 - measured.length)));
+  try {
+    const positions = store.muPositions({ scopeKeys: [scopes.workspace] });
+    const distances = positions.entries.map((entry) => entry.p).sort((a, b) => a - b);
+    const at = (fraction) => distances[Math.min(distances.length - 1, Math.floor(distances.length * fraction))] ?? 0;
+    return {
+      now: positions.now,
+      written: measured.length,
+      bands: positions.bands,
+      min: distances[0] ?? 0,
+      median: at(0.5),
+      max: distances[distances.length - 1] ?? 0,
+    };
+  } finally {
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+}
+
 const recall = await measureRecall([40, 200, 600]);
 const slice = await measureRecallSlice([40, 200, 600]);
 const rewriteCeiling = await measureRewriteCeiling([200, 600]);
 const capture = measureCapture();
 const gate = measureGate(120);
+const muReport = measureMu();
 
-const report = { recall, slice, rewriteCeiling, capture, gate };
+const report = { recall, slice, rewriteCeiling, capture, gate, mu: muReport };
 
 if (asJson) {
   console.log(JSON.stringify(report, null, 2));
@@ -681,6 +710,16 @@ if (asJson) {
   );
   console.log('  The curator\'s own judgement is not measured here: it needs a model transport,');
   console.log('  and a fixture standing in for one would measure the fixture.');
+
+  console.log('\n=== D. The clock — how far from the working set does each entry sit? ===');
+  console.log(`  ${muReport.now.toFixed(1)} MU after seeding ${muReport.written} entries`);
+  console.log(
+    `  fresh ${muReport.bands.fresh} / active ${muReport.bands.active} / cool ${muReport.bands.cool} / cold ${muReport.bands.cold}`,
+  );
+  console.log(`  distance: min ${muReport.min.toFixed(1)} · median ${muReport.median.toFixed(1)} · max ${muReport.max.toFixed(1)}`);
+  console.log('  There is no wall clock in this section: "old" can only mean a distance, never a date.');
+  console.log('  The band edges are hypotheses, not measurements — they exist so they can be argued with,');
+  console.log('  and retirement stays off until one of them is justified by a real distribution.');
 
   console.log('\n=== C. The gate — approvals needed before anything is injectable ===');
   console.log('  same claims, two destinations:');

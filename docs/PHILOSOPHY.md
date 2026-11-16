@@ -144,7 +144,15 @@ curator probe ok=true · caught=["deploy-first-canary","never-friday-release"] �
 | **C2** | "新旧"只能用 MU 距离表达 | `ORDER BY updated_at`、`exp(-age/30天)` |
 | **C3** | 给模型看的年龄必须是 MU | 注入块渲染 `as of 2026-11-16` |
 
-**当前实现三条全违反**（行号见 `docs/MEMORY-UNITS.md` §5.1）。所以引入 MU 不是加功能，是**撤掉一个已经在跑的错误行为**。
+**5.0.0 已消除这三处**（此前三条全违反）：
+
+| | 约束 | 曾经的违反 | 现在 |
+|---|---|---|---|
+| **C1** | 记忆不能因日历失效 | `working` 7 天过期、`candidate` 30 天关闭 | 已删除。退役判据为 `p > muRetireAfter`，阈值默认 **0（关闭）**，等测量 |
+| **C2** | "新旧"只能用 MU 距离表达 | `ORDER BY updated_at`、`exp(-age/30天)` | `score → reads → mu_touched`；search 的 recency 项为 `exp(-p / 50)` |
+| **C3** | 给模型看的年龄必须是 MU | 注入块渲染 `as of 2026-11-16` | `3.2 MU ago` + 一行 `ages are in MU (units of work, not dates)` |
+
+**成本要写清楚**：本版之后没有任何按时间自动消失的路径，库只增不减，直到压缩动力学落地。这是有意的取舍——**宁可再生，不要因为日历而误删**。`doctor` 与面板显示四带分布，`cold` 增长可见。
 
 ### 7.2 MU 的定义
 

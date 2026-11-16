@@ -169,10 +169,38 @@ export const DEFAULTS = Object.freeze({
   searchLimitMax: 50,
   /** Include `global` scope in a search whose scope is not explicit. */
   includeGlobal: true,
-  /** Days an unreviewed candidate survives before maintenance archives it. */
-  candidateTtlDays: 30,
-  /** Days a `working` entry survives. */
-  workingTtlDays: 7,
+  /**
+   * Days an unreviewed candidate survives before maintenance archives it.
+   *
+   * **`0` by default since 5.0.0, and it should stay 0.** Memory must not expire because a calendar
+   * advanced: a quarterly rule that went unrecalled for two months was being deleted for being "old"
+   * when it was merely unused. Age is measured in memory units now (`muRetireAfter`).
+   *
+   * The key is kept so existing profiles that set it do not fail to load; it is deliberately not
+   * consulted unless non-zero, and CHANGELOG marks it deprecated.
+   */
+  candidateTtlDays: 0,
+  /** Days a `working` entry survives. `0` by default since 5.0.0 — see `candidateTtlDays`. */
+  workingTtlDays: 0,
+  /**
+   * Weight of the growth component in one memory unit: `log(wAdd*add + wUse*use + 1)`.
+   *
+   * Both weights default to 1 because the counter only ever reports *distances*, and a uniform scale
+   * changes every distance by the same factor. They are configuration so the balance between "how much
+   * talking" and "how much learning" advances the clock can be adjusted — and it is an uncalibrated
+   * choice until a real distribution has been measured.
+   */
+  muAddWeight: 1,
+  /** Weight of the activity component. See `muAddWeight`. */
+  muUseWeight: 1,
+  /**
+   * Retire an entry once it is this many memory units from the working set. `0` disables retirement.
+   *
+   * Left at 0 on purpose. The threshold has to come from a measured distribution of real distances;
+   * guessing it would repeat the mistake already paid for with `SLICE_BUDGET_BYTES`, which is still an
+   * unmeasured number three releases later.
+   */
+  muRetireAfter: 0,
   /** Allow `op:'purge'` to physically delete revisions. */
   allowHardDelete: false,
   /**
@@ -265,6 +293,9 @@ function buildSchema() {
     includeGlobal: z.boolean().default(DEFAULTS.includeGlobal).volatile(),
     candidateTtlDays: z.number().step(1).min(0).max(3650).default(DEFAULTS.candidateTtlDays).volatile(),
     workingTtlDays: z.number().step(1).min(0).max(3650).default(DEFAULTS.workingTtlDays).volatile(),
+    muAddWeight: z.number().min(0).max(100).default(DEFAULTS.muAddWeight).volatile(),
+    muUseWeight: z.number().min(0).max(100).default(DEFAULTS.muUseWeight).volatile(),
+    muRetireAfter: z.number().min(0).max(1e9).default(DEFAULTS.muRetireAfter).volatile(),
     allowHardDelete: z.boolean().default(DEFAULTS.allowHardDelete),
     updateCheck: z.boolean().default(DEFAULTS.updateCheck).volatile(),
     updateRegistry: z.string().default(DEFAULTS.updateRegistry).volatile(),

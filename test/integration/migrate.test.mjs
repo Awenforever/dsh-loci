@@ -34,6 +34,15 @@ const REHEARSAL = [
  */
 function rewind(db, target) {
   const columns = () => db.prepare('PRAGMA table_info(memory)').all().map((row) => row.name);
+  if (target < 7) {
+    // v7 made the memory unit the store's only clock: two nullable columns and the trail table.
+    // Same rule as every other block here — the "old" database must not already hold what the
+    // migration is meant to add, or the test proves nothing.
+    db.exec('DROP TABLE IF EXISTS mu_event');
+    if (columns().includes('mu_born')) db.exec('ALTER TABLE memory DROP COLUMN mu_born');
+    const usageColumns = () => db.prepare('PRAGMA table_info(memory_usage)').all().map((row) => row.name);
+    if (usageColumns().includes('mu_touched')) db.exec('ALTER TABLE memory_usage DROP COLUMN mu_touched');
+  }
   if (target < 3) {
     // v3 added the lesson shape.
     for (const column of ['pattern', 'fix', 'prevents', 'when_condition']) {

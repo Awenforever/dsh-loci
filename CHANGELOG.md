@@ -4,6 +4,70 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.0.0] — 2026-11-17
+
+The memory unit becomes the only clock.
+
+### Why this is a major version
+
+There is no longer any independent notion of time in this store. MU *is* time: "flowing" means the
+counter moved, and "older" may only mean further from the working set. Three behaviours that decided
+things from wall clock are gone, and two defaults changed.
+
+**This also means, deliberately, that nothing expires by time any more.** The store grows until the
+compaction dynamics land. That is the trade: better a store that can be pruned on purpose than one that
+deletes a quarterly rule for being "old" when it was merely unused. `doctor` and the panel show the
+four-band distribution so the growth is visible instead of silent.
+
+### The counter
+
+```
+delta = log(w_add * add + w_use * use + 1)
+```
+
+`log(1) = 0` is load-bearing: with no new memory and no recall, the clock does not move. Sleeping costs
+nothing — which is the entire reason a memory unit exists instead of a timestamp comparison. The log
+also means the hundredth event on a busy day costs less than the first, so a large intake does not
+accelerate the ageing of everything already stored.
+
+It advances at the three places something actually happens: a write (`add`), an injection (`use` by the
+number of ids listed), and a lookup (`use`). Every advance is recorded in `mu_event` with both
+components, so "why did the clock move" has an answer rather than an inference.
+
+**The number is not a duration.** It is not minutes, and it is not comparable across installs. Only
+differences between two readings mean anything, and only inside one store.
+
+### Schema v7
+
+`memory.mu_born`, `memory_usage.mu_touched`, and `mu_event` (the trail). Existing rows are backfilled to
+the current counter value, which says "their clock starts now" — we have no MU history for them, and
+inventing one would make old curated entries look freshly used. The migration's `ALTER`s are guarded, so
+a replayed chain cannot fail on a column that is already there.
+
+### The three constraints, now enforced
+
+| | Before | After |
+|---|---|---|
+| **C1** no wall-clock forgetting | `working` expired after 7 days, `candidate` after 30 | removed; retirement is `p > muRetireAfter`, default **0 = off** until measured |
+| **C2** no wall-clock ordering | `ORDER BY updated_at`, `exp(-age / 30 days)` | `score → reads → mu_touched`; recency is `exp(-p / 50)` |
+| **C3** no wall-clock presentation | `as of 2026-11-16` in the prompt, a date on every slice line | `3.2 MU ago` per line, and one footer saying ages are in units of work, not dates |
+
+### What stayed at zero on purpose
+
+`muRetireAfter` is `0`, and the band edges (5 / 50 / 500) and `MU_RECENCY_SCALE` (50) are labelled
+uncalibrated in the source. Those four numbers have to come from a measured distribution; guessing them
+would repeat the mistake already paid for with `SLICE_BUDGET_BYTES`, which is still an unmeasured number
+several releases later. `eval-memory.mjs` gained a **D section** that prints the distribution so the
+argument can be had with data.
+
+### Observable
+
+- `doctor` prints `memory unit: N MU · verified (fresh/active/cool/cold) · retirement off (threshold not calibrated)`
+- `/stats` carries `mu` (positions and bands) and `muTrail`
+- `eval-memory.mjs` D section: distance min/median/max and band counts for a 600-entry corpus
+
+306 tests, coverage lines 90.6 / branches 70.6 / functions 85.6.
+
 ## [4.14.0] — 2026-11-16
 
 The section stops answering a question it cannot see, and the vector channel stops being decorative.

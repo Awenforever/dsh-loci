@@ -115,7 +115,11 @@ export function renderIndexBody(options) {
   // to before.
   const PREVENTS_CHARS = 60;
   const entryLine = (entry) => {
-    const head = `- ${entry.id} · ${entry.kind} · ${formatDate(entry.validFrom)} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
+    // No age at all in index mode. A calendar date is forbidden by the design — "older" must be a
+    // distance in memory units — and this legacy renderer has no MU distance plumbed into its entry
+    // shape, so the honest options are a correct number or no number. It renders without one; the
+    // slice path, which is the default, states it per line.
+    const head = `- ${entry.id} · ${entry.kind} · ${renderSafe(indexTitle(entry.title, lineChars))}`;
     if (entry.kind !== 'procedural' || typeof entry.prevents !== 'string' || entry.prevents.length === 0) return head;
     return `${head} — prevents: ${renderSafe(indexTitle(entry.prevents, PREVENTS_CHARS))}`;
   };
@@ -132,7 +136,7 @@ export function renderIndexBody(options) {
         `${pending} item(s) await review and are deliberately absent here — a person approves them in Memory → Review (/loci review); say so if the user expects them.`,
       );
     }
-    parts.push(`as of ${formatDate(now)} · ${FULL_TEXT_HINT}`);
+    parts.push(FULL_TEXT_HINT);
     parts.push(FENCE_CLOSE);
     return parts.join('\n');
   };

@@ -107,6 +107,10 @@ export function registerApiRoutes(ctx, deps) {
       // Which entries spend prompt bytes and are never opened. Aggregate request
       // stats cannot answer this, which is why schema v2 added per-entry counters.
       usage: store.usageReport({ scopeKeys, limit: 50 }),
+      // Where entries sit in memory units, and how the clock got where it is. The question "how old
+      // is this" has exactly one answer in this product, and the panel should be able to show it.
+      mu: store.muPositions({ scopeKeys }),
+      muTrail: store.muTrail(20),
     });
   });
 

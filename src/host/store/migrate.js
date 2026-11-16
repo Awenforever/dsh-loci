@@ -98,7 +98,60 @@ export const SHIPPED_MIGRATIONS = [
 )`);
     },
   },
+  {
+    from: 6,
+    to: 7,
+    // The memory unit becomes the store's only clock.
+    //
+    // Two nullable columns and one table. Nullable because there are two populations: rows written
+    // after this version carry a real MU stamp, and rows written before it have no MU history at all —
+    // those are backfilled to the current counter value, which says "their clock starts now" rather
+    // than inventing a past for them. A fabricated age would be worse than an honest zero: it would
+    // make curated entries from months ago look freshly used.
+    //
+    // The `at` column in mu_event is wall clock, kept only so a person reading the log can line it up
+    // with their own day. Nothing reads it as a criterion.
+    up(db) {
+      addColumnIfMissing(db, 'memory_usage', 'mu_touched', 'REAL');
+      addColumnIfMissing(db, 'memory', 'mu_born', 'REAL');
+      db.exec(`CREATE TABLE IF NOT EXISTS mu_event (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  at     INTEGER NOT NULL,
+  mu     REAL NOT NULL,
+  add_n  INTEGER NOT NULL,
+  use_n  INTEGER NOT NULL,
+  reason TEXT NOT NULL
+)`);
+      const current = Number(readMeta(db, META_KEYS.muNow) ?? 0);
+      db.prepare('UPDATE memory_usage SET mu_touched = ? WHERE mu_touched IS NULL').run(current);
+      db.prepare('UPDATE memory SET mu_born = ? WHERE mu_born IS NULL').run(current);
+      writeMeta(db, META_KEYS.muNow, String(current));
+    },
+  },
 ];
+
+/**
+ * Add a column only when the table does not already have it.
+ *
+ * A migration should move a database from one *logical* version to the next, not assume the exact
+ * physical shape it starts from: a test that rebuilds a table from the current DDL constant, or a
+ * hand-repaired file, can already carry the column. Guarding makes the step re-runnable, where a bare
+ * `ALTER` fails with a duplicate-column error on an upgrade path that is hard to reach and harder to
+ * debug.
+ *
+ * @param db - open handle.
+ * @param table - table name.
+ * @param column - column name.
+ * @param type - column type.
+ */
+function addColumnIfMissing(db, table, column, type) {
+  const present = db
+    .prepare('PRAGMA table_info(' + table + ')')
+    .all()
+    .map((row) => row.name);
+  if (present.includes(column)) return;
+  db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + type);
+}
 
 /**
  * Whether the file already holds the Loci core table.
