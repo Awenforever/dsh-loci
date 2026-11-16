@@ -170,7 +170,7 @@ MU 的增量 = LOG(w_add × 新增记忆量 + w_use × 召回活动量 + 1)
 | 违反 | 位置 | 现状 | 后果 |
 |---|---|---|---|
 | **C1** | `store.js:1615-1632` `maintenance()` | `workingTtlDays: 7`、`candidateTtlDays: 30`，按 `created_at` 与墙钟比较后写 `valid_to` 关闭条目 | **记忆因日历而失效**。两个月没被召回、但下季度要用的口径会被删掉，理由只是"它旧了" |
-| **C2** | `search.js:377` | `recency = exp(-age / (30 * DAY))`，并参与最终排序 | 昨天刚写、从未使用的记录排在天天在用、写于去年的规则前面 |
+| **C2** | `search.js:443` | `recency = exp(-age / (30 * DAY))`，并参与最终排序 | 昨天刚写、从未使用的记录排在天天在用、写于去年的规则前面 |
 | **C2** | `recall/compose.js` `byScore` | `score → reads → updatedAt` | 上一版把 `reads` 插在 `updatedAt` 之前，只是把错误**减轻**，没有消除：最后一级仍是墙钟 |
 | **C3** | `index-section.js:135` | 注入块渲染 `as of 2026-11-16` | 模型按人类日历推理"过时了"，而我们想表达的是"离工作集多远" |
 | — | `store.js:1389` | `request_stat` 90 天清理 | 遥测，与记忆语义无关，可保留 |
