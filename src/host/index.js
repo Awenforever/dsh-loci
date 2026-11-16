@@ -14,6 +14,8 @@ import { readScopeKeys, resolveScopes } from './scope.js';
 import { Store } from './store/store.js';
 import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
+import { createCurationTrigger } from './record/trigger.js';
+import { CURATOR_SYSTEM } from './record/curator.js';
 import { registerTools } from './tools/tools.js';
 import { registerApiRoutes } from './api/routes.js';
 import { UpdateChecker } from './update.js';
@@ -23,7 +25,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.1.0';
+export const VERSION = '4.2.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -220,7 +222,23 @@ export function apply(ctx, rawConfig = {}) {
         });
         if (complete === undefined) return () => {};
         extractor.complete = complete;
+        // Curation reuses the same route: one model transport, two consumers. Registering the
+        // dispose listener here — rather than only when `curatorMode` is on at load — means
+        // turning the mode on later takes effect without a reload; the trigger re-reads the
+        // config on every call and returns early while it is off.
+        const curateOnDispose = createCurationTrigger({
+          store,
+          config: read,
+          capture,
+          callModel: async ({ prompt }) => complete({ system: CURATOR_SYSTEM, prompt }),
+          resolveScopes,
+          log,
+        });
+        const offDisposed = child.on('agent/disposed', async ({ agent } = {}) => {
+          await curateOnDispose(agent);
+        });
         return () => {
+          offDisposed?.();
           extractor.complete = undefined;
         };
       }, 'loci: extractor model route'),

@@ -67,6 +67,17 @@ export const DEFAULTS = Object.freeze({
    * and recovers 60–70% of reworded questions that the index could not find at all.
    */
   recallMode: 'slice',
+  /**
+   * Who decides what to remember.
+   *
+   * `off` keeps the rule extractor as the only writer. `session-end` runs one curation pass when
+   * a conversation is disposed: the transcript goes to a model, the model returns strict JSON,
+   * and the reply is validated here before anything is written.
+   *
+   * Off by default until the transport that reaches a model has been exercised in a real Host.
+   * Turning it on is a config change, not a code change.
+   */
+  curatorMode: 'off',
   /** Byte ceiling for that assist block. */
   recallAssistBytes: 512,
   /** 'rules' | 'off' — deterministic durable-fact capture at turn end. */
@@ -150,6 +161,17 @@ export const ENUMS = Object.freeze({
   defaultScope: ['auto', 'session', 'workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
   recallMode: ['slice', 'index'],
+  /**
+   * When a model decides what to remember, instead of a regular expression deciding it.
+   *
+   * `off` keeps the rule extractor as the only writer. `session-end` runs one curation pass when
+   * a conversation is disposed: the transcript goes to a model, the model returns strict JSON,
+   * and the reply is validated here before anything is written.
+   *
+   * Off by default until the transport that reaches a model has been exercised in a real Host;
+   * turning it on is a config change, not a code change.
+   */
+  curatorMode: ['off', 'session-end'],
   captureMode: ['rules', 'off'],
   extractMode: ['off', 'on', 'turn', 'session'],
   maintenanceMode: ['sweep', 'off'],
@@ -168,6 +190,7 @@ function buildSchema() {
     indexLineMaxChars: z.number().step(1).min(40).max(400).default(DEFAULTS.indexLineMaxChars).volatile(),
     recallAssist: z.union(ENUMS.recallAssist).default(DEFAULTS.recallAssist).volatile(),
     recallMode: z.union(ENUMS.recallMode).default(DEFAULTS.recallMode).volatile(),
+    curatorMode: z.union(ENUMS.curatorMode).default(DEFAULTS.curatorMode).volatile(),
     recallAssistBytes: z.number().step(1).min(128).max(2048).default(DEFAULTS.recallAssistBytes).volatile(),
     captureMode: z.union(ENUMS.captureMode).default(DEFAULTS.captureMode).volatile(),
     autoVerifyCaptured: z.boolean().default(DEFAULTS.autoVerifyCaptured).volatile(),

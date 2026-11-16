@@ -376,6 +376,22 @@ export class Capture {
   }
 
   /**
+   * The buffered transcript of one session, for surfaces that read back the conversation.
+   *
+   * The curation pass needs the whole exchange, not just the durable-looking sentences: a
+   * statement usually only makes sense next to the answer it corrected. Returning the buffer
+   * itself would let a caller mutate it, so a shallow copy is returned.
+   *
+   * @param sessionId - the session.
+   * @returns `[{seq, role, text}]` in order, or an empty array.
+   */
+  messagesOf(sessionId) {
+    const buffer = this.sessions.get(sessionId);
+    if (buffer === undefined) return [];
+    return buffer.messages.map((message) => ({ ...message }));
+  }
+
+  /**
    * The text of the last user message for a session.
    *
    * The prompt section cannot see the conversation — `PromptSection.text` receives only

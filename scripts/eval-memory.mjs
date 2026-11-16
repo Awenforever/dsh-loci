@@ -34,6 +34,7 @@ import { Capture } from '../src/host/capture/capture.js';
 import { Store } from '../src/host/store/store.js';
 import { search } from '../src/host/store/search.js';
 import { composeRecall } from '../src/host/recall/compose.js';
+import { prefilter } from '../src/host/record/curator.js';
 import { tokenize, bigramJaccard } from '../src/host/store/tokenize.js';
 
 const asJson = process.argv.includes('--json');
@@ -378,21 +379,30 @@ function measureCapture() {
   for (const item of TRANSCRIPTS) {
     const stored = runCapture(item.lines);
     const matched = item.durable.filter((want) => stored.some((got) => got.includes(want) || want.includes(got)));
+    // Whether the curator's pre-filter even offers the durable sentence to a model. The rule
+    // extractor is the decision today; the pre-filter is what a model would see instead. If the
+    // pre-filter dropped a sentence the rules also missed, model judgement could never recover
+    // it, and the layering would be decorative.
+    const seen = prefilter(item.lines.map((text, index) => ({ role: 'user', text, seq: index })));
+    const offered = item.durable.filter((want) => seen.some((candidate) => candidate.text.includes(want) || want.includes(candidate.text)));
     rows.push({
       name: item.name,
       want: item.durable.length,
       stored: stored.length,
       matched: matched.length,
+      offered: offered.length,
       spurious: stored.filter((got) => !item.durable.some((want) => got.includes(want) || want.includes(got))),
     });
   }
   const want = rows.reduce((sum, row) => sum + row.want, 0);
   const matched = rows.reduce((sum, row) => sum + row.matched, 0);
   const stored = rows.reduce((sum, row) => sum + row.stored, 0);
+  const offered = rows.reduce((sum, row) => sum + row.offered, 0);
   return {
     rows,
     recall: want === 0 ? 1 : matched / want,
     precision: stored === 0 ? 1 : matched / stored,
+    prefilterRecall: want === 0 ? 1 : offered / want,
   };
 }
 
@@ -553,7 +563,15 @@ if (asJson) {
     console.log(`  ${flag} ${row.name.padEnd(38)} want ${row.want} · matched ${row.matched} · stored ${row.stored}`);
     if (row.spurious.length > 0) console.log(`         spurious: ${row.spurious.join(' | ')}`);
   }
-  console.log(`\n  recall ${pct(capture.recall)} · precision ${pct(capture.precision)}`);
+  console.log(`\n  rules:     recall ${pct(capture.recall)} · precision ${pct(capture.precision)}`);
+  console.log(
+    `  prefilter: recall ${pct(capture.prefilterRecall)} — what a model would be offered. ` +
+      (capture.prefilterRecall >= capture.recall
+        ? 'It sees everything the rules saw, and more.'
+        : 'It drops things the rules caught, which would be a regression.'),
+  );
+  console.log('  The curator\'s own judgement is not measured here: it needs a model transport,');
+  console.log('  and a fixture standing in for one would measure the fixture.');
 
   console.log('\n=== C. The gate — approvals needed before anything is injectable ===');
   console.log(`  written ${gate.written} · status ${JSON.stringify(gate.byStatus)}`);

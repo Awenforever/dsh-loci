@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.2.0] — 2026-11-16
+
+Rules propose; a model decides. S3 of the v4 architecture.
+
+### Why the rule extractor is no longer the decision
+
+Measured (`scripts/eval-memory.mjs`, part B) on eight transcripts: the rule extractor scores
+**100% precision and 50% recall**. It never fires on chatter or on questions — and it misses half
+of what a careful reader keeps: `以后部署先走灰度`, `约定发布窗口是周三`, `永远不要在周五发版`.
+It is safe and blind, which is a fine property for a filter and a bad one for a judge.
+
+### Added — `src/host/record/`
+
+- **`prefilter`** — deliberately permissive. Its only decision is that a question cannot be a
+  constraint; everything else is handed on. Measured: **prefilter recall 100%** against the same
+  corpus, so a model sees every durable sentence the rules missed. If it dropped them, the
+  layering would be decorative.
+- **`CURATOR_CONTRACT`** — the shape the model must return, kept in code so it cannot drift from
+  the parser: one JSON object, `keep`/`drop`, `evidenceQuote` copied verbatim.
+- **`parseCuratorReply`** — the model's reply is untrusted input that will be written to a store
+  and later injected into a prompt, so every field is validated: unknown kinds rejected rather
+  than coerced, sizes checked against the store's limits, and an `evidenceQuote` that is not
+  verbatim in the transcript drops the item. A fenced JSON block is tolerated, because discarding
+  a correct decision over a formatting mistake loses real memory.
+- **`createCurationTrigger`** — the "sleep" half: one pass when a conversation is disposed.
+  Refuses delegated steps (a subagent's transcript is working state, not testimony), spends no
+  model call when there is nothing to read, and cannot throw into a disposal path where nobody is
+  left to catch it.
+- **`curatorMode: 'off' | 'session-end'`**, default `off`. The transport reuses the existing
+  `llm` injection and `completeViaHost` — one model route, two consumers — and the dispose
+  listener is registered whenever that route exists, so enabling the mode later takes effect
+  without a reload.
+
+### Trust
+
+A curated item is written through the ordinary path, with no privileged door: the same quote gate
+a tool-supplied quote passes, the same audit trail. Grounding in the user's own words is the trust
+signal, not a click — an item whose quote is verbatim lands `verified`; anything else lands as a
+`candidate` and waits for a person.
+
+### Fixed
+
+- `evidence` was passed as a bare quote string, so the gate read `evidence.quote` as undefined and
+  **every curated item silently became a candidate** — indistinguishable from "the model judged
+  nothing". It is `{quote, sessionId}` now, and a test pins the difference.
+
+---
+
+265 tests, coverage lines 88.6 / branches 69.4 / functions 81.7. `curatorMode` stays off, so this
+release changes no behaviour until it is switched on.
+
 ## [4.1.0] — 2026-11-16
 
 The memory manager can no longer be shaped by the memory it manages. S2 of the v4 architecture.
