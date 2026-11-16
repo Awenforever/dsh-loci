@@ -233,3 +233,45 @@ test('dry run decides without writing', async (t) => {
   assert.equal(result.written.length, 0);
   assert.equal(store.list({ scopeKeys: [scopes.workspace] }).total, 0);
 });
+
+// ---------------------------------------------------------------- reply contract, from real data
+//
+// One day of production produced 146 curation passes, 10 of which failed to parse (7%) and were audited
+// only as "reply has no keep array" — which cannot distinguish a model using a different key from one
+// returning a stringified apology. These pin the two changes that came out of that: accept the obvious
+// equivalent shape, and record what actually came back.
+
+const PARSE_MESSAGES = [{ role: 'user', text: '以后部署先走灰度。' }];
+
+test('a bare array is accepted as the same contract without its envelope', () => {
+  const parsed = parseCuratorReply(
+    '[{"kind":"rule","title":"部署先灰度","body":"先灰度再全量。","evidenceQuote":"以后部署先走灰度"}]',
+    { messages: PARSE_MESSAGES },
+  );
+  assert.equal(parsed.error, undefined, parsed.error);
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].kind, 'rule');
+});
+
+test('an unknown envelope fails, and says what came back', () => {
+  const parsed = parseCuratorReply('{"items":[{"kind":"rule"}]}', { messages: PARSE_MESSAGES });
+  assert.equal(parsed.error, 'reply has no keep array');
+  assert.match(parsed.rawHead, /"items"/, 'the audit line can now show the shape');
+});
+
+test('unparseable prose fails, and says what came back', () => {
+  const parsed = parseCuratorReply('I could not find anything worth keeping.', { messages: PARSE_MESSAGES });
+  assert.equal(parsed.error, 'reply is not JSON');
+  assert.match(parsed.rawHead, /could not find/);
+});
+
+test('the recorded head is bounded, so it is a shape and never a transcript', () => {
+  const parsed = parseCuratorReply(`{"keep":[${'"x",'.repeat(400)}]}`, { messages: PARSE_MESSAGES });
+  assert.ok((parsed.rawHead ?? '').length <= 160);
+});
+
+test('an empty keep list is a decision, not a failure', () => {
+  const parsed = parseCuratorReply('{"keep":[],"drop":[]}', { messages: PARSE_MESSAGES });
+  assert.equal(parsed.error, undefined);
+  assert.deepEqual(parsed.items, []);
+});

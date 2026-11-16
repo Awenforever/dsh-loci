@@ -75,7 +75,7 @@ export function createCurationTrigger({ store, config, capture, callModel, resol
       });
       if (result.error !== undefined) {
         log?.warn?.(`loci: curation skipped: ${result.error}`);
-        return { ran: false, reason: result.error };
+        return { ran: false, reason: result.error, rawHead: result.rawHead };
       }
       log?.info?.(
         `loci: curated ${result.written.length} of ${result.items.length} candidate(s) from ${session.id}`,

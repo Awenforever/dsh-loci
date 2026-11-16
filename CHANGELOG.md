@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.0.4] — 2026-11-17
+
+Production instrumentation, and the first defect it found.
+
+### `scripts/report-production.mjs` — "is it healthy right now?"
+
+One command over the live store and audit log, aggregating both halves and the clock: injections, slice
+hits, how often the rewriter fired and whether it found anything, curation attempts and outcomes, the MU
+counter with its four bands, failure events, and a single verdict line ordered by what would make the
+product *wrong* rather than merely idle. `--json` for trend analysis.
+
+Wall clock appears in it only to group activity into a window, so "running now" can be told from
+"stopped three days ago". Nothing in the product decides anything from it, and the runbook says so,
+because that distinction is the one most likely to erode.
+
+### What it found on the first run
+
+One day of real use:
+
+```
+忆  injections 2790 (2361 entries listed) · slice hits 9 · rewrite fired 57 (found 16 · empty 31 · skipped 10)
+记  curate started 146 · ran 29 · wrote 9 (21 entries)
+    reasons: nothing to read 81, ran-and-wrote-nothing 29, no candidate sentence 19,
+             "reply has no keep array" 8, not a root conversation 7, "reply is not JSON" 2
+时钟 144.46 MU · fresh 6 / active 8 / cool 5 / cold 0 · retirement off
+```
+
+**7% of curation passes were failing to parse.** Those ten are not judgements — they are the model
+transport or the parser — and the audit recorded only the shape complaint.
+
+### Fixed
+
+- **A bare JSON array is accepted** as the curator's contract without its envelope. Rejecting it cost a
+  turn's memory for a formatting choice; the items are validated exactly as before.
+- **The failing reply is recorded.** `rawHead` (collapsed, ≤160 chars) now travels with the parse error
+  into the audit line, because "reply has no keep array" cannot distinguish a different key from a
+  stringified apology, and guessing at that has cost releases before.
+
+### Docs
+
+`docs/PRODUCTION.md` — the runbook: which command answers which question, the wall-clock boundary, the
+three checks that make a plugin registration complete, the recovery steps for the non-atomic
+`remove_bundle`, the pnpm traps, and the current known gaps. `scripts/diag/deploy-integrity.mjs` proves
+that what runs is what was published (5.0.3: 62 files, zero differences).
+
+312 tests, coverage lines 90.6 / branches 70.7 / functions 85.6.
+
 ## [5.0.3] — 2026-11-17
 
 A class name that does not exist.

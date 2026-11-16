@@ -159,6 +159,28 @@ export function extractJsonObject(text) {
  * @param options - `messages` for quote verification.
  * @returns `{items, dropped, error, extracted}`.
  */
+/**
+ * What the model actually said, for the audit line when the parse fails.
+ *
+ * Truncated and whitespace-collapsed: enough to see the shape, never enough to be a transcript. A
+ * failure reason that only says "no keep array" leaves the next reader guessing, and this project has
+ * already spent several releases on diagnostics that recorded *that* something failed rather than
+ * *what* came back.
+ *
+ * @param source - the reply text.
+ * @returns up to 160 characters.
+ */
+function headOf(source) {
+  return String(source ?? '').replace(/\s+/g, ' ').slice(0, 160);
+}
+
+/**
+ * Parse the curator's reply.
+ *
+ * @param raw - the model reply.
+ * @param options - `messages`, used as the corpus a verbatim quote must appear in.
+ * @returns `{items, dropped, error, extracted}`.
+ */
 export function parseCuratorReply(raw, options = {}) {
   const messages = options.messages ?? [];
   const dropped = [];
@@ -172,16 +194,33 @@ export function parseCuratorReply(raw, options = {}) {
     // visible — a model drifting away from the contract is worth knowing about even when the
     // memory is recovered.
     const candidate = extractJsonObject(source);
-    if (candidate === undefined) return { items: [], dropped, error: 'reply is not JSON', extracted: false };
+    if (candidate === undefined) {
+      return { items: [], dropped, error: 'reply is not JSON', extracted: false, rawHead: headOf(source) };
+    }
     try {
       parsed = JSON.parse(candidate);
       extracted = true;
     } catch {
-      return { items: [], dropped, error: 'reply is not JSON', extracted: false };
+      return { items: [], dropped, error: 'reply is not JSON', extracted: false, rawHead: headOf(source) };
     }
   }
-  if (parsed === null || typeof parsed !== 'object' || !Array.isArray(parsed.keep)) {
-    return { items: [], dropped, error: 'reply has no keep array', extracted };
+  if (parsed === null || typeof parsed !== 'object') {
+    return { items: [], dropped, error: 'reply is not JSON', extracted, rawHead: headOf(source) };
+  }
+  // A bare array is the same contract without its envelope, and rejecting it costs a turn's memory for
+  // a formatting choice. Anything else keeps failing — but now says what came back, because "no keep
+  // array" alone cannot distinguish a model using a different key from one returning a string.
+  if (Array.isArray(parsed)) {
+    parsed = { keep: parsed };
+  }
+  if (!Array.isArray(parsed.keep)) {
+    return {
+      items: [],
+      dropped,
+      error: 'reply has no keep array',
+      extracted,
+      rawHead: headOf(source),
+    };
   }
   const corpus = messages.map((message) => String(message.text ?? '')).join('\n');
   const items = [];
@@ -246,7 +285,9 @@ export async function curate({ store, scope, messages, callModel, sessionId, exi
   }
   const parsed = parseCuratorReply(reply, { messages });
   if (parsed.error !== undefined) {
-    return { items: [], dropped: parsed.dropped, written: [], error: parsed.error };
+    // `rawHead` travels with the error so the audit line can say what came back, not merely that the
+    // shape was wrong.
+    return { items: [], dropped: parsed.dropped, written: [], error: parsed.error, rawHead: parsed.rawHead };
   }
   if (dryRun) return { items: parsed.items, dropped: parsed.dropped, written: [], error: undefined };
 

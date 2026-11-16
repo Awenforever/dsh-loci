@@ -29,7 +29,7 @@ import { rescueMiss } from './recall/rescue.js';
 import { composeSliceMessage } from './recall/compose.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '5.0.3';
+export const VERSION = '5.0.4';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -507,6 +507,9 @@ export function apply(ctx, rawConfig = {}) {
         ran: outcome?.ran === true,
         reason: outcome?.reason ?? null,
         written: Array.isArray(outcome?.written) ? outcome.written.length : 0,
+        // What came back, when the shape was wrong. "reply has no keep array" on its own cannot tell a
+        // different key from a stringified apology, and guessing at that has cost releases before.
+        rawHead: outcome?.rawHead ?? null,
       });
     } catch {
       /* the audit is best-effort */
