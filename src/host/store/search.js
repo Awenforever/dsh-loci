@@ -33,6 +33,8 @@ const RANK_WINDOW = 600;
 
 /** Most entity rows one query may expand. */
 const ENTITY_WINDOW = 40;
+/** Most embeddings to compare when the vector channel is doing recall rather than re-ranking. */
+const MAX_VECTOR_SCAN = 5000;
 
 /** Snippet sizes by requested detail level. */
 const DETAIL_CHARS = Object.freeze({ snippet: 240, overview: 800, full: 8192 });
@@ -192,22 +194,42 @@ function entityCandidates(store, base) {
 async function vectorCandidates(store, base, ids) {
   const channel = base.channel;
   const scores = new Map();
-  if (channel === undefined || !channel.available() || ids.length === 0) return { scores };
+  if (channel === undefined || !channel.available()) return { scores };
   const queryVector = await channel.embed([base.query]);
   if (queryVector === undefined || queryVector.length === 0) return { scores };
   const target = queryVector[0];
+
+  // Two modes, because re-ranking and recall are different jobs.
+  //
+  // Given candidate ids, this re-ranks the lexically-found entries — cheap, and it improves ordering.
+  // Given *no* ids, it searches every vector in scope, which is what makes the channel able to answer
+  // a question that shares no words with the stored sentence. Until this fallback existed the channel
+  // could only reorder lexical hits, so it could never fix the paraphrase miss it was configured for;
+  // a test that asks a wordless question would have found nothing with the channel on.
   const marks = ids.map(() => '?').join(', ');
-  const rows = store.db
-    .prepare(
-      `SELECT e.ord, e.vec, m.id FROM embedding e JOIN memory m ON m.ord = e.ord
-       WHERE e.model = ? AND m.id IN (${marks})`,
-    )
-    .all(channel.model, ...ids);
+  const rows =
+    ids.length === 0
+      ? store.db
+          .prepare(
+            `SELECT e.ord, e.vec, m.id FROM embedding e JOIN memory m ON m.ord = e.ord
+              JOIN memory_head h ON h.ord = m.ord
+             WHERE e.model = ? AND h.status = 'verified' AND m.valid_to IS NULL
+               AND m.scope_key IN (${(base.scopeKeys ?? []).map(() => '?').join(', ') || "''"})
+             LIMIT ?`,
+          )
+          .all(channel.model, ...(base.scopeKeys ?? []), MAX_VECTOR_SCAN)
+      : store.db
+          .prepare(
+            `SELECT e.ord, e.vec, m.id FROM embedding e JOIN memory m ON m.ord = e.ord
+              WHERE e.model = ? AND m.id IN (${marks})`,
+          )
+          .all(channel.model, ...ids);
+
   for (const row of rows) {
     const score = cosine(target, blobToVector(row.vec));
     if (score >= channel.minScore) scores.set(row.id, score);
   }
-  return { scores };
+  return { scores, recalled: ids.length === 0 };
 }
 
 /**
@@ -337,7 +359,12 @@ export async function search(store, request) {
     now: request.now ?? Date.now(),
     asOf: Number.isFinite(request.asOf) ? request.asOf : undefined,
     plan,
-    channel: request.channel,
+    // Defaulted here rather than required from every caller.
+    //
+    // It used to be `request.channel`, and no caller passed one — so the vector channel was configured,
+    // health-reported, and never once consulted. A capability that every call site forgets to enable is
+    // not a capability; the store already owns the channel, so the search uses it unless told otherwise.
+    channel: request.channel ?? store.embedding,
   };
   const hash = queryHash({ ...base, tags: request.tags });
   const cursor = decodeCursor(request.cursor);
@@ -369,9 +396,21 @@ export async function search(store, request) {
   if (fullText.rows.length > 0) channels.push('lexical');
   if (entity.rows.length > 0) channels.push('entity');
 
+  // With lexical candidates this re-ranks them. With none it searches the whole scope, which is the
+  // only arrangement where the channel can answer a question that shares no words with the entry.
   const vector = await vectorCandidates(store, base, [...byId.keys()]);
   timings.vector = Date.now() - mark; mark = Date.now();
   if (vector.scores.size > 0) channels.push('vector');
+  if (vector.recalled === true) {
+    // Hydrate what recall found, since nothing else contributed those rows.
+    const found = store.db
+      .prepare(
+        `SELECT m.id, m.kind, m.title, m.body, m.updated_at FROM memory m
+          WHERE m.id IN (${[...vector.scores.keys()].map(() => '?').join(', ')})`,
+      )
+      .all(...vector.scores.keys());
+    for (const row of found) add(row);
+  }
 
   const now = base.now;
   const ranked = [];

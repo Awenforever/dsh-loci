@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CORE_BUDGET_BYTES, composeRecall, selectCore, selectSlice } from '../../src/host/recall/compose.js';
+import { CORE_BUDGET_BYTES, composeRecall, composeSliceMessage, selectCore, selectSlice } from '../../src/host/recall/compose.js';
 import { createIndexSection } from '../../src/host/inject/index-section.js';
 import { DEFAULTS } from '../../src/host/config.js';
 import { openTestStore, workspaceFields } from '../helpers.mjs';
@@ -152,11 +152,41 @@ test('slice mode changes what the registered section renders', (t) => {
 
   const sliceText = build('slice').text({});
   assert.match(sliceText, /Always applies/, 'slice mode groups by why an entry is shown');
-  assert.match(sliceText, /Relevant to what you just asked/);
-  assert.match(sliceText, /回滚窗口是三十分钟/);
+  // The section deliberately holds nothing question-dependent: it renders before the turn's message
+  // exists, so a query here could only ever be the previous one. The matching entry must therefore be
+  // *absent* from the section — it is injected by `agent/pre-step`, which can see the real question.
+  assert.doesNotMatch(sliceText, /Relevant to what you just asked/);
+  assert.doesNotMatch(sliceText, /回滚窗口是三十分钟/, 'a question-dependent match does not belong here');
+  assert.match(sliceText, /more entry|more entries|1 entry in scope/, 'the pointer still tells the model it can look');
 
   const indexText = build('index').text({});
   assert.doesNotMatch(indexText, /Always applies/, 'index mode is unchanged and keeps no headings');
+});
+
+test('the query-dependent half is a separate block, produced from a supplied question', (t) => {  const { store, scopes } = openTestStore(t);
+  seed(store, scopes, [
+    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' },
+  ]);
+  const block = composeSliceMessage({
+    store,
+    scopeKeys: scopesOf(scopes),
+    scopeLabel: scopes.labels.workspace,
+    query: 'atlas 的回滚窗口多久？',
+  });
+  assert.match(block.text, /loci-recall/, 'it is a recall block, not an index');
+  assert.match(block.text, /回滚窗口是三十分钟/);
+  assert.ok(block.ids.length >= 1);
+
+  // And the two halves are exactly `composeRecall`, which is what the evaluation measures.
+  const whole = composeRecall({
+    store,
+    scopeKeys: scopesOf(scopes),
+    scopeLabel: scopes.labels.workspace,
+    query: 'atlas 的回滚窗口多久？',
+  });
+  assert.ok(whole.text.includes('Always applies'));
+  assert.ok(whole.text.includes('回滚窗口是三十分钟'));
 });
 
 test('the section degrades to the core when there is no question yet', (t) => {
@@ -188,3 +218,38 @@ test('a huge question cannot inflate the section', (t) => {
 });
 
 void CORE_BUDGET_BYTES;
+
+test('proof of use outranks recency among equally relevant entries', (t) => {
+  const { store, scopes } = openTestStore(t);
+  // Two entries that match the question identically; only their history differs.
+  const older = store.write({
+    ...workspaceFields(scopes),
+    status: 'verified',
+    trustSource: 'user',
+    kind: 'semantic',
+    title: 'deploy 走灰度，窗口三十',
+    body: '同一句话，历史更老但这句被真正查过。',
+  });
+  const newer = store.write({
+    ...workspaceFields(scopes),
+    status: 'verified',
+    trustSource: 'user',
+    kind: 'semantic',
+    title: 'deploy 走灰度，窗口三十',
+    body: '同一句话，历史更新但从未被查。',
+  });
+  // Age the older one so recency alone would put it last.
+  store.db.prepare('UPDATE memory SET updated_at = ? WHERE id = ?').run(Date.now() - 86_400_000, older.entry.id);
+  store.recordRead(older.entry.id);
+
+  const packed = selectSlice({
+    store,
+    scopeKeys: scopesOf(scopes),
+    query: 'deploy 走灰度，窗口三十',
+  });
+  assert.ok(packed.ids.includes(older.entry.id), 'the entry is admitted');
+  const readCount = store.db.prepare('SELECT read_count FROM memory_usage WHERE id = ?').get(older.entry.id)?.read_count ?? 0;
+  assert.equal(readCount, 1, 'the read was recorded, so ordering has something to order by');
+  assert.equal(packed.ids[0], older.entry.id, 'a looked-up entry outranks a merely newer one');
+  assert.ok(packed.ids.includes(newer.entry.id));
+});

@@ -26,9 +26,10 @@ import { detectHostVersion, hostLineOf } from './host-version.js';
 import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
+import { composeSliceMessage } from './recall/compose.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.13.0';
+export const VERSION = '4.14.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -56,6 +57,27 @@ function makeLogger(ctx) {
     warn: (message) => write('warn', message),
     error: (message) => write('error', message),
     debug: (message) => write('debug', message),
+  };
+}
+
+/**
+ * Append a recall block to the messages this step is about to send.
+ *
+ * Added rather than merged, because the system prompt section is already rendered by the time the
+ * waterfall runs — and because a memory that arrives as conversation content is auditable in the
+ * transcript, which a silently altered system prompt is not.
+ *
+ * @param decision - the waterfall's decision object.
+ * @param text - the recall block.
+ * @returns a new decision with one more message.
+ */
+function withRecallMessage(decision, text) {
+  return {
+    ...decision,
+    messages: [
+      ...decision.messages,
+      { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] },
+    ],
   };
 }
 
@@ -514,57 +536,75 @@ export function apply(ctx, rawConfig = {}) {
     ),
   );
 
-  // The rewrite rescue: when the synchronous slice found nothing, ask the model for other words.
+  // The per-turn recall slice, and the rewrite that backs it up when it misses.
   //
-  // This runs on every turn, not once per session, because a miss can happen on any question. It
-  // costs a model call only when the slice missed, and only once per turn — the guard lives in the
-  // rescue module and keys off the note the section left behind.
+  // This is the only surface that can do it. `systemPrompt.assemble` runs *before* this waterfall, and
+  // at that moment the turn's message is still in the agent's inbox — claimed, not yet in the session
+  // log — so the section cannot see what was just asked. It used to search by the *previous* message
+  // instead, which meant a turn that changed the subject was handed memory about the old one and
+  // nothing noticed, because a stale query that happens to match looks exactly like a hit.
   //
-  // The ordering is what makes it possible at all: `systemPrompt.assemble` runs *before* this
-  // waterfall, so the section can leave a note and this handler, which can await, acts on it in
-  // time for the same turn.
+  // So the section now renders only what does not depend on the question (rules, the count pointer, the
+  // pending notice), and everything query-dependent happens here, where the question exists.
   disposers.push(
     ctx.effect(
       () =>
         ctx.on('agent/pre-step', async (payload, next) => {
           const decision = await next();
           try {
-            if (read('recallRewrite') !== 'on-miss') return decision;
+            if (read('recallMode') !== 'slice') return decision;
             if (decision?.kind !== 'enter' || payload?.step !== 1) return decision;
             const session = payload?.agent?.session;
             if (session === undefined || (session.header?.delegationDepth ?? 0) > 0) return decision;
             if (store.injectionExemptReason(session.id) !== undefined) return decision;
-            if (modelRoute.complete === undefined) return decision;
+            const query = firstUserText(decision.messages);
+            if (query.length < 2) return decision;
+
             const scopes = resolveScopes({ sessionId: session.id, cwd: session.header?.cwd });
+            const scopeKeys = readScopeKeys(scopes, { includeGlobal: read('includeGlobal') });
+            const evaluatedAt = Date.now();
+
+            // The slice itself, synchronous and free.
+            const slice = composeSliceMessage({
+              store,
+              scopeKeys,
+              scopeLabel: scopes.labels.workspace,
+              query,
+              now: evaluatedAt,
+            });
+            if (slice.ids.length > 0) {
+              try {
+                store.audit.append('recall-slice', {
+                  sessionId: session.id,
+                  turn: payload?.turn ?? null,
+                  queryChars: query.length,
+                  tier: slice.slice.tier,
+                  ids: slice.ids,
+                  bytes: slice.bytes,
+                });
+              } catch {
+                /* diagnostic only */
+              }
+              return withRecallMessage(decision, slice.text);
+            }
+
+            // Nothing matched. Only now is a model call worth paying for.
+            if (read('recallRewrite') !== 'on-miss' || modelRoute.complete === undefined) return decision;
             const rescue = await rescueMiss({
               store,
               sessionId: session.id,
-              scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
+              scopeKeys,
               scopeKey: scopes.workspace,
               complete: modelRoute.complete,
-              now: Date.now(),
+              now: evaluatedAt,
               log,
-              // The claimed messages are the only place the current question exists at this point:
-              // the section already rendered, and the message has not been appended to the session
-              // log yet, so nothing event-driven can see it.
-              query: firstUserText(decision.messages),
+              query,
+              turnKey: payload?.turn,
             });
             if (rescue.rescued !== true || rescue.text.length === 0) return decision;
-            // Appended as its own message rather than merged into the section: the section is
-            // already rendered, and the rescue is by nature a correction to it.
-            return {
-              ...decision,
-              messages: [
-                ...decision.messages,
-                {
-                  role: 'user',
-                  source: { kind: 'user' },
-                  content: [{ type: 'text', text: rescue.text }],
-                },
-              ],
-            };
+            return withRecallMessage(decision, rescue.text);
           } catch (error) {
-            log?.debug?.(`loci: rewrite rescue failed: ${String(error?.message ?? error)}`);
+            log?.debug?.(`loci: recall slice failed: ${String(error?.message ?? error)}`);
             return decision;
           }
         }),

@@ -543,7 +543,10 @@ window.__ModuleLoader__.load({
           h('span', { className: 'loci-card-mark', 'aria-hidden': true }, h(LociMark, { size: 13 })),
           h('span', { className: 'loci-card-title' }, t('card.title')),
           h(VersionLabel, { t, update: fresh ?? update.data, onCheck: check, checking }),
-          h('span', { className: `loci-card-dot ${dotClass}`.trim(), 'aria-hidden': true }),
+        // Only when there is something to say: amber for pending or disputed, red for an error. The
+        // "all clear" state used the brand accent, which in a dark-accent theme is a coloured dot
+        // indistinguishable from decoration — a signal that is always on is not a signal.
+        dotClass === '' ? null : h('span', { className: `loci-card-dot ${dotClass}`, 'aria-hidden': true }),
           h('span', { className: 'loci-card-meta' }, stamp ? `${t('card.updated')} ${stamp}` : ''),
         ),
         stats.error !== undefined

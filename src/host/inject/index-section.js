@@ -16,7 +16,7 @@
  * @module dsh-loci/inject/index-section
  */
 import { search } from '../store/search.js';
-import { composeRecall, recordLastSlice } from '../recall/compose.js';
+import { composeStable } from '../recall/compose.js';
 import { indexTitle, renderSafe } from './sanitize.js';
 
 /** Stable section name; other plugins can target it. */
@@ -236,38 +236,19 @@ export function createIndexSection(options) {
     const context = resolveContext(assembly);
     if (context === undefined) return '';
 
-    // Slice mode: a small always-on core plus what this question actually needs, instead of the
-    // same fixed index on every request. `composeRecall` is synchronous on purpose — a prompt
-    // section's `text` cannot await, and its context carries no session and no messages.
+    // Slice mode. The section renders only the part that does not depend on the current question;
+    // the query-dependent slice is injected by `agent/pre-step`, which is the only surface that can
+    // see what was actually just asked (see `composeStable`).
+    //
+    // Everything here is synchronous by necessity: a prompt section's `text` cannot await, and its
+    // context carries no session and no messages.
     if (config('recallMode') === 'slice') {
-      const query = context.lastUserText ?? '';
-      const composed = composeRecall({
+      const composed = composeStable({
         store,
         scopeKeys: context.scopeKeys,
         scopeLabel: context.scopeLabel,
-        query,
         now: Date.now(),
       });
-      // Leave a note for `agent/pre-step`, which runs right after assembly and can await a model.
-      // This is the handoff that makes query rewriting possible at all: the section itself cannot
-      // ask the model anything.
-      recordLastSlice(context.sessionId, {
-        tier: composed.slice.tier,
-        query,
-        ids: composed.ids,
-      });
-      // What the render actually received, as its own fact. Without it, an empty query in the
-      // rescue is attributable to the tracker, the section, or the handoff — three different fixes.
-      try {
-        store.audit.append('slice-render', {
-          sessionId: context.sessionId,
-          queryChars: query.length,
-          tier: composed.slice.tier,
-          bytes: composed.bytes,
-        });
-      } catch {
-        /* diagnostic only */
-      }
       record(context, {
         bytes: composed.bytes,
         listed: composed.ids.length,

@@ -16,7 +16,6 @@
  *   section already rendered.
  * @module dsh-loci/recall/rescue
  */
-import { lastSliceOf } from './compose.js';
 import { rewriteQuery } from './rewrite.js';
 import { search } from '../store/search.js';
 import { indexTitle, renderSafe } from '../inject/sanitize.js';
@@ -67,32 +66,39 @@ function renderRescue(hits, queries) {
  *   `enabled`.
  * @returns `{rescued, text, ids, bytes, queries, error}`.
  */
-export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, complete, now, log, enabled = true, query: explicitQuery }) {
+export async function rescueMiss({
+  store,
+  sessionId,
+  scopeKeys,
+  scopeKey,
+  complete,
+  now,
+  log,
+  enabled = true,
+  query: explicitQuery,
+  turnKey,
+}) {
   const skipped = { rescued: false, text: '', ids: [], bytes: 0, queries: [], error: undefined };
   if (enabled !== true) return skipped;
   if (typeof complete !== 'function') return { ...skipped, error: 'no model route' };
   if (!Array.isArray(scopeKeys) || scopeKeys.length === 0) return skipped;
 
-  const note = lastSliceOf(sessionId);
-  if (note === undefined) return skipped;
-  // The point of the rescue is the case the synchronous path could not answer.
-  if (note.tier !== 'none') return skipped;
-
-  // The question comes from the caller, not from the note.
+  // The question comes from the caller.
   //
-  // This was the real defect behind three releases of "the rescue got an empty string". The prompt
-  // section renders inside `preStep`, and at that moment the turn's message is still in the agent's
-  // inbox — it has been claimed but not yet appended to the session log. So no event-based tracker
-  // and no capture buffer could see it: both are fed by `session/event`, which fires after the
-  // assembly. The waterfall *is* handed the claimed messages, so it is the only surface that knows
-  // what was just asked.
-  const query = typeof explicitQuery === 'string' ? explicitQuery : note.query;
+  // The prompt section renders inside `preStep`, and at that moment the turn's message is still in the
+  // agent's inbox — claimed, not yet appended to the session log — so no event-driven tracker and no
+  // capture buffer can see it. The waterfall *is* handed the claimed messages, which is why the caller
+  // is the only thing that can supply this, and why the section no longer carries anything that
+  // depends on it.
+  const query = typeof explicitQuery === 'string' ? explicitQuery : '';
   if (query.trim().length < 2) {
     audit(store, 'recall-rewrite-skip', { sessionId, reason: 'query too short', queryChars: query.length });
     return { ...skipped, error: 'query too short' };
   }
 
-  const key = `${sessionId}:${note.at}`;
+  // One attempt per turn, keyed by the turn rather than by a note's timestamp: the caller knows which
+  // turn it is on, and two steps of one turn must not each pay for a rewrite.
+  const key = `${sessionId}:${String(turnKey ?? '')}`;
   if (attempted.has(key)) return skipped;
   markAttempted(key);
 

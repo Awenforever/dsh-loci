@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.14.0] — 2026-11-16
+
+The section stops answering a question it cannot see, and the vector channel stops being decorative.
+
+### 忆的时机：只救"没找到"，不救"找错了"
+
+`systemPrompt.assemble` runs inside `preStep`, and at that moment the turn's message is still in the
+agent's inbox. So the section could only ever search by the **previous** message. A turn that changed
+the subject was handed memory about the old topic, and nothing detected it — a stale query that happens
+to match looks exactly like a hit, and the rescue only fired on `tier === 'none'`.
+
+That is a correctness bug, not a tuning issue, and the fix is structural: **the section no longer carries
+anything question-dependent.** It renders rules, the count pointer and the pending notice. The
+query-dependent slice is composed by `agent/pre-step`, which is handed the claimed messages, and is
+injected as its own message. The rewrite rescue now backs up that slice directly instead of consulting a
+handoff note, so `recordLastSlice`/`lastSliceOf` are gone rather than left as unused plumbing.
+
+### 忆哪些：使用数据回流排序
+
+`selectSlice` now joins `memory_usage` and orders by `score`, then `reads`, then `updatedAt`.
+
+`reads` only counts upward, deliberately: it means "this was injected and somebody then looked it up",
+which is the only evidence available that an entry earned its bytes. `injections` is **not** used against
+an entry — an entry injected and never opened is usually one whose title was already the whole answer, and
+penalising that would delete the best entries first.
+
+### 忆哪些：向量通道此前是装饰品
+
+Two separate breaks, both found by asking what a wordless question does:
+
+- `base.channel = request.channel`, and **no caller ever passed one**. The channel was configured,
+  health-reported in the panel, and never consulted once. `search` now defaults to `store.embedding`.
+- `vectorCandidates` re-scored **only the ids lexical search had already found**, so it was a re-ranker
+  and could never recall anything new — the exact gap it was configured to close. It now searches the
+  whole scope when there are no lexical candidates.
+
+Proven end to end against a stub `/embeddings` server: an entry titled `发布必须先灰度` is found by the
+query `rollout canary first?`, which shares no word with it, with `channels: ["vector"]`.
+
+**Honest boundary:** the channel still needs an endpoint (`vectorMode`, `vectorEndpoint`, `vectorModel`)
+and `maintenanceMode: sweep` for the backfill. The slice cannot use it at all — a prompt section is
+synchronous — so vectors serve the rescue and `loci_search`.
+
+### 新文档
+
+`docs/MEMORY-UNITS.md` — the memory-unit model for elastic compaction: causal time rather than wall clock,
+a signed position per memory, log decay on both sides of equilibrium, and the criteria that make the
+design testable. No implementation; the one number it cannot fix without measurement is named as such.
+
+### 状态灯
+
+The dot beside the version is a status light with three states. Its "all clear" state used the brand
+accent, which in this theme is dark enough to read as decoration — a signal that is always on is not a
+signal. It now appears only for pending/disputed (amber) or an error (red).
+
+297 tests, coverage lines 89.0 / branches 70.1 / functions 83.2.
+
 ## [4.13.0] — 2026-11-16
 
 Session summaries are off by default: the curator replaced them.
