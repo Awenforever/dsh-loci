@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.10.0] — 2026-11-16
+
+Curation gets the transcript the events actually carry.
+
+### Where 4.9.0 got to
+
+Curation fires reliably now — six runs on `step/end`, every one with `hasRoute: true` — and every one
+reported **`nothing to read`**.
+
+### The cause is the same filter, one surface later
+
+`capture` buffers only `user/message` events whose `source.kind` is `user`. That is right for durable
+extraction: an injected prompt is not something the person said. It is wrong for anything that needs
+the conversation, and the histogram already showed why — of sixteen `user/message` events, the source
+kinds were `time-context`, `agent-instructions`, `runtime-context`, `skill-catalog`, `tool-jobs` and
+only one `user`.
+
+The same filter produced the empty recall question two releases ago. This is the second time it has
+been the answer, which is worth stating plainly: **one filter, two consumers with opposite needs.**
+
+### Changed
+
+- **\`index.js\` keeps a bounded transcript per session** from the events themselves — user and
+  assistant messages, forty each, no source filter — and passes it to the curation trigger, which
+  prefers it over the capture buffer.
+- **\`capture\` is untouched.** Its filter is correct for its own job, and widening it would make
+  injected prompts eligible for durable extraction.
+
+293 tests, coverage lines 89.1 / branches 70.2 / functions 83.0.
+
 ## [4.9.0] — 2026-11-16
 
 Curation triggers on `step/end`, and only a real run counts as done.
