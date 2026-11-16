@@ -271,6 +271,11 @@ export function recordLastSlice(sessionId, entry) {
   lastSlice.set(sessionId, { ...entry, at: Date.now() });
 }
 
+/** Clear the handoff; used by tests that simulate several sessions. */
+export function resetSliceNotes() {
+  lastSlice.clear();
+}
+
 /**
  * What the most recent render for this session produced.
  * @param sessionId - the session.
