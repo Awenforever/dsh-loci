@@ -4,6 +4,74 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.0.0] — 2026-11-16
+
+The section is composed per question instead of being a fixed list. This is the first release of
+the v4 architecture (`docs/ARCHITECTURE-V4.md`).
+
+### Changed — what the model is shown
+
+The memory section used to be a fixed index of the first N entries: **the same bytes on every
+request**, whatever the store held and whatever was being asked. Measured with a 40-fact corpus
+that grew to 600 (`scripts/eval-memory.mjs`):
+
+| store | section | entry in section | reworded question found | reworded: nothing at all |
+|---|---|---|---|---|
+| 40 | 3278 B | 87.5% | **0%** | 92.5% |
+| 200 | 3281 B | 17.5% | **0%** | 92.0% |
+| 600 | 3281 B | 12.2% | **0%** | 91.7% |
+
+The new section has three parts, each with a job:
+
+- **core** — rules and pinned facts only, hard 500 B cap. What a person would put on a sticky
+  note. (A first draft also admitted every `semantic` entry ordered by recency, which put six
+  pieces of unrelated filler at the top of the prompt under the heading "Always applies".)
+- **slice** — entries retrieved from the user's current message, capped at 1200 B. Two tiers: a
+  strict pass requiring a contiguous 3-character run (the same admission the full search uses,
+  which is what keeps precision), and a loose pass that only runs when the strict pass returns
+  nothing.
+- **pointer** — `>N more entries in scope; loci_search looks them up.` Without it a slice looks
+  like the whole store and the model never thinks to search.
+
+Same corpus, same questions, after:
+
+| store | section | entry in section | reworded question found | reworded: nothing at all |
+|---|---|---|---|---|
+| 40 | 932 B | 100% | **70.0%** | **0%** |
+| 200 | 969 B | 100% | **62.0%** | **0%** |
+| 600 | 966 B | 100% | **60.1%** | **0%** |
+
+Bytes fall ~70%, natural-phrasing recall stops degrading as the store grows, and a reworded
+question goes from never found to found about two thirds of the time.
+
+### Fixed
+
+- **The section could be empty exactly when it should have spoken.** The early return fired when
+  the core and slice were both empty, so "the store holds an entry you did not match" produced
+  byte-identical output to "there is no memory at all" — the one case the pointer exists for.
+  Silence now requires an empty store *and* nothing pending.
+- **The loose tier scanned the newest 400 rows.** The window filled with whatever was written most
+  recently, so an older matching entry was never examined; found-rate fell to 18% at 600 entries
+  with half the questions matching nothing. The filter is in SQL by term now.
+- The pending-review notice is carried into the new section. Dropping it would have removed the
+  only line that distinguishes "you never saved that" from "I saved it and it is waiting for you".
+
+### Added
+
+- `recallMode: 'slice' | 'index'`, default `slice`. `index` keeps the previous behaviour as a
+  rollback, and one test pins it so the old path cannot rot unnoticed.
+- `Capture.lastUserText(sessionId)` — a prompt section's `text` receives only `{scope, signal}`
+  and cannot see the conversation, so the question has to be handed in. Capture already buffers
+  user messages and does so regardless of `captureMode`.
+
+### Known limitation, measured not assumed
+
+About 40% of reworded questions still miss at 600 entries, and no admission threshold fixes it:
+`atlas 要发新版本` and `atlas 服务上线先走灰度` share exactly one token. Semantic retrieval needs
+an embedding channel (`vectorMode` exists, the recall path does not use it yet).
+
+238 tests, coverage lines 88.2 / branches 68.9 / functions 81.4.
+
 ## [3.9.0] — 2026-11-16
 
 `doctor` can now answer "is memory actually reaching the model".

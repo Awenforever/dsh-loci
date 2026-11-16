@@ -55,6 +55,18 @@ export const DEFAULTS = Object.freeze({
   indexLineMaxChars: 120,
   /** 'off' | 'session-start' — one bounded assist block on the first step. */
   recallAssist: 'off',
+  /**
+   * How the memory section is composed.
+   *
+   * `slice` — a small always-on core of rules plus a slice retrieved from the user's current
+   * message, capped and followed by a "N more" pointer. `index` — the previous behaviour: a
+   * fixed list of the first N entries, the same bytes on every request whatever was asked.
+   *
+   * Measured (`scripts/eval-memory.mjs`): slice spends 0.9 KB instead of 3.3 KB, keeps
+   * natural-phrasing recall at 100% while the index falls from 87% to 12% as the store grows,
+   * and recovers 60–70% of reworded questions that the index could not find at all.
+   */
+  recallMode: 'slice',
   /** Byte ceiling for that assist block. */
   recallAssistBytes: 512,
   /** 'rules' | 'off' — deterministic durable-fact capture at turn end. */
@@ -137,6 +149,7 @@ export const DEFAULTS = Object.freeze({
 export const ENUMS = Object.freeze({
   defaultScope: ['auto', 'session', 'workspace', 'project', 'global'],
   recallAssist: ['off', 'session-start'],
+  recallMode: ['slice', 'index'],
   captureMode: ['rules', 'off'],
   extractMode: ['off', 'on', 'turn', 'session'],
   maintenanceMode: ['sweep', 'off'],
@@ -154,6 +167,7 @@ function buildSchema() {
     indexMaxEntries: z.number().step(1).min(1).max(2000).default(DEFAULTS.indexMaxEntries).volatile(),
     indexLineMaxChars: z.number().step(1).min(40).max(400).default(DEFAULTS.indexLineMaxChars).volatile(),
     recallAssist: z.union(ENUMS.recallAssist).default(DEFAULTS.recallAssist).volatile(),
+    recallMode: z.union(ENUMS.recallMode).default(DEFAULTS.recallMode).volatile(),
     recallAssistBytes: z.number().step(1).min(128).max(2048).default(DEFAULTS.recallAssistBytes).volatile(),
     captureMode: z.union(ENUMS.captureMode).default(DEFAULTS.captureMode).volatile(),
     autoVerifyCaptured: z.boolean().default(DEFAULTS.autoVerifyCaptured).volatile(),

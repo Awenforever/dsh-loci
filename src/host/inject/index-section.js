@@ -16,6 +16,7 @@
  * @module dsh-loci/inject/index-section
  */
 import { search } from '../store/search.js';
+import { composeRecall } from '../recall/compose.js';
 import { indexTitle, renderSafe } from './sanitize.js';
 
 /** Stable section name; other plugins can target it. */
@@ -234,6 +235,28 @@ export function createIndexSection(options) {
   const render = (assembly) => {
     const context = resolveContext(assembly);
     if (context === undefined) return '';
+
+    // Slice mode: a small always-on core plus what this question actually needs, instead of the
+    // same fixed index on every request. `composeRecall` is synchronous on purpose — a prompt
+    // section's `text` cannot await, and its context carries no session and no messages.
+    if (config('recallMode') === 'slice') {
+      const query = context.lastUserText ?? '';
+      const composed = composeRecall({
+        store,
+        scopeKeys: context.scopeKeys,
+        scopeLabel: context.scopeLabel,
+        query,
+        now: Date.now(),
+      });
+      record(context, {
+        bytes: composed.bytes,
+        listed: composed.ids.length,
+        hidden: Math.max(0, composed.remaining - composed.ids.length),
+        ids: composed.ids,
+      });
+      return composed.text;
+    }
+
     // Trust changes bump `index_rev`; the date and the config are part of the key
     // so that an entry expiring at midnight or a budget change is not served from
     // a stale cache in a long-lived process.

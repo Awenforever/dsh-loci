@@ -23,7 +23,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '3.9.0';
+export const VERSION = '4.0.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -156,6 +156,10 @@ export function apply(ctx, rawConfig = {}) {
         cwd: scopes.cwd,
         scopeKeys: readScopeKeys(scopes, { includeGlobal: read('includeGlobal') }),
         scopeLabel: `workspace:${scopes.labels.workspace}`,
+        // What the slice retrieves against. `PromptSection.text` receives only `{scope,
+        // signal}`, so the question has to be handed in from here; capture already buffers
+        // user messages, and it buffers regardless of `captureMode`.
+        lastUserText: capture?.lastUserText?.(session.id),
       };
     },
   });

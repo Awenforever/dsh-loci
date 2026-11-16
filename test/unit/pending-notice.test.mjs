@@ -87,7 +87,9 @@ test('the notice stays inside the footer reserve even at the byte ceiling', (t) 
 test('the render cache is invalidated when the pending count changes', async (t) => {
   const { createIndexSection } = await import('../../src/host/inject/index-section.js');
   const { store, scopes } = openTestStore(t);
-  const config = (key) => effectiveConfig({})[key];
+  // Pinned to `index`: this test is about the caching that mode does. `slice` composes per
+  // request and has no cache to invalidate, so leaving it on the default would test nothing.
+  const config = (key) => ({ ...effectiveConfig({}), recallMode: 'index' })[key];
   const section = createIndexSection({
     store,
     config,

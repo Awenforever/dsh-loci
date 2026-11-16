@@ -376,6 +376,28 @@ export class Capture {
   }
 
   /**
+   * The text of the last user message for a session.
+   *
+   * The prompt section cannot see the conversation — `PromptSection.text` receives only
+   * `{scope, signal}` — so retrieval has to be handed the current question. This is where it
+   * comes from: the capture layer already buffers user messages, so nothing new is stored.
+   *
+   * @param sessionId - the session.
+   * @returns the concatenated text of the newest user message, or `undefined`.
+   */
+  lastUserText(sessionId) {
+    const buffer = this.sessions.get(sessionId);
+    if (buffer === undefined) return undefined;
+    for (let i = buffer.messages.length - 1; i >= 0; i -= 1) {
+      const message = buffer.messages[i];
+      if (message.role !== 'user') continue;
+      const text = String(message.text ?? '').trim();
+      return text.length === 0 ? undefined : text;
+    }
+    return undefined;
+  }
+
+  /**
    * Check that a quote really occurred in this session's user messages.
    * @param quote - claimed verbatim quote.
    * @param options - `sessionId`.

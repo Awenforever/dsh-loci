@@ -22,7 +22,6 @@
  * channel and is the next stage.
  * @module dsh-loci/recall
  */
-import { search } from '../store/search.js';
 import { renderSafe, indexTitle } from '../inject/sanitize.js';
 
 /** Bytes allowed for the always-on core. */
@@ -103,71 +102,101 @@ export function selectCore({ store, scopeKeys, budgetBytes = CORE_BUDGET_BYTES, 
 }
 
 /**
- * Retrieve the slice relevant to one message.
+ * Retrieve the slice relevant to one message — synchronously.
  *
- * Two tiers, because "no match" and "matched under a different wording" were being reported as
- * the same thing: the strict pass is the normal retrieval, and only when it returns nothing does
- * the loose pass allow entries that merely share a content term. The loose tier is labelled in
- * the section so a reader can tell the difference.
+ * Two tiers, because "nothing matches" and "matches under a different wording" were previously
+ * reported as the same result: the strict pass requires a contiguous 3-character stretch of the
+ * question inside the entry (the admission rule the full search uses, which is what keeps
+ * precision), and only when that returns nothing does the loose pass accept entries that merely
+ * share a term.
+ *
+ * Synchronous by necessity: this runs inside the prompt section, which cannot await.
  *
  * @returns `{lines, ids, bytes, tier}` where tier is `'strict' | 'loose' | 'none'`.
  */
-export async function selectSlice({
-  store,
-  scopeKeys,
-  query,
-  budgetBytes = SLICE_BUDGET_BYTES,
-  limit = SLICE_MAX_ENTRIES,
-  now = Date.now(),
-}) {
+export function selectSlice({ store, scopeKeys, query, budgetBytes = SLICE_BUDGET_BYTES, limit = SLICE_MAX_ENTRIES, now = Date.now() }) {
   const empty = { lines: [], ids: [], bytes: 0, tier: 'none', topics: [] };
   if (typeof query !== 'string' || query.trim().length === 0) return empty;
   if (!Array.isArray(scopeKeys) || scopeKeys.length === 0) return empty;
 
-  const result = await search(store, {
-    query,
-    scopeKeys,
-    statuses: ['verified'],
-    limit,
-    detail: 'snippet',
-    now,
-  });
-  if (result.hits.length > 0) {
-    const { lines, ids, bytes } = pack(result.hits, budgetBytes, now);
-    return { lines, ids, bytes, tier: 'strict', topics: [] };
+  const terms = queryTerms(query);
+  if (terms.length === 0) return empty;
+  const runs = queryRuns(query);
+
+  const candidates = scanScope({ store, scopeKeys, terms });
+  const strict = candidates
+    .filter((item) => runs.some((run) => run.length >= 3 && hasRun(item, run)))
+    .sort(byScore);
+  if (strict.length > 0) {
+    const packed = pack(strict.slice(0, limit), budgetBytes, now);
+    return { ...packed, tier: 'strict', topics: [] };
   }
 
-  // Loose tier: the question shared a term with stored entries but not a contiguous run. This
-  // is what recovers `回滚窗口多久` when the entry is `回滚窗口是三十分钟` but the wording
-  // drifted; it does not recover a query that shares only a topic name, and the topics list
-  // below is how that case is reported instead of vanishing.
-  const loose = await searchLoose({ store, scopeKeys, query, limit, now });
+  const loose = candidates.filter((item) => item.score > 0).sort(byScore);
   if (loose.length > 0) {
-    const { lines, ids, bytes } = pack(loose, budgetBytes, now);
-    return { lines, ids, bytes, tier: 'loose', topics: [] };
+    const packed = pack(loose.slice(0, limit), budgetBytes, now);
+    return { ...packed, tier: 'loose', topics: [] };
   }
 
-  return { ...empty, topics: queryTerms(query).slice(0, 3) };
+  return { ...empty, topics: terms.slice(0, 3) };
+}
+
+/** Highest score first, then most recently updated. */
+function byScore(a, b) {
+  return b.score - a.score || b.updatedAt - a.updatedAt;
+}
+
+/** Whether a title or body contains a contiguous stretch of `run`. */
+function hasRun(item, run) {
+  for (let i = 0; i + 3 <= run.length; i += 1) {
+    const piece = run.slice(i, i + 3);
+    if (item.title.includes(piece) || item.body.includes(piece)) return true;
+  }
+  return false;
+}
+
+/** CJK stretches of the query, longest first, for the contiguous-run test. */
+export function queryRuns(query) {
+  const runs = String(query ?? '')
+    .toLowerCase()
+    .replace(/[^\u4e00-\u9fff]+/g, ' ')
+    .split(/\s+/)
+    .filter((run) => run.length >= 3);
+  return runs.sort((a, b) => b.length - a.length);
 }
 
 /**
- * Second-chance retrieval: entries sharing any content term with the query.
+ * Content terms of a message: Latin words of 3+ characters and CJK bigrams.
  *
- * The filter is in SQL on purpose. A first version scanned the newest 400 rows and scored them
- * in JS, which looked fine on a small store and collapsed on a large one: the window filled with
- * whatever had been written most recently, so an older entry that actually matched was never
- * examined — measured as `hard-found` falling to 18% at 600 entries with half the questions
- * finding nothing at all. Recency has no business deciding what a substring search looks at.
+ * Bigrams rather than words, because Chinese has no spaces: the terms are what a substring scan
+ * can look for, and the contiguous-run test above is what keeps that scan from matching
+ * scattered characters.
  */
-async function searchLoose({ store, scopeKeys, query, limit, now }) {
-  const terms = queryTerms(query);
-  if (terms.length === 0) return [];
+export function queryTerms(query) {
+  const text = String(query ?? '').toLowerCase();
+  const terms = new Set();
+  for (const word of text.match(/[a-z][a-z0-9_-]{2,}/g) ?? []) terms.add(word);
+  for (const run of text.replace(/[^\u4e00-\u9fff]+/g, ' ').split(/\s+/)) {
+    for (let i = 0; i + 2 <= run.length; i += 1) terms.add(run.slice(i, i + 2));
+  }
+  return [...terms].sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Every entry in scope that shares at least one term, scored.
+ *
+ * The filter is in SQL. A first version scanned the newest 400 rows and scored them in JS,
+ * which looked fine on a small store and collapsed on a large one: the window filled with
+ * whatever had been written most recently, so an older entry that actually matched was never
+ * examined — measured as found-rate falling to 18% at 600 entries with half the questions
+ * finding nothing.
+ */
+function scanScope({ store, scopeKeys, terms }) {
   const marks = scopeKeys.map(() => '?').join(', ');
-  // One OR clause per term, across title and body.
   const likeClause = terms.map(() => '(lower(m.title) LIKE ? OR lower(m.body) LIKE ?)').join(' OR ');
   const params = [];
   for (const term of terms) {
-    const like = `%${term}%`;
+    const like = '%' + term + '%';
     params.push(like, like);
   }
   const rows = store.db
@@ -182,7 +211,7 @@ async function searchLoose({ store, scopeKeys, query, limit, now }) {
     )
     .all(...scopeKeys, ...params);
 
-  const scored = [];
+  const out = [];
   for (const row of rows) {
     const title = String(row.title ?? '').toLowerCase();
     const body = String(row.body ?? '').toLowerCase();
@@ -191,28 +220,17 @@ async function searchLoose({ store, scopeKeys, query, limit, now }) {
       if (title.includes(term)) score += 2;
       else if (body.includes(term)) score += 1;
     }
-    if (score > 0) scored.push({ row, score });
+    if (score === 0) continue;
+    out.push({
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      body,
+      score,
+      updatedAt: Number(row.updated_at ?? 0),
+    });
   }
-  scored.sort((a, b) => b.score - a.score || Number(b.row.updated_at ?? 0) - Number(a.row.updated_at ?? 0));
-  return scored.slice(0, limit).map((item) => ({
-    id: item.row.id,
-    kind: item.row.kind,
-    title: item.row.title,
-    updatedAt: item.row.updated_at ?? now,
-  }));
-}
-
-/** Content terms of a message: CJK bigrams and Latin words, longest first, deduplicated. */
-export function queryTerms(query) {
-  const text = String(query ?? '').toLowerCase();
-  const terms = new Set();
-  for (const word of text.match(/[a-z][a-z0-9_-]{2,}/g) ?? []) terms.add(word);
-  const cjk = text.replace(/[^\u4e00-\u9fff]/g, ' ');
-  for (const run of cjk.split(/\s+/)) {
-    if (run.length < 2) continue;
-    for (let i = 0; i + 2 <= run.length; i += 1) terms.add(run.slice(i, i + 2));
-  }
-  return [...terms].filter((term) => term.length >= 2).sort((a, b) => b.length - a.length);
+  return out;
 }
 
 /** Fit hits into a byte budget. */
@@ -223,7 +241,7 @@ function pack(hits, budgetBytes, now) {
   for (const hit of hits) {
     const line = renderLine(
       { id: hit.id, kind: hit.kind, title: hit.title },
-      formatDay(hit.updatedAt ?? now),
+      formatDay(hit.updatedAt || now),
     );
     const size = lineBytes(line) + 1;
     if (bytes + size > budgetBytes) break;
@@ -241,7 +259,7 @@ function pack(hits, budgetBytes, now) {
  *   `budgets`, `now`.
  * @returns `{text, bytes, core, slice, ids}` plus the counts the pointer reports.
  */
-export async function composeRecall({
+export function composeRecall({
   store,
   scopeKeys,
   scopeLabel,
@@ -251,7 +269,7 @@ export async function composeRecall({
   now = Date.now(),
 }) {
   const core = selectCore({ store, scopeKeys, budgetBytes: coreBudgetBytes, now });
-  const slice = await selectSlice({ store, scopeKeys, query, budgetBytes: sliceBudgetBytes, now });
+  const slice = selectSlice({ store, scopeKeys, query, budgetBytes: sliceBudgetBytes, now });
 
   const shown = new Set([...core.ids, ...slice.ids]);
   const scoped = store.db
@@ -263,8 +281,13 @@ export async function composeRecall({
     .get(...scopeKeys).n;
   const remaining = Math.max(0, Number(scoped) - shown.size);
 
-  if (core.lines.length === 0 && slice.lines.length === 0) {
-    return { text: '', bytes: 0, core, slice, ids: [], remaining: Number(scoped) };
+  const pending = store.countPending(scopeKeys, {});
+  // Silence is only correct when there is genuinely nothing: no verified entry in scope and
+  // nothing awaiting review. Returning early on "core and slice are both empty" made the one
+  // case the pointer exists for — a question that matched nothing while the store holds
+  // relevant entries — indistinguishable from an empty store.
+  if (core.lines.length === 0 && slice.lines.length === 0 && Number(scoped) === 0 && pending === 0) {
+    return { text: '', bytes: 0, core, slice, ids: [], remaining: 0 };
   }
 
   const parts = [];
@@ -281,6 +304,14 @@ export async function composeRecall({
   if (remaining > 0) {
     parts.push(
       `>${remaining} more ${remaining === 1 ? 'entry' : 'entries'} in scope; loci_search looks them up.`,
+    );
+  }
+  // The pending notice is the one line that makes verified-only injection legible from inside
+  // the conversation: without it "you never saved that" and "I saved it and it is waiting for
+  // you" are indistinguishable to both the model and the person reading the answer.
+  if (pending > 0) {
+    parts.push(
+      `${pending} item(s) await review and are deliberately absent here — a person approves them in Memory → Review (/loci review); say so if the user expects them.`,
     );
   }
 
