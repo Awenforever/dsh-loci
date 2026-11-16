@@ -496,7 +496,6 @@ window.__ModuleLoader__.load({
       const verified = Number(byStatus.verified ?? 0);
       const pending = Number(data?.pendingCandidates ?? byStatus.candidate ?? 0);
       const disputed = Number(data?.disputed ?? byStatus.disputed ?? 0);
-      const entries = Number(data?.heads ?? 0);
       const injection = data?.lastInjection ?? null;
       const indexBytes = Number(injection?.bytes ?? 0);
       const budget = Number(config.data?.config?.sectionMaxBytes ?? 0);
@@ -551,7 +550,7 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'loci-card-empty' }, stats.error)
           : data === undefined
             ? h('div', { className: 'loci-card-empty' }, t('panel.loading'))
-            : entries === 0 && pending === 0 && disputed === 0
+            : verified === 0 && pending === 0 && disputed === 0
               ? h(
                   'div',
                   null,
@@ -567,7 +566,9 @@ window.__ModuleLoader__.load({
               h('span', { className: 'loci-card-known-text' }, latest),
             )
           : null,
-        data !== undefined && entries > 0 && budget > 0
+        // Only when a prompt has actually been assembled since the store was last reset: an empty
+        // gauge labelled `0 / 3584 B` reads as a measurement when it is really an absence of one.
+        data !== undefined && injection !== null && budget > 0
           ? h(
               'div',
               { className: 'loci-card-barline', title: t('card.budgetTip') },
