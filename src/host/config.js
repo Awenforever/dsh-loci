@@ -117,8 +117,18 @@ export const DEFAULTS = Object.freeze({
   captureDebounceMs: 30000,
   /** Longest sentence the statement extractor will keep. */
   captureMaxPerStatementChars: 200,
-  /** Write one episodic session summary when a root agent is disposed. */
-  summaryOnDispose: true,
+  /**
+   * Write one episodic session summary when a root agent is disposed.
+   *
+   * Off by default since 4.13.0: the model-driven curator replaced it. A summary was an episodic
+   * candidate — never reviewable (episodic is not in REVIEWABLE_KINDS) and never injectable (only
+   * verified entries are) — so it accumulated rows that could not act. Measured on `invictus`: 40 of
+   * 51 stored rows were summaries, and five more appeared within a minute of a full reset.
+   *
+   * Turning it on is still supported for the case it serves: a chronological record of what happened
+   * in a session, read in the panel rather than injected.
+   */
+  summaryOnDispose: false,
   /**
    * 'off' | 'on' | 'turn' | 'session' — background extraction of preferences stated
    * in passing. 'on' and 'turn' mean one pass per turn (noisy: one proposal per

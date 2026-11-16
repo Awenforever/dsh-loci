@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.13.0] — 2026-11-16
+
+Session summaries are off by default: the curator replaced them.
+
+### Why
+
+A summary was written as an **episodic candidate**. Episodic is not in `REVIEWABLE_KINDS`, so it could
+never be approved; and only `verified` entries are injected, so it could never be recalled either. Every
+summary was therefore a row that could not act — and there were a lot of them: 40 of the 51 stored rows
+on `invictus`, plus five more within a minute of a full reset.
+
+The curator does the job the summary was standing in for, and does it on content that can act: a verbatim
+sentence, a kind, and a scope, which is exactly what a recall needs.
+
+### Changed
+
+- **`summaryOnDispose` defaults to `false`.**
+- **The capability stays.** Somebody may genuinely want a chronological record of a session, read in the
+  panel rather than injected; setting it to `true` still writes one.
+
+### A test that had been passing for the wrong reason
+
+Writing the regression test for the *on* path exposed that the shared `seed()` helper omitted `files`,
+which the summary write reads. The write threw, the throw was swallowed by the `catch` that logs a
+warning, and every existing test only ever exercised the paths that return before that line. So the
+suite had a green test for a write path that could not have worked with that seed — it just never got
+there. The helper is fixed and both branches are now covered.
+
+295 tests, coverage lines 89.1 / branches 70.3 / functions 83.0.
+
 ## [4.12.1] — 2026-11-16
 
 Two states the reset exposed within a minute of 4.12.0 shipping.

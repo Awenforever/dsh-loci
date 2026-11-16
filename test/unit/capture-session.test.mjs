@@ -43,6 +43,9 @@ function seed(capture, sessionId) {
     captures: 0,
     turn: 1,
     cwd: 'C:/work/project',
+    // The write path reads this, and the old seed omitted it: the whole summary used to fail
+    // silently behind the catch that logs a warning, which is why no test noticed.
+    files: [],
     timer: undefined,
     extractTimer: undefined,
   });
@@ -100,4 +103,37 @@ test('a failing extractor cannot break the session release', async (t) => {
   seed(capture, 'session-d');
   assert.doesNotThrow(() => capture.summarize('session-d', 'dispose'));
   await new Promise((resolve) => setTimeout(resolve, 10));
+});
+
+test('the default is to write no session summary', (t) => {
+  // Off by default since 4.13.0, because the curator replaced it: a summary was an episodic
+  // candidate, and episodic is not reviewable and not injectable, so every one of them was a row
+  // that could not act. On `invictus`, 40 of 51 stored rows were summaries, and five more appeared
+  // within a minute of a full reset.
+  //
+  // This test exists to make flipping the default back a deliberate act with a stated reason,
+  // rather than a silent reinstatement of the noise.
+  assert.equal(DEFAULTS.summaryOnDispose, false);
+
+  const { store } = openTestStore(t);
+  const capture = makeCapture(store, {}, undefined);
+  seed(capture, 'session-e');
+  assert.equal(capture.summarize('session-e', 'dispose'), 0);
+  const rows = store.db.prepare('SELECT COUNT(*) AS n FROM memory').get().n;
+  assert.equal(rows, 0, 'nothing at all is written');
+});
+
+test('turning it on still writes one', (t) => {
+  // The capability is kept, not removed: a chronological record of a session is a legitimate thing
+  // to want, read in the panel rather than injected.
+  const { store } = openTestStore(t);
+  const capture = makeCapture(store, { summaryOnDispose: true }, undefined);
+  seed(capture, 'session-f');
+  assert.equal(capture.summarize('session-f', 'dispose'), 1);
+  const written = store.db
+    .prepare('SELECT trust_source, kind FROM memory WHERE valid_to IS NULL')
+    .all();
+  assert.equal(written.length, 1);
+  assert.equal(written[0].trust_source, 'summary');
+  assert.equal(written[0].kind, 'episodic');
 });
