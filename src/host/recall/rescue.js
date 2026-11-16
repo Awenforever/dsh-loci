@@ -67,7 +67,7 @@ function renderRescue(hits, queries) {
  *   `enabled`.
  * @returns `{rescued, text, ids, bytes, queries, error}`.
  */
-export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, complete, now, log, enabled = true }) {
+export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, complete, now, log, enabled = true, query: explicitQuery }) {
   const skipped = { rescued: false, text: '', ids: [], bytes: 0, queries: [], error: undefined };
   if (enabled !== true) return skipped;
   if (typeof complete !== 'function') return { ...skipped, error: 'no model route' };
@@ -77,6 +77,20 @@ export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, comple
   if (note === undefined) return skipped;
   // The point of the rescue is the case the synchronous path could not answer.
   if (note.tier !== 'none') return skipped;
+
+  // The question comes from the caller, not from the note.
+  //
+  // This was the real defect behind three releases of "the rescue got an empty string". The prompt
+  // section renders inside `preStep`, and at that moment the turn's message is still in the agent's
+  // inbox — it has been claimed but not yet appended to the session log. So no event-based tracker
+  // and no capture buffer could see it: both are fed by `session/event`, which fires after the
+  // assembly. The waterfall *is* handed the claimed messages, so it is the only surface that knows
+  // what was just asked.
+  const query = typeof explicitQuery === 'string' ? explicitQuery : note.query;
+  if (query.trim().length < 2) {
+    audit(store, 'recall-rewrite-skip', { sessionId, reason: 'query too short', queryChars: query.length });
+    return { ...skipped, error: 'query too short' };
+  }
 
   const key = `${sessionId}:${note.at}`;
   if (attempted.has(key)) return skipped;
@@ -94,7 +108,7 @@ export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, comple
     .filter((word) => word.length >= 2 && word.length <= 12)
     .slice(0, 40);
 
-  const rewritten = await rewriteQuery({ query: note.query, hints, complete });
+  const rewritten = await rewriteQuery({ query, hints, complete });
   if (rewritten.error !== undefined) {
     log?.debug?.(`loci: rewrite skipped: ${rewritten.error}`);
     audit(store, 'recall-rewrite-skip', {

@@ -67,6 +67,54 @@ test('a real question is what reaches the rewriter', async (t) => {
   assert.equal(result.rescued, true, JSON.stringify(result));
 });
 
+test('the caller can supply the question, because the note cannot have it', async (t) => {
+  // The prompt section renders inside `preStep`, and at that moment the turn's message is still in
+  // the agent's inbox: claimed, not yet appended to the session log. So neither an event tracker nor
+  // the capture buffer can see it, and the note is necessarily empty on the first step of a turn.
+  // The waterfall *is* handed the claimed messages, so it is the only surface that knows.
+  const { store, scopes } = openTestStore(t);
+  seed(store, scopes, [{ kind: 'semantic', title: 'atlas 服务上线先走灰度', body: '先灰度。' }]);
+  resetRescueGuard();
+  resetSliceNotes();
+  recordLastSlice('session-caller-query', { tier: 'none', query: '', ids: [] });
+  let seen = '';
+  const result = await rescueMiss({
+    store,
+    sessionId: 'session-caller-query',
+    scopeKeys: [scopes.workspace],
+    complete: async ({ prompt }) => {
+      seen = prompt;
+      return '["atlas 上线先走灰度"]';
+    },
+    query: 'atlas 要发新版本第一步进哪个环境',
+  });
+  assert.ok(seen.includes('atlas 要发新版本'), 'the supplied question is what the rewriter sees');
+  assert.equal(result.rescued, true, JSON.stringify(result));
+});
+
+test('an empty note still gates the rescue', async (t) => {
+  // The tier is what decides whether a rescue is worth paying for; an empty query alone must not
+  // let a rescue run on a turn the slice already answered.
+  const { store, scopes } = openTestStore(t);
+  seed(store, scopes, [{ kind: 'semantic', title: 'atlas 服务上线先走灰度', body: '先灰度。' }]);
+  resetRescueGuard();
+  resetSliceNotes();
+  recordLastSlice('session-hit-tier', { tier: 'strict', query: '', ids: ['x'] });
+  let calls = 0;
+  const result = await rescueMiss({
+    store,
+    sessionId: 'session-hit-tier',
+    scopeKeys: [scopes.workspace],
+    complete: async () => {
+      calls += 1;
+      return '["atlas 上线先走灰度"]';
+    },
+    query: 'atlas 要发新版本',
+  });
+  assert.equal(result.rescued, false);
+  assert.equal(calls, 0);
+});
+
 test('the note is per session, so one conversation cannot borrow another question', () => {
   resetSliceNotes();
   recordLastSlice('session-a', { tier: 'none', query: 'alpha 的问题', ids: [] });

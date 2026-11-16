@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.7.0] — 2026-11-16
+
+The reason the rescue kept receiving nothing, and the one surface that can see the question.
+
+### The fact that ended three releases of guessing
+
+`systemPrompt.assemble` runs **inside** `preStep`. At that moment the turn's user message is still
+in the agent's inbox — it has been claimed, but not yet appended to the session log. So:
+
+- a `session/event` tracker sees nothing, because that event has not fired yet;
+- `capture`'s buffer sees nothing, for the same reason;
+- and the prompt section, which is where retrieval runs, therefore **cannot know what is being
+  asked on the first step of any turn**.
+
+That is why the question was empty in every previous attempt, and why the three fixes before this one
+(all reasonable in isolation) changed nothing measurable. The diagnostics that finally settled it were
+`user_tracker` never appearing at all and `slice-render` reporting `queryChars: 0` for every session —
+facts, not more reasoning.
+
+### The fix
+
+The `agent/pre-step` waterfall **is** handed the claimed messages. It is the only surface that knows
+what was just asked, and it is asynchronous, so it can also await a model. `rescueMiss` now takes the
+question from its caller, and the plugin passes `firstUserText(decision.messages)`.
+
+### What the section still does, and why
+
+The section keeps composing from whatever it has — the core, the pointer, and a slice against the
+previous user message. On a first step that slice may be stale, and that is now a known and stated
+property rather than an accident: the rescue exists precisely because the first step of a turn is the
+one where the section is least informed.
+
+### Also
+
+- `slice-render` stays in the audit: `queryChars`, tier and bytes per render make the section's own
+  information state visible, which is what distinguished this cause from the two before it.
+- `user_tracker` stays in `meta`. It records nothing in normal operation, and its absence is now the
+  evidence that the query does not come from events — a fact worth keeping.
+
+293 tests, coverage lines 89.2 / branches 70.3 / functions 83.0.
+
 ## [4.6.1] — 2026-11-16
 
 The empty question survived its fix, so the next layer of the failure gets named.

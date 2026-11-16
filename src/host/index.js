@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.6.1';
+export const VERSION = '4.7.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -403,6 +403,10 @@ export function apply(ctx, rawConfig = {}) {
               complete: modelRoute.complete,
               now: Date.now(),
               log,
+              // The claimed messages are the only place the current question exists at this point:
+              // the section already rendered, and the message has not been appended to the session
+              // log yet, so nothing event-driven can see it.
+              query: firstUserText(decision.messages),
             });
             if (rescue.rescued !== true || rescue.text.length === 0) return decision;
             // Appended as its own message rather than merged into the section: the section is
