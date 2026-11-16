@@ -75,7 +75,24 @@ export function createCompleter({ llm, provider, model, record, signal }) {
       ...(signal === undefined ? {} : { signal }),
     };
     let text = '';
-    for await (const frame of llm.stream(request)) text += frameText(frame);
+    let frames = 0;
+    const shapes = new Set();
+    // Two separate facts are needed when a call returns nothing, and they point at different
+    // faults: how many frames arrived at all, and what shape they had. An empty reply from a
+    // service that streamed nothing is a different problem from one that streamed frames this
+    // function failed to read.
+    for await (const frame of llm.stream(request)) {
+      frames += 1;
+      if (frames <= 3) {
+        try {
+          shapes.add(typeof frame === 'string' ? 'string' : Object.keys(frame ?? {}).join('|').slice(0, 40));
+        } catch {
+          shapes.add('unreadable');
+        }
+      }
+      text += frameText(frame);
+    }
+    note('frames', `${frames} frame(s), shapes: ${[...shapes].join(' ; ') || '(none)'}`);
     return text;
   };
   note('complete', 'built');

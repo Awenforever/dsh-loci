@@ -1,0 +1,20 @@
+fix(record): read the model selection from agentDefaultModel (4.4.5)
+
+rawHead came back empty, which moved the fault from parsing to the call itself. The marker written
+beside it said why: llm_selection_error "cannot get property agent without inject".
+
+The plugin has no agent of its own, so child.agent throws. provider and model were therefore both
+undefined, the request named no route, the service returned an empty stream, and the parser reported
+"reply is not JSON" - sending three releases of diagnosis after the wrong subsystem.
+
+The selection now comes from agentDefaultModel, injected alongside llm: a background pass has no
+conversation to inherit a model from, and the default selection is exactly what running outside a
+turn means. The stream is also counted, because "streamed nothing" and "streamed frames this code
+cannot read" are different faults with different fixes.
+
+Four releases to get one model call working, and the deciding information was a single error string
+that only appeared when the diagnostic was placed inside the failing expression rather than beside
+it. A helper that swallows its own reason for failing sends every later investigation to the wrong
+place.
+
+276 tests, coverage lines 88.8 / branches 69.9 / functions 82.2.

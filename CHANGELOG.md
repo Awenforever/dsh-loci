@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.5] — 2026-11-16
+
+The empty reply, and the line that caused it.
+
+`rawHead` came back empty, which moved the fault from parsing to the call itself. The marker written
+beside it said why:
+
+```
+llm_selection_error    cannot get property "agent" without inject
+```
+
+The plugin has no agent of its own, so `child.agent` throws. Both `provider` and `model` were
+therefore `undefined`, the request named no route, and the service returned an empty stream — which
+the parser then reported as "reply is not JSON", sending three releases of diagnosis after the wrong
+subsystem.
+
+### Fixed
+
+- **The model selection now comes from `agentDefaultModel`**, injected alongside `llm`. That is the
+  correct source for a background pass: there is no conversation to inherit a model from, and the
+  default selection is exactly what "run this outside a turn" means.
+- **The stream is counted.** `llm_frames` records how many frames arrived and what shape they had,
+  because "the service streamed nothing" and "frames arrived that this code could not read" are
+  different faults with different fixes.
+
+### What this cost, stated plainly
+
+Four releases (4.4.0–4.4.5) to get one model call working, and the deciding information was a single
+error string that only became visible when the diagnostic was added *inside* the failing expression
+rather than next to it. The lesson is narrower than "log more": a helper that swallows its own
+reason for failing will send every later investigation to the wrong place.
+
 ## [4.4.4] — 2026-11-16
 
 The model answered, and the parser threw the answer away.

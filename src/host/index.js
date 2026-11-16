@@ -28,7 +28,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.4';
+export const VERSION = '4.4.5';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -216,17 +216,14 @@ export function apply(ctx, rawConfig = {}) {
   // The extractor needs a model route. `llm` is provided by whichever provider
   // bundle the profile installed; when it is absent the feature simply stays
   // off (and reports `no-model` if someone switches it on).
+  //
+  // `agentDefaultModel` is injected with `llm` because the plugin has no agent of its own: reading
+  // `child.agent` threw "cannot get property 'agent' without inject", which left provider and model
+  // undefined and made every call return an empty string. The default selection is the only correct
+  // answer here — this is a background pass, not a conversation, so there is no session to inherit.
   disposers.push(
-    ctx.inject(['llm'], (child) =>
+    ctx.inject(['llm', 'agentDefaultModel'], (child) =>
       child.effect(() => {
-        // Record that the route resolved, before doing anything with it. Without this marker a
-        // missing curation pass is indistinguishable between "the `llm` route never appeared" and
-        // "the route appeared and the pass failed" — and those have completely different fixes.
-        try {
-          writeMeta(store.db, 'llm_route_seen', String(Date.now()));
-        } catch {
-          /* the marker is a diagnostic, never a prerequisite */
-        }
         // Read the model selection defensively: a getter on a traced context can throw, and a
         // throw here is what previously stopped the whole route at the line below.
         const note = (step, detail) => {
@@ -239,8 +236,10 @@ export function apply(ctx, rawConfig = {}) {
         let provider;
         let model;
         try {
-          provider = child.agent?.config?.provider ?? undefined;
-          model = child.agent?.config?.model ?? undefined;
+          const selection = child.agentDefaultModel?.currentSelection?.();
+          note('route_seen', String(Date.now()));
+          provider = selection?.provider ?? undefined;
+          model = selection?.model ?? undefined;
           note('selection', `${provider ?? '(none)'} / ${model ?? '(none)'}`);
         } catch (error) {
           note('selection_error', String(error?.message ?? error));
