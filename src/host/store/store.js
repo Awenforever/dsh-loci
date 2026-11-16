@@ -1058,6 +1058,60 @@ export class Store {
     return mode;
   }
 
+  /**
+   * Whether this conversation must never receive a memory section.
+   *
+   * The memory manager is the case that matters: a session which curates memory must not have
+   * that memory injected into its own prompt, or it judges the content through a prompt the
+   * content already shaped. Its access is the tools, which is reading.
+   *
+   * @param sessionId - the session about to be assembled.
+   * @returns the recorded reason, or `undefined` when the session may be injected.
+   */
+  injectionExemptReason(sessionId) {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined;
+    const row = this.db.prepare('SELECT reason FROM injection_exempt WHERE session_id = ?').get(sessionId);
+    return typeof row?.reason === 'string' ? row.reason : undefined;
+  }
+
+  /**
+   * Record that a conversation must never receive a memory section.
+   *
+   * Written before the first assembly, not after: a manager that has already been injected once
+   * has already been shaped. The exemption is a stored fact rather than a property of the call
+   * stack so a restart, a resume, or a different code path cannot lose it.
+   *
+   * @param sessionId - the session.
+   * @param reason - why, in words a person reading the database later will understand.
+   * @returns true when the row exists afterwards.
+   */
+  exemptFromInjection(sessionId, reason = 'memory manager') {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return false;
+    this.db
+      .prepare(
+        `INSERT INTO injection_exempt (session_id, reason, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET reason = excluded.reason`,
+      )
+      .run(sessionId, String(reason), this.now());
+    return true;
+  }
+
+  /**
+   * Remove an injection exemption.
+   * @param sessionId - the session.
+   * @returns true when a row was removed.
+   */
+  allowInjection(sessionId) {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) return false;
+    const result = this.db.prepare('DELETE FROM injection_exempt WHERE session_id = ?').run(sessionId);
+    return Number(result.changes) > 0;
+  }
+
+  /** Every session currently exempt from injection. */
+  listInjectionExempt() {
+    return this.db.prepare('SELECT session_id, reason, created_at FROM injection_exempt ORDER BY created_at').all();
+  }
+
   allScopeKeys() {
     return this.db
       .prepare('SELECT DISTINCT m.scope_key AS key FROM memory m JOIN memory_head h ON h.ord = m.ord')

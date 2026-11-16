@@ -23,7 +23,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.0.0';
+export const VERSION = '4.1.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -146,6 +146,12 @@ export function apply(ctx, rawConfig = {}) {
     resolveContext: (assembly) => {
       const session = assembly?.agent?.session;
       if (session === undefined) return undefined;
+      // A conversation that manages memory must never be shown memory. This is the hard
+      // constraint, and it is checked first and by its own stored fact: before schema v6 the
+      // property held only because subagents happen to have `delegationDepth > 0`, which is a
+      // fact about delegation rather than about being a manager, and would have broken silently
+      // the first time a manager ran as a top-level session.
+      if (store.injectionExemptReason(session.id) !== undefined) return undefined;
       if ((session.header?.delegationDepth ?? 0) > 0) return undefined;
       const scopes = resolveScopes({ sessionId: session.id, cwd: session.header?.cwd });
       return {
@@ -233,6 +239,10 @@ export function apply(ctx, rawConfig = {}) {
             if (decision?.kind !== 'enter' || payload?.step !== 1) return decision;
             const session = payload?.agent?.session;
             if (session === undefined || (session.header?.delegationDepth ?? 0) > 0) return decision;
+            // The assist is a second injection surface. An exemption that only covered the
+            // section would leave the manager shaped by exactly the memory it is curating, so
+            // both surfaces consult the same stored fact.
+            if (store.injectionExemptReason(session.id) !== undefined) return decision;
             if (assisted.has(session.id)) return decision;
             const query = firstUserText(decision.messages);
             if (query.length < 2) return decision;

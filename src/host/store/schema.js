@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -185,6 +185,22 @@ CREATE TABLE IF NOT EXISTS session_scope (
   session_id TEXT PRIMARY KEY,
   mode       TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+);
+
+-- injection_exempt (v6) lists the conversations that must never receive a memory section.
+--
+-- The memory manager is the reason it exists: a session that curates, merges and deletes
+-- memories must not have those same memories injected into its own prompt, or it judges the
+-- content with a prompt the content already shaped. Its access to memory is the tools
+-- (loci_search, loci_get), which is reading — not being written into.
+--
+-- Before this table the property held only as a side effect of delegationDepth > 0, which is
+-- a fact about delegation, not about being a manager. An exemption that is a coincidence is not
+-- a guarantee, and the failure would be silent.
+CREATE TABLE IF NOT EXISTS injection_exempt (
+  session_id TEXT PRIMARY KEY,
+  reason     TEXT NOT NULL,
+  created_at INTEGER NOT NULL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5 (

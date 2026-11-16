@@ -30,7 +30,11 @@ const files = [...new Set([...walk('src'), ...walk('scripts'), ...walk('test'), 
 );
 
 // A literal backslash-n, then indentation, then a statement keyword.
-const SWALLOWED = /\\n\s*(const|let|var|return|await|if|for|while|import|export|function|class)\s/;
+// A literal backslash-n, then indentation, then a statement keyword. Also matches a comment
+// continuation (` * `), because the same accident mangles block comments — it is harmless there
+// but it means the file was edited by the mechanism that causes the harmful case, so it is worth
+// surfacing before the next edit turns it into code.
+const SWALLOWED = /\\n\s*(\*|\/\/)?\s*(const|let|var|return|await|if|for|while|import|export|function|class)\s/;
 const offenders = [];
 
 for (const file of files) {

@@ -10,12 +10,14 @@
  *   stats                  counters and budget use
  *   search <query>         print ranked hits
  *   review                 candidates and disputed entries
+ *   exempt                 sessions that never receive a memory section (--session, --allow)
  *   export                 write the Markdown projection
  *   import --dir <path> [--from auto-memory|claude] [--scope-key <key>] [--dry-run]    import Markdown as candidates
  *   reindex                rebuild the full-text index
  *   maintenance            run one maintenance pass
  *   migrate --target <n>   run available migrations
- *   snapshot [--label <name>]   write a consistent VACUUM INTO backup\n *   rollback --from <file> restore a snapshot (database must be idle)
+ *   snapshot [--label <name>]   write a consistent VACUUM INTO backup
+ *   rollback --from <file> restore a snapshot (database must be idle)
  *   purge --id <id> --confirm <id>   hard-delete one entry
  *
  * Common options: --home <path> (default $DSH_HOME), --json
@@ -56,6 +58,7 @@ const COMMANDS = new Set([
   'stats',
   'search',
   'review',
+  'exempt',
   'export',
   'import',
   'reindex',
@@ -192,6 +195,32 @@ switch (command) {
     }
     break;
   }
+  case 'exempt': {
+    // The memory manager must never be shown memory. This command is how an operator declares
+    // or lifts that, because the exemption has to be a stored fact: a manager that has already
+    // been injected once has already been shaped.
+    await withStore((store) => {
+      const sessionId = flag('session');
+      if (sessionId === undefined) {
+        const rows = store.listInjectionExempt();
+        if (json) console.log(JSON.stringify(rows, null, 2));
+        else if (rows.length === 0) console.log('no session is exempt from injection');
+        else for (const row of rows) console.log(`  ${row.session_id} · ${row.reason}`);
+        return;
+      }
+      if (argv.includes('--allow')) {
+        const removed = store.allowInjection(sessionId);
+        console.log(removed ? `${sessionId} may be injected again` : `${sessionId} was not exempt`);
+        return;
+      }
+      store.exemptFromInjection(sessionId, flag('reason') ?? 'memory manager');
+      console.log(`${sessionId} will never receive a memory section`);
+      console.log('use --allow to lift it; the section is empty for this session either way,');
+      console.log('but the tools (loci_search, loci_get) still work — reading is not being shaped.');
+    });
+    break;
+  }
+
   case 'review': {
     await withStore((store) => {
       // A terminal command describes the directory it runs in, so say which one. Otherwise

@@ -80,6 +80,24 @@ export const SHIPPED_MIGRATIONS = [
       db.exec('ALTER TABLE request_stat ADD COLUMN cwd TEXT');
     },
   },
+  {
+    from: 5,
+    to: 6,
+    // One table, no backfill and no column changes: a session with no exemption row keeps its
+    // current behaviour, so the upgrade changes nobody's answer.
+    //
+    // `injection_exempt` makes "the memory manager is never given its own memory" a stored fact
+    // rather than a side effect of delegation depth. Existing managers, if any were created
+    // before this version, simply were not recorded — the table starts empty on purpose rather
+    // than guessing which sessions were which.
+    up(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS injection_exempt (
+  session_id TEXT PRIMARY KEY,
+  reason     TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+)`);
+    },
+  },
 ];
 
 /**

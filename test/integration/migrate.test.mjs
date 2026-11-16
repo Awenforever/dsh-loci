@@ -55,6 +55,12 @@ function rewind(db, target) {
     const columns5 = () => db.prepare('PRAGMA table_info(request_stat)').all().map((row) => row.name);
     if (columns5().includes('cwd')) db.exec('ALTER TABLE request_stat DROP COLUMN cwd');
   }
+  if (target < 6) {
+    // v6 added the injection exemption. Without this the table would survive the rewind and the
+    // v5->v6 step would be a no-op, so the test would report a passing chain that never created
+    // it — the exact shape of a test that proves nothing.
+    db.exec('DROP TABLE IF EXISTS injection_exempt');
+  }
   db.exec(`PRAGMA user_version = ${target}`);
   db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(target));
 }
@@ -130,7 +136,7 @@ test('a rehearsal upgrade keeps every row and the snapshot rolls back exactly', 
   }
 });
 
-test('the shipped migration chain v1->v5 keeps every row and adds every shape', (t) => {
+test('the shipped migration chain keeps every row and adds every shape', (t) => {
   const home = mkdtempSync(join(tmpdir(), 'loci-migrate-shipped-'));
   const root = ensureMemoryRoot(join(home, 'memory', 'loci'));
   const paths = layout(root);

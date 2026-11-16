@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.1.0] — 2026-11-16
+
+The memory manager can no longer be shaped by the memory it manages. S2 of the v4 architecture.
+
+### The constraint
+
+A conversation that curates, merges, verifies or deletes memories must never have those same
+memories injected into its own prompt. Otherwise it judges the content through a prompt the
+content already shaped — a closed loop whose bias is invisible from inside.
+
+Its access to memory is the tools (`loci_search`, `loci_get`, `loci_write`). That is reading.
+The prompt section is the thing that would write into it.
+
+### What was wrong before
+
+The property held **by accident**. `resolveContext` returned `undefined` when
+`delegationDepth > 0`, so a manager implemented as a subagent was never injected — but that is a
+fact about how the manager was launched, not about what it is. A manager running as a top-level
+session would have received the full section and nothing would have reported it.
+
+An invariant that holds by coincidence is not an invariant.
+
+### Changed
+
+- **`injection_exempt` (schema v6)** — a stored table of sessions that receive no memory
+  section, with the reason recorded. Stored rather than inferred so a restart, a resume, or a
+  different code path cannot lose it.
+- **Both injection surfaces consult it**: the per-request section and the once-per-session recall
+  assist. Covering only the section would have left the manager shaped by the assist, which is
+  the same failure through a side door.
+- **The manager receives nothing at all** — not even the "N more entries in scope" pointer. A
+  pointer is a hint about the corpus, and the point is that the manager's view of the corpus is
+  not the model's view of it.
+- `dsh-loci exempt --session <id> [--reason <text>] [--allow]` to declare or lift the exemption,
+  and `dsh-loci exempt` with no session to list them.
+
+### Note on the check
+
+`scripts/check-swallowed.mjs` now also flags a fabricated newline before a comment
+continuation. Those are harmless where they land, but they mean the file was edited by the
+mechanism that produces the harmful case — and it found one in the CLI help text that had been
+there for several releases.
+
+---
+
+245 tests, coverage lines 88.3 / branches 69.2 / functions 81.6.
+
 ## [4.0.0] — 2026-11-16
 
 The section is composed per question instead of being a fixed list. This is the first release of
