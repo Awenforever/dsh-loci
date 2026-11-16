@@ -27,7 +27,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.1';
+export const VERSION = '4.4.2';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -230,6 +230,14 @@ export function apply(ctx, rawConfig = {}) {
           provider: child.agent?.config?.provider ?? undefined,
           model: child.agent?.config?.model ?? undefined,
         });
+        // Whether a usable call function was produced is its own fact, separate from whether the
+        // route existed: `completeViaHost` returns undefined when the service has no `stream`, and
+        // that leaves every downstream consumer silently inert.
+        try {
+          writeMeta(store.db, 'llm_complete', complete === undefined ? 'undefined' : 'function');
+        } catch {
+          /* diagnostic only */
+        }
         if (complete === undefined) return () => {};
         extractor.complete = complete;
         // Curation reuses the same route: one model transport, two consumers. Registering the
@@ -251,7 +259,29 @@ export function apply(ctx, rawConfig = {}) {
         // well. This runs one real pass against a fixed transcript, once per version, and stores
         // the outcome so it can be read instead of assumed. It writes no memory.
         if (read('curatorMode') !== 'off') {
-          void runCuratorProbe({ store, complete, pluginVersion: VERSION, log }).catch(() => {});
+          void runCuratorProbe({ store, complete, pluginVersion: VERSION, log })
+            .then((outcome) => {
+              // A skipped probe must record why. Silence is what made 4.4.0's failure look like
+              // "nothing to do" instead of "the model was never reachable".
+              if (outcome?.ran === false) {
+                try {
+                  writeMeta(
+                    store.db,
+                    'curator_probe_skipped',
+                    JSON.stringify({ reason: outcome.reason ?? 'unknown', at: Date.now(), version: VERSION }),
+                  );
+                } catch {
+                  /* diagnostic only */
+                }
+              }
+            })
+            .catch((error) => {
+              try {
+                writeMeta(store.db, 'curator_probe_error', String(error?.message ?? error));
+              } catch {
+                /* diagnostic only */
+              }
+            });
         }
         return () => {
           offDisposed?.();

@@ -36,7 +36,7 @@ export function openFacadeStore(options = {}) {
     memoryRoot: root,
     paths,
     config,
-    pluginVersion: '4.4.1',
+    pluginVersion: '4.4.2',
     readOnly: options.readOnly === true,
   });
   return { store, paths };

@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.2] — 2026-11-16
+
+Two more facts recorded, because the previous release narrowed the silence but did not end it.
+
+4.4.1 made it possible to tell "the route never appeared" from "the route appeared and the pass
+failed". Installing it proved the route appears — `llm_route_seen` was written seconds after boot —
+while the probe still produced nothing. That leaves the next distinction:
+
+1. `completeViaHost` produced no call function (the service has no `stream`), so every downstream
+   consumer is inert; or
+2. the probe ran and declined for a reason it did not record.
+
+Both are now recorded: `llm_complete` says `function` or `undefined`, and a skipped probe writes
+`curator_probe_skipped` with its reason and the version that skipped it. A probe that throws writes
+`curator_probe_error`.
+
+Still no behaviour change. Four releases have now been spent on the same failure mode — a silent
+no-op that reads as success — and the pattern is consistent enough to state plainly: **an optional
+integration must record that it did not run**, or its absence will be mistaken for agreement.
+
 ## [4.4.1] — 2026-11-16
 
 A diagnostic for the one thing 4.4.0 could not tell apart.
