@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.8.0';
+export const VERSION = '4.8.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -394,15 +394,44 @@ export function apply(ctx, rawConfig = {}) {
   // The outcome is recorded in the audit either way: "did not run" and "ran and kept nothing" are
   // different results, and this project has spent six releases confusing the two.
   const curated = new Set();
+  /**
+   * How many events of each type this listener has actually seen.
+   *
+   * Not decoration: three triggers have now been wired for this feature and none of them ran, so the
+   * first question is no longer "which trigger" but "does this listener receive anything at all".
+   * `session_event_seen` answers that in one row, and it is the check I should have written before
+   * the first of the three.
+   */
+  const seenEvents = new Map();
+  const noteSeen = (type) => {
+    seenEvents.set(type, (seenEvents.get(type) ?? 0) + 1);
+    try {
+      writeMeta(store.db, 'session_event_seen', JSON.stringify(Object.fromEntries(seenEvents)));
+    } catch {
+      /* diagnostic only */
+    }
+  };
   const runCuration = async (sessionId, session, trigger) => {
     if (typeof sessionId !== 'string' || sessionId.length === 0) return;
     if (curated.has(sessionId)) return;
     curated.add(sessionId);
     if (curated.size >= 256) curated.clear();
-    const outcome =
-      curation.trigger === undefined
-        ? { ran: false, reason: 'no model route' }
-        : await curation.trigger({ session });
+    // Recorded before the work, not after: an outcome recorded only on success cannot distinguish
+    // "never called", "threw", and "returned nothing" — the three cases that have each cost a release.
+    try {
+      store.audit.append('curate-start', { sessionId, trigger, hasRoute: curation.trigger !== undefined });
+    } catch {
+      /* diagnostic only */
+    }
+    let outcome;
+    try {
+      outcome =
+        curation.trigger === undefined
+          ? { ran: false, reason: 'no model route' }
+          : await curation.trigger({ session });
+    } catch (error) {
+      outcome = { ran: false, reason: `threw: ${String(error?.message ?? error)}` };
+    }
     try {
       store.audit.append('curate', {
         sessionId,
@@ -419,6 +448,7 @@ export function apply(ctx, rawConfig = {}) {
   disposers.push(
     ctx.effect(() =>
       ctx.on('session/event', (session, event) => {
+        noteSeen(event?.type ?? '(none)');
         // A completed turn is the first moment a conversation has something to judge. Cron the
         // judgement to it rather than to a lifecycle event whose delivery proved unreliable.
         if (event?.type !== 'turn/end') return;
