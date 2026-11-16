@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.1] — 2026-11-16
+
+A diagnostic for the one thing 4.4.0 could not tell apart.
+
+After installing 4.4.0 the curator probe had produced no record, and neither the audit log nor the
+store showed a single curation event. Two very different faults look identical from there:
+
+1. the `llm` route never appeared, so the injected callback never ran; or
+2. the route appeared and the pass failed.
+
+They have different fixes, so the plugin now writes `llm_route_seen` into `meta` the moment the
+route resolves, before touching it. A missing marker means the route never resolved; a present
+marker with no probe means the pass itself is at fault.
+
+This release changes no behaviour. It exists because "nothing happened" is not a diagnosis, and the
+last three defects in this project were all of that shape — a silent no-op that read as success.
+
 ## [4.4.0] — 2026-11-16
 
 A model now decides what to remember, and its judgement is measured.

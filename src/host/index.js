@@ -12,6 +12,7 @@ import { cfg, effectiveConfig } from './config.js';
 import { ensureMemoryRoot, layout, resolveDshHome, resolveMemoryRoot } from './paths.js';
 import { readScopeKeys, resolveScopes } from './scope.js';
 import { Store } from './store/store.js';
+import { writeMeta } from './store/schema.js';
 import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
 import { createCurationTrigger } from './record/trigger.js';
@@ -26,7 +27,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.0';
+export const VERSION = '4.4.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -217,6 +218,14 @@ export function apply(ctx, rawConfig = {}) {
   disposers.push(
     ctx.inject(['llm'], (child) =>
       child.effect(() => {
+        // Record that the route resolved, before doing anything with it. Without this marker a
+        // missing curation pass is indistinguishable between "the `llm` route never appeared" and
+        // "the route appeared and the pass failed" — and those have completely different fixes.
+        try {
+          writeMeta(store.db, 'llm_route_seen', String(Date.now()));
+        } catch {
+          /* the marker is a diagnostic, never a prerequisite */
+        }
         const complete = completeViaHost(child.llm, {
           provider: child.agent?.config?.provider ?? undefined,
           model: child.agent?.config?.model ?? undefined,
