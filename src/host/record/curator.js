@@ -112,6 +112,42 @@ export function buildCuratorPrompt({ messages, existing = [] }) {
 }
 
 /**
+ * Find the first balanced JSON object in a string.
+ *
+ * The contract says "JSON only", and a model that adds a sentence around it is breaking the
+ * contract. It is also extremely common, and the failure mode of being strict is that the whole
+ * conversation's memory is discarded over a courtesy phrase. Extraction is bounded (one object,
+ * balanced braces, string-aware) rather than a greedy match, so it cannot swallow unrelated text.
+ *
+ * @param text - the model's reply.
+ * @returns the first balanced object, or `undefined`.
+ */
+export function extractJsonObject(text) {
+  const source = String(text ?? '');
+  const start = source.indexOf('{');
+  if (start < 0) return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  return undefined;
+}
+
+/**
  * Parse and validate the curator's reply.
  *
  * Validation is not politeness: the model output is untrusted input that will be written to a
@@ -121,22 +157,31 @@ export function buildCuratorPrompt({ messages, existing = [] }) {
  *
  * @param raw - the model's reply text.
  * @param options - `messages` for quote verification.
- * @returns `{items, dropped, error}`.
+ * @returns `{items, dropped, error, extracted}`.
  */
 export function parseCuratorReply(raw, options = {}) {
   const messages = options.messages ?? [];
   const dropped = [];
+  const source = String(raw ?? '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
   let parsed;
+  let extracted = false;
   try {
-    // Tolerate a fenced block even though the contract forbids one: a fence is a formatting
-    // mistake, and discarding an otherwise correct decision over it loses real memory.
-    const text = String(raw ?? '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(source);
   } catch {
-    return { items: [], dropped, error: 'reply is not JSON' };
+    // Second attempt: the first balanced object in the reply. Recorded so a run that needed it is
+    // visible — a model drifting away from the contract is worth knowing about even when the
+    // memory is recovered.
+    const candidate = extractJsonObject(source);
+    if (candidate === undefined) return { items: [], dropped, error: 'reply is not JSON', extracted: false };
+    try {
+      parsed = JSON.parse(candidate);
+      extracted = true;
+    } catch {
+      return { items: [], dropped, error: 'reply is not JSON', extracted: false };
+    }
   }
   if (parsed === null || typeof parsed !== 'object' || !Array.isArray(parsed.keep)) {
-    return { items: [], dropped, error: 'reply has no keep array' };
+    return { items: [], dropped, error: 'reply has no keep array', extracted };
   }
   const corpus = messages.map((message) => String(message.text ?? '')).join('\n');
   const items = [];
@@ -173,7 +218,7 @@ export function parseCuratorReply(raw, options = {}) {
       topic: typeof candidate.topic === 'string' ? candidate.topic.slice(0, 60) : undefined,
     });
   }
-  return { items, dropped, error: undefined };
+  return { items, dropped, error: undefined, extracted };
 }
 
 /**

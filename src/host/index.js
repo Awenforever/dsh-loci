@@ -28,7 +28,7 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.4.3';
+export const VERSION = '4.4.4';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];

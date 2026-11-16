@@ -60,6 +60,7 @@ export async function runCuratorProbe({ store, complete, pluginVersion, log, for
   if (!force && alreadyProbed(store, pluginVersion)) return { ran: false, reason: 'already probed for this version' };
 
   let reply;
+  let rawHead = '';
   try {
     reply = await curate({
       store,
@@ -67,19 +68,32 @@ export async function runCuratorProbe({ store, complete, pluginVersion, log, for
       // writing memory to measure it would be the product polluting itself to test itself.
       scope: { scope: 'session', scopeKey: 'session:probe', scopeLabel: 'probe' },
       messages: PROBE_TRANSCRIPT,
-      callModel: async ({ prompt }) => complete({ system: CURATOR_SYSTEM, prompt }),
+      callModel: async ({ prompt }) => {
+        const text = await complete({ system: CURATOR_SYSTEM, prompt });
+        // Keep the head of what actually came back. "reply is not JSON" is a diagnosis with no
+        // next step; the first characters of the reply say whether the model ignored the contract,
+        // the request was truncated, or something else answered entirely.
+        rawHead = String(text ?? '').slice(0, 320);
+        return text;
+      },
       sessionId: 'session:curator-probe',
       dryRun: true,
     });
   } catch (error) {
-    const result = { version: pluginVersion, at: Date.now(), ok: false, error: String(error?.message ?? error) };
+    const result = {
+      version: pluginVersion,
+      at: Date.now(),
+      ok: false,
+      error: String(error?.message ?? error),
+      rawHead,
+    };
     writeMeta(store.db, PROBE_META_KEY, JSON.stringify(result));
     log?.warn?.(`loci: curator probe failed: ${result.error}`);
     return { ran: true, result };
   }
 
   if (reply.error !== undefined) {
-    const result = { version: pluginVersion, at: Date.now(), ok: false, error: reply.error };
+    const result = { version: pluginVersion, at: Date.now(), ok: false, error: reply.error, rawHead };
     writeMeta(store.db, PROBE_META_KEY, JSON.stringify(result));
     log?.warn?.(`loci: curator probe could not judge: ${reply.error}`);
     return { ran: true, result };

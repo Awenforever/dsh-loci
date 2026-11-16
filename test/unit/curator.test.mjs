@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   buildCuratorPrompt,
   curate,
+  extractJsonObject,
   parseCuratorReply,
   prefilter,
 } from '../../src/host/record/curator.js';
@@ -71,6 +72,34 @@ test('a fenced JSON block is tolerated', () => {
   const parsed = parseCuratorReply(reply, { messages: TRANSCRIPT });
   assert.equal(parsed.error, undefined);
   assert.equal(parsed.items.length, 0);
+});
+
+test('a JSON object wrapped in a sentence is still read, and the drift is recorded', () => {
+  // Observed on the live route: the model answered with prose around a correct object, and the
+  // strict parser discarded the whole conversation's memory over a courtesy phrase.
+  const reply =
+    'Sure, here is what I would keep:\n{"keep":[{"kind":"rule","title":"永远不要在周五发版",' +
+    '"body":"永远不要在周五发版。","evidenceQuote":"永远不要在周五发版。"}],"drop":[]}\nLet me know if that looks right.';
+  const parsed = parseCuratorReply(reply, { messages: TRANSCRIPT });
+  assert.equal(parsed.error, undefined);
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.extracted, true, 'a run that needed extraction must be visible');
+});
+
+test('extraction is balanced, so braces inside strings do not end it early', () => {
+  const reply =
+    'ok: {"keep":[{"kind":"semantic","title":"a {b} title","body":"has {braces} in it",' +
+    '"evidenceQuote":"永远不要在周五发版。"}],"drop":[]}';
+  const parsed = parseCuratorReply(reply, { messages: TRANSCRIPT });
+  assert.equal(parsed.error, undefined);
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].title, 'a {b} title');
+});
+
+test('prose with no object at all is still refused', () => {
+  const parsed = parseCuratorReply('I have remembered your preference.', { messages: TRANSCRIPT });
+  assert.equal(parsed.error, 'reply is not JSON');
+  assert.equal(parsed.extracted, false);
 });
 
 test('an unsupported kind is rejected rather than coerced', () => {

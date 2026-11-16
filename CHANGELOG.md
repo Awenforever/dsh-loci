@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.4.4] — 2026-11-16
+
+The model answered, and the parser threw the answer away.
+
+With the route fixed, the probe ran and came back `reply is not JSON`. The model had produced a
+correct object wrapped in a sentence. The contract says "JSON only", so the strict parser was
+right on the letter and wrong on the outcome: an entire conversation's memory was discarded over a
+courtesy phrase.
+
+### Changed
+
+- **`extractJsonObject`** finds the first balanced JSON object in a reply. It is string-aware, so a
+  brace inside a title ("a {b} title") cannot end the object early, and it reads exactly one object
+  rather than greedily matching to the last brace.
+- **The drift is recorded.** `parseCuratorReply` returns `extracted: true` when the fallback was
+  needed, so a model moving away from the contract stays visible even when the memory is recovered.
+- **The probe keeps the first 320 characters of the raw reply.** "reply is not JSON" is a diagnosis
+  with no next step; the head of the reply says whether the model ignored the shape, the request was
+  truncated, or something else answered.
+
+Strict parsing still governs the fields: an unknown kind, an oversized field, or a quote that is not
+verbatim drops the item. Tolerance applies to the envelope, not to the contents.
+
+277 tests, coverage lines 88.8 / branches 69.9 / functions 82.2.
+
 ## [4.4.3] — 2026-11-16
 
 The model route, rebuilt so its failure is visible — and the latent fault behind four silent releases.
