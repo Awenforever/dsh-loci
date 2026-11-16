@@ -256,6 +256,18 @@ export function createIndexSection(options) {
         query,
         ids: composed.ids,
       });
+      // What the render actually received, as its own fact. Without it, an empty query in the
+      // rescue is attributable to the tracker, the section, or the handoff — three different fixes.
+      try {
+        store.audit.append('slice-render', {
+          sessionId: context.sessionId,
+          queryChars: query.length,
+          tier: composed.slice.tier,
+          bytes: composed.bytes,
+        });
+      } catch {
+        /* diagnostic only */
+      }
       record(context, {
         bytes: composed.bytes,
         listed: composed.ids.length,

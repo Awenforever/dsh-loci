@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.6.0';
+export const VERSION = '4.6.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -137,6 +137,8 @@ export function apply(ctx, rawConfig = {}) {
    * every goal round while every other part of the chain worked.
    */
   const lastUserText = new Map();
+  /** What the tracker has seen, so a silent no-op can be told from a wrong shape. */
+  const trackerSeen = { messages: 0, shapes: new Set(), sources: new Set() };
   // Record which Harness this store is actually running on. `engines.dsh` is a
   // range; this field is the only one that says which point release met the file,
   // so a support report can be checked instead of guessed at.
@@ -342,6 +344,25 @@ export function apply(ctx, rawConfig = {}) {
   disposers.push(
     ctx.effect(() =>
       ctx.on('session/event', (session, event) => {
+        // Count what arrives, not just what is kept: "the listener never fired" and "it fired and
+        // the content had no text" look identical from the outside, and only one of them is a bug
+        // in this file. The counter is the difference.
+        try {
+          if (event?.type === 'user/message') {
+            trackerSeen.messages += 1;
+            const shape = Array.isArray(event.data?.content) ? 'array' : typeof event.data?.content;
+            trackerSeen.shapes.add(shape);
+            if (event.data?.source?.kind !== undefined) trackerSeen.sources.add(String(event.data.source.kind));
+            writeMeta(store.db, 'user_tracker', JSON.stringify({
+              messages: trackerSeen.messages,
+              shapes: [...trackerSeen.shapes],
+              sources: [...trackerSeen.sources],
+              tracked: lastUserText.size,
+            }));
+          }
+        } catch {
+          /* diagnostic only */
+        }
         if (event?.type !== 'user/message') return;
         const text = firstTextOf(event.data?.content);
         if (text.length === 0) return;

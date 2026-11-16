@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.6.1] — 2026-11-16
+
+The empty question survived its fix, so the next layer of the failure gets named.
+
+4.6.0 gave retrieval its own tracker. After installing it, four live rescues still reported
+`query too short` with `queryChars: 0` — including two other conversations, so it was systematic
+rather than a quirk of one session. The tracker is present in the installed bundle, registered on the
+right event, reading the same content shape `capture` reads. Everything about it looks correct, which
+is exactly why the next release records facts instead of more reasoning:
+
+- **`user_tracker`** in `meta`: how many `user/message` events arrived, what shape their content
+  had, which `source.kind` values were seen, and how many sessions are currently tracked. This
+  separates "the listener never fired" from "it fired and the content had no text" — only one of
+  which is a bug in the tracker.
+- **`slice-render`** in the audit, per render: `queryChars`, the tier reached, and the bytes
+  produced. This separates "the tracker had nothing" from "the section did not receive it", which
+  are different fixes in different files.
+
+No behaviour change. Three releases have now gone to this one empty string, and each one narrowed the
+question by one layer; this one narrows it to a single bit, and the answer will be in `meta` on the
+next boot.
+
 ## [4.6.0] — 2026-11-16
 
 The rescue ran in real use, and the question it was handed was empty.
