@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.9.0] — 2026-11-16
+
+Curation triggers on `step/end`, and only a real run counts as done.
+
+### The row that settled it
+
+4.8.1 recorded a histogram of every `session/event` type reaching the curation listener. It listed
+`step/start`, `step/end`, `system/message`, `user/message`, `developer/message`,
+`assistant/message`, `tool/call`, `tool/result`, `request/header`, `job/registered` and the
+`tool/ptc-dispatch` pair — and **no `turn/end`**.
+
+So `turn/end` is appended to the session log but never dispatched through `session/event`. Three
+releases went to guessing which event carried a finished conversation; one row would have answered it
+before the first of them, and that is now written into the code as a comment rather than a lesson.
+
+### Changed
+
+- **`step/end` triggers curation.** It fires at the end of every step, which includes the end of a
+  turn, and it is demonstrably delivered.
+- **A session is marked done only when curation actually ran.** The previous version marked it on any
+  attempt, so the first event of a conversation — which arrives before there is anything to read —
+  consumed the one chance. Attempts are capped at three per session so a conversation that never has
+  enough content does not retry forever.
+
+### Also
+
+- \`session_event_seen\` stays in \`meta\`. In normal operation its absence of `turn/end` is not a
+  defect, it is the reference that explains why curation listens to `step/end`.
+
+293 tests, coverage lines 89.1 / branches 70.2 / functions 83.0.
+
 ## [4.8.1] — 2026-11-16
 
 Does the curation listener receive anything at all.

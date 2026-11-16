@@ -28,7 +28,7 @@ import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '4.8.1';
+export const VERSION = '4.9.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -394,13 +394,15 @@ export function apply(ctx, rawConfig = {}) {
   // The outcome is recorded in the audit either way: "did not run" and "ran and kept nothing" are
   // different results, and this project has spent six releases confusing the two.
   const curated = new Set();
+  /** Attempts per session, so a conversation that never has enough content does not retry forever. */
+  const curateAttempts = new Map();
   /**
    * How many events of each type this listener has actually seen.
    *
-   * Not decoration: three triggers have now been wired for this feature and none of them ran, so the
-   * first question is no longer "which trigger" but "does this listener receive anything at all".
-   * `session_event_seen` answers that in one row, and it is the check I should have written before
-   * the first of the three.
+   * Not decoration: three triggers were wired for curation and none ran. The histogram settled it in
+   * one row — `turn/end` is appended to the session but never dispatched through `session/event`,
+   * while `step/end`, `user/message` and `assistant/message` all are. That is the check I should have
+   * written before the first of the three attempts.
    */
   const seenEvents = new Map();
   const noteSeen = (type) => {
@@ -414,8 +416,10 @@ export function apply(ctx, rawConfig = {}) {
   const runCuration = async (sessionId, session, trigger) => {
     if (typeof sessionId !== 'string' || sessionId.length === 0) return;
     if (curated.has(sessionId)) return;
-    curated.add(sessionId);
-    if (curated.size >= 256) curated.clear();
+    const attempts = curateAttempts.get(sessionId) ?? 0;
+    if (attempts >= 3) return;
+    curateAttempts.set(sessionId, attempts + 1);
+    if (curateAttempts.size >= 256) curateAttempts.clear();
     // Recorded before the work, not after: an outcome recorded only on success cannot distinguish
     // "never called", "threw", and "returned nothing" — the three cases that have each cost a release.
     try {
@@ -432,6 +436,9 @@ export function apply(ctx, rawConfig = {}) {
     } catch (error) {
       outcome = { ran: false, reason: `threw: ${String(error?.message ?? error)}` };
     }
+    // Only a real run marks the session done. Marking it on any attempt meant the first event of a
+    // conversation — which arrives before there is anything to read — used up the one chance.
+    if (outcome?.ran === true) curated.add(sessionId);
     try {
       store.audit.append('curate', {
         sessionId,
@@ -449,12 +456,12 @@ export function apply(ctx, rawConfig = {}) {
     ctx.effect(() =>
       ctx.on('session/event', (session, event) => {
         noteSeen(event?.type ?? '(none)');
-        // A completed turn is the first moment a conversation has something to judge. Cron the
-        // judgement to it rather than to a lifecycle event whose delivery proved unreliable.
-        if (event?.type !== 'turn/end') return;
+        // `step/end` is the event that marks a finished turn in practice: `turn/end` is recorded in
+        // the session log but is not dispatched here, which the histogram in `meta` shows directly.
+        if (event?.type !== 'step/end') return;
         if (read('curatorMode') !== 'session-end') return;
         if (session?.id === undefined) return;
-        void runCuration(session.id, session, 'turn-end');
+        void runCuration(session.id, session, 'step-end');
       }),
     ),
   );
