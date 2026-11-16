@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [4.5.1] — 2026-11-16
+
+A rescue that finds nothing is now recorded.
+
+4.5.0 logged only rescues that succeeded, which left two states indistinguishable in the audit —
+`recall-rewrite` absent could mean "the feature never ran" or "it ran and was useless". Four releases
+(4.4.0–4.4.5) were spent on exactly that confusion, so the rule is applied here before it can cost
+anything:
+
+- `recall-rewrite` — ran, found entries;
+- `recall-rewrite-empty` — ran, the model's alternatives matched nothing;
+- `recall-rewrite-skip` — ran, and the model route or its reply was not usable, with the reason.
+
+No behaviour change. The distinction is what makes the next step diagnosable: if ordinary use shows
+`recall-rewrite-empty` far more often than `recall-rewrite`, the hints offered to the rewriter or the
+number of alternatives needs attention, and that is a tuning question with data behind it rather than
+a guess.
+
 ## [4.5.0] — 2026-11-16
 
 Recall gets a second chance in the model's own words. The last piece of "忆".

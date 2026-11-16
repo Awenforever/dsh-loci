@@ -97,6 +97,7 @@ export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, comple
   const rewritten = await rewriteQuery({ query: note.query, hints, complete });
   if (rewritten.error !== undefined) {
     log?.debug?.(`loci: rewrite skipped: ${rewritten.error}`);
+    audit(store, 'recall-rewrite-skip', { sessionId, reason: rewritten.error });
     return { ...skipped, error: rewritten.error };
   }
 
@@ -114,21 +115,27 @@ export async function rescueMiss({ store, sessionId, scopeKeys, scopeKey, comple
     });
     for (const hit of result.hits) if (!found.has(hit.id)) found.set(hit.id, hit);
   }
-  if (found.size === 0) return { ...skipped, queries: rewritten.queries };
+  if (found.size === 0) {
+    // A rescue that found nothing is the interesting case for tuning, and leaving it unrecorded
+    // would make "the feature never ran" and "the feature ran and was useless" identical — the
+    // exact confusion this project spent four releases on.
+    audit(store, 'recall-rewrite-empty', { sessionId, queries: rewritten.queries });
+    return { ...skipped, queries: rewritten.queries };
+  }
 
   const block = renderRescue([...found.values()], rewritten.queries);
-  try {
-    store.audit.append('recall-rewrite', {
-      sessionId,
-      queries: rewritten.queries,
-      ids: block.ids,
-      bytes: block.bytes,
-    });
-  } catch {
-    /* the audit is best-effort */
-  }
+  audit(store, 'recall-rewrite', { sessionId, queries: rewritten.queries, ids: block.ids, bytes: block.bytes });
   log?.info?.(`loci: rewrite rescue found ${block.ids.length} entr${block.ids.length === 1 ? 'y' : 'ies'}`);
   return { rescued: true, text: block.text, ids: block.ids, bytes: block.bytes, queries: rewritten.queries, error: undefined };
+}
+
+/** Record one rescue event; the audit is best-effort and must never break a turn. */
+function audit(store, event, detail) {
+  try {
+    store.audit.append(event, detail);
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Clear the per-turn guard; used by tests that simulate several turns. */
