@@ -33,6 +33,7 @@ import { resolveScopes } from '../src/host/scope.js';
 import { Capture } from '../src/host/capture/capture.js';
 import { Store } from '../src/host/store/store.js';
 import { search } from '../src/host/store/search.js';
+import { composeRecall } from '../src/host/recall/compose.js';
 import { tokenize, bigramJaccard } from '../src/host/store/tokenize.js';
 
 const asJson = process.argv.includes('--json');
@@ -447,11 +448,71 @@ function measureGate(count) {
   }
 }
 
+/**
+ * A2. 忆 with the slice composer — the architecture under test.
+ *
+ * Same corpus, same questions, different section builder. The point of the comparison is not
+ * that one number beats another; it is that the new design spends bytes per question and the
+ * old one spends them per request.
+ */
+async function measureRecallSlice(sizes) {
+  const results = [];
+  for (const size of sizes) {
+    const measured = buildCorpus(Math.min(size, MEASURED_CAP));
+    const filler = buildFiller(Math.max(0, size - measured.length));
+    const facts = measured;
+    const { store, home, scopes } = seedStore(facts, filler);
+    try {
+      const perQuestion = [];
+      for (const fact of facts) {
+        const runOne = async (query) => {
+          const composed = await composeRecall({
+            store,
+            scopeKeys: [scopes.workspace],
+            scopeLabel: scopes.labels.workspace,
+            query,
+          });
+          const ownLineBytes = Buffer.byteLength(`- ${fact.title}`, 'utf8');
+          const present = composed.text.includes(fact.title);
+          return {
+            bytes: composed.bytes,
+            present,
+            tier: composed.slice.tier,
+            ownLineBytes: present ? ownLineBytes : 0,
+            remaining: composed.remaining,
+          };
+        };
+        perQuestion.push({ natural: await runOne(fact.natural), hard: await runOne(fact.hard) });
+      }
+      const rate = (pick) => perQuestion.filter(pick).length / Math.max(1, perQuestion.length);
+      const mean = (pick) =>
+        perQuestion.reduce((sum, row) => sum + pick(row), 0) / Math.max(1, perQuestion.length);
+      results.push({
+        size,
+        bytes: mean((row) => row.hard.bytes),
+        naturalPresent: rate((row) => row.natural.present),
+        hardPresent: rate((row) => row.hard.present),
+        hardLoose: rate((row) => row.hard.tier === 'loose'),
+        hardNone: rate((row) => row.hard.tier === 'none'),
+        // Bytes of the needed entry over bytes of the section, per question.
+        relevance: mean((row) => (row.hard.bytes === 0 ? 0 : row.hard.ownLineBytes / row.hard.bytes)),
+        naturalRelevance: mean((row) => (row.natural.bytes === 0 ? 0 : row.natural.ownLineBytes / row.natural.bytes)),
+        remaining: mean((row) => row.hard.remaining),
+      });
+    } finally {
+      store.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+  return results;
+}
+
 const recall = await measureRecall([40, 200, 600]);
+const slice = await measureRecallSlice([40, 200, 600]);
 const capture = measureCapture();
 const gate = measureGate(120);
 
-const report = { recall, capture, gate };
+const report = { recall, slice, capture, gate };
 
 if (asJson) {
   console.log(JSON.stringify(report, null, 2));
@@ -472,6 +533,19 @@ if (asJson) {
   console.log('  relevance = bytes of the one needed entry / section bytes, averaged over questions.');
   console.log('  It cannot rise with a static index: every question gets the same bytes.');
   console.log(`  mean hard-question / title bigram overlap: ${pct(recall[0].meanOverlap)}`);
+
+  console.log('\n=== A2. 忆 with the slice composer (architecture under test) ===');
+  console.log('  store   mean bytes   natural-found   hard-found   loose tier   none   relevance  (natural)');
+  for (const row of slice) {
+    console.log(
+      `  ${String(row.size).padStart(5)}  ${row.bytes.toFixed(0).padStart(11)}  ` +
+        `${pct(row.naturalPresent).padStart(13)}  ${pct(row.hardPresent).padStart(11)}  ` +
+        `${pct(row.hardLoose).padStart(11)}  ${pct(row.hardNone).padStart(6)}  ` +
+        `${pct(row.relevance).padStart(9)}  ${pct(row.naturalRelevance).padStart(10)}`,
+    );
+  }
+  console.log('\n  natural-found / hard-found = the needed entry is in the section at all (not just rank 1).');
+  console.log('  loose tier = recovered by the second-chance pass after the strict pass returned nothing.');
 
   console.log('\n=== B. 记 (record) — can rules extract durable statements? ===');
   for (const row of capture.rows) {
