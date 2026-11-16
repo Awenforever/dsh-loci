@@ -17,18 +17,28 @@ import { layout, resolveDshHome, resolveMemoryRoot } from '../../src/host/paths.
 import { Store } from '../../src/host/store/store.js';
 
 const confirmed = process.argv.includes('--yes');
+// `--only=<trust_source>` narrows the purge to one producer. Used to clear the session summaries
+// that were written before 4.13.0 turned that path off, without touching what the curator wrote.
+const onlyArg = process.argv.find((arg) => arg.startsWith('--only='));
+const only = onlyArg === undefined ? undefined : onlyArg.slice('--only='.length);
 const root = resolveMemoryRoot(resolveDshHome());
 const paths = layout(root);
 
 console.log(`memory root   ${root}`);
 console.log(`database      ${paths.db} (${existsSync(paths.db) ? statSync(paths.db).size : 0} bytes)`);
+if (only !== undefined) console.log(`restricted to trust_source=${only}`);
 
 const config = effectiveConfig({ allowHardDelete: true });
-const store = new Store({ memoryRoot: root, paths, config, pluginVersion: '4.11.0' });
+const store = new Store({ memoryRoot: root, paths, config, pluginVersion: '4.13.0' });
 
+const scope = only === undefined ? '' : " AND m.trust_source = ?";
+const params = only === undefined ? [] : [only];
 const live = store.db
-  .prepare("SELECT m.id, m.title, m.trust_source, h.status FROM memory m JOIN memory_head h ON h.ord = m.ord WHERE m.valid_to IS NULL")
-  .all();
+  .prepare(
+    `SELECT m.id, m.title, m.trust_source, h.status FROM memory m JOIN memory_head h ON h.ord = m.ord
+      WHERE m.valid_to IS NULL${scope}`,
+  )
+  .all(...params);
 console.log(`\nlive rows: ${live.length}`);
 const bySource = new Map();
 for (const row of live) bySource.set(row.trust_source ?? '(none)', (bySource.get(row.trust_source ?? '(none)') ?? 0) + 1);
@@ -46,7 +56,26 @@ const backup = join(root, `memory.db.bak-${stamp}`);
 copyFileSync(paths.db, backup);
 console.log(`\nbackup        ${backup}`);
 
-const ids = store.db.prepare('SELECT DISTINCT id FROM memory').all().map((row) => row.id);
+const ids = store.db
+  .prepare(
+    `SELECT DISTINCT m.id FROM memory m WHERE m.valid_to IS NULL${scope}`,
+  )
+  .all(...params)
+  .map((row) => row.id);
+
+// The first version of `--only` filtered the report but not this list, so a "purge the summaries"
+// command deleted every row in the store. Three curator entries were lost and had to be restored from
+// the backup. The guard is the fix that would have caught it: the ids being purged must be exactly the
+// rows that were reported as selected.
+if (ids.length !== live.length) {
+  console.error(
+    `ABORT: ${live.length} row(s) reported as selected but ${ids.length} id(s) would be purged. ` +
+      'The selection and the purge disagree; nothing was deleted.',
+  );
+  store.close();
+  process.exit(1);
+}
+
 let purged = 0;
 for (const id of ids) {
   try {
