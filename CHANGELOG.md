@@ -8,8 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 A class name that does not exist.
 
-The panel block shipped in 5.0.1 wrapped its four band cells in \.loci-cells\, and that class has no CSS
-rule at all — the real container is \.loci-grid\. Nothing errored: the div laid out as a block, so the four
+The panel block shipped in 5.0.1 wrapped its four band cells in `.loci-cells`, and that class has no CSS
+rule at all — the real container is `.loci-grid`. Nothing errored: the div laid out as a block, so the four
 counts rendered as four full-width stacked cards, each roughly a hundred pixels tall, in a panel that is
 supposed to be scannable.
 
@@ -17,7 +17,7 @@ Found by screenshotting the block instead of trusting the payload. The data was 
 correct, and the result was wrong — which is the whole reason a rendered picture is part of the gate and a
 passing assertion is not.
 
-\.loci-grid\ gives the same auto-fit behaviour as the entries row above it: two columns at the panel's width,
+`.loci-grid` gives the same auto-fit behaviour as the entries row above it: two columns at the panel's width,
 one card per band.
 
 307 tests, coverage lines 90.6 / branches 70.6 / functions 85.6.
