@@ -136,14 +136,17 @@ window.__ModuleLoader__.load({
         const since = entry.sinceRecall;
         const age = since === null || since === undefined ? VITALITY_WINDOW * 1.5 : Number(since);
         const halo = Math.max(0, Math.min(1, 1 - age / (VITALITY_WINDOW * 1.5)));
-        const awake = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
+        const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
         return h('span', {
           key: entry.id,
           className:
             'loci-sym' +
             ' loci-sym-' + state +
             (standing ? ' loci-sym-standing' : '') +
-            (awake ? ' loci-sym-awake' : ''),
+            // `pulse` is deliberately not called `awake`: an entry in the `new` state that was just recalled
+            // would otherwise carry both `loci-sym-new` and `loci-sym-awake`, and the later four-point rule
+            // would win — drawing a brand-new memory as a settled one.
+            (pulse ? ' loci-sym-pulse' : ''),
           title:
             (entry.title ?? entry.id) +
             ' — ' + Math.round(p) + ' μ' +
@@ -453,14 +456,15 @@ window.__ModuleLoader__.load({
   background: radial-gradient(circle, currentColor 0%, transparent 68%);
   opacity: calc(var(--halo) * .3); animation: loci-breathe 4.2s ease-in-out infinite; }
 
-/* A recall that actually happened, in the last few μ of the store's clock. */
-.loci-sym-awake.loci-sym-awake { animation: none; }
-.loci-sym.loci-sym-awake[style] { }
+/* A recall that actually happened, in the last few μ of the store's clock. This is a separate marker from
+   the lifecycle state: it says "woken just now" on top of whatever the symbol already means, rather than
+   replacing the symbol. */
+.loci-sym-pulse { animation: loci-recall 1.5s ease-out 2; }
 @keyframes loci-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
 @keyframes loci-arrive { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.1) rotate(22.5deg); } }
-@keyframes loci-pulse {
+@keyframes loci-recall {
   0%   { filter: drop-shadow(0 0 0 currentColor); }
-  45%  { filter: drop-shadow(0 0 5px currentColor); }
+  45%  { filter: drop-shadow(0 0 6px currentColor) brightness(1.5); }
   100% { filter: drop-shadow(0 0 0 currentColor); }
 }
 

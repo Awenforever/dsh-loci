@@ -69,10 +69,10 @@ function renderAxis(list, compact) {
       const since = entry.sinceRecall;
       const age = since === null || since === undefined ? VITALITY_WINDOW * 1.5 : Number(since);
       const halo = Math.max(0, Math.min(1, 1 - age / (VITALITY_WINDOW * 1.5)));
-      const awake = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
+      const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
       const cls = ['loci-sym', `loci-sym-${state}`];
       if (standing) cls.push('loci-sym-standing');
-      if (awake) cls.push('loci-sym-awake');
+      if (pulse) cls.push('loci-sym-pulse');
       const title = `${entry.title ?? entry.id} — ${Math.round(p)} μ${standing ? ' · always' : ' · topical'}`;
       return (
         `<span class="${cls.join(' ')}" title="${title.replace(/"/g, '&quot;')}" style="` +

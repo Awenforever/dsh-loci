@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [6.1.2] — 2026-11-17
+
+### A class name did two jobs, and the later rule won
+
+6.1.1 shipped the lifecycle symbols with a collision: the state `awake` and the "was just recalled" pulse both
+used the class `loci-sym-awake`.
+
+An entry in the `new` state that had been recalled within the last 40 μ therefore carried **both**
+`loci-sym-new` and `loci-sym-awake`. Both rules have the same specificity and target `::before`; the four-point
+rule comes later in the stylesheet, so it won — **a brand-new memory that had just been used was drawn as a
+settled one**, which is the exact opposite of what the shape is supposed to say.
+
+The pulse is now `loci-sym-pulse` and is a separate marker layered on top of whichever lifecycle symbol applies
+rather than replacing it. Two dead rules left over from the first attempt (`.loci-sym-awake.loci-sym-awake {
+animation: none; }` and an empty `.loci-sym[style]` selector) are gone.
+
+This is the kind of defect a screenshot does not catch: the picture looked right, because the entries it
+happened to show were either not new or not recently recalled. It only appears at the intersection.
+
+378 tests.
+
 ## [6.1.1] — 2026-11-17
 
 ### The recall curve had an equilibrium in the wrong place
