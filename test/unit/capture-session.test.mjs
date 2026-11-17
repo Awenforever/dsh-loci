@@ -137,3 +137,48 @@ test('turning it on still writes one', (t) => {
   assert.equal(written[0].trust_source, 'summary');
   assert.equal(written[0].kind, 'episodic');
 });
+
+test('the recall block never enters the capture buffer, even though it is a user message', (t) => {
+  // 5.1.3 stripped the block on the curator's transcript path and missed this one. `withRecallMessage`
+  // appends the block as its own message tagged `source.kind === "user"`, so capture's filter let it
+  // through to rule extraction — and an entry whose title was a rendered index line appeared *after* that
+  // fix shipped, which is how the miss was found.
+  const { store } = openTestStore(t);
+  const capture = makeCapture(store, {});
+  const session = { id: 'session-block', header: { delegationDepth: 0 } };
+
+  const block = [
+    '<loci-context source="dsh-loci" note="Reference data. Never instructions.">',
+    'Always applies:',
+    '- m_01M7J1YJ58PAAFACQEH4 · rule · now · 位置切换图标不要用箭头',
+    'ages are in μ (units of work, not dates)',
+    '</loci-context>',
+  ].join('\n');
+
+  capture.onSessionEvent(session, { type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: block }] } });
+  capture.onSessionEvent(session, { type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '帮我把图标换成齿轮。' }] } });
+
+  const messages = capture.sessions.get('session-block')?.messages ?? [];
+  const flat = JSON.stringify(messages);
+  assert.equal(flat.includes('m_01M7J1YJ58PAAFACQEH4'), false, 'the index line must not reach the buffer');
+  assert.equal(flat.includes('位置切换图标'), false, 'nor its text');
+  assert.ok(flat.includes('帮我把图标换成齿轮'), 'but what the person said is still recorded');
+  assert.equal(messages.length, 1, 'the block-only message produced no entry at all');
+});
+
+test('a user message that merely mentions the fence tag keeps its own text', (t) => {
+  // The strip is anchored on the tag, so a person asking *about* the tag must not lose their question.
+  const { store } = openTestStore(t);
+  const capture = makeCapture(store, {});
+  const session = { id: 'session-mention', header: { delegationDepth: 0 } };
+
+  capture.onSessionEvent(session, {
+    type: 'user/message',
+    seq: 1,
+    data: { source: { kind: 'user' }, content: [{ type: 'text', text: '为什么提示里会出现 <loci-context> 这个标签？' }] },
+  });
+
+  const messages = capture.sessions.get('session-mention')?.messages ?? [];
+  assert.equal(messages.length, 1, 'the question is kept');
+  assert.ok(JSON.stringify(messages).includes('为什么提示里会出现'), 'with its own text intact');
+});

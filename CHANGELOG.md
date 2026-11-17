@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.5] — 2026-11-17
+
+The 5.1.3 fix covered one path. There were two.
+
+### What happened
+
+An entry whose title was a rendered index line appeared at **13:08**, forty minutes *after* 5.1.3 shipped
+with the fix. So the fix did not work, and the clean-up I ran was treating a symptom.
+
+### Why
+
+`withRecallMessage` appends the recall block as its **own user message**, tagged `source: { kind: 'user' }`
+— indistinguishable from what a person typed. Two consumers read user messages:
+
+| consumer | filter | fixed in |
+|---|---|---|
+| curator transcript | `session/event` → `transcripts` map | 5.1.3 |
+| rule extraction | `capture.onSessionEvent` → `source.kind === 'user'` | **5.1.5** |
+
+I fixed the first and assumed the second went through it. It did not. This is the third time in this project
+that one filter served two consumers and the fix reached only one of them — the same shape as the
+"two ages for one entry" bug in 5.0.2 and the "two render paths for μ" bug in 5.1.3.
+
+### Fixed
+
+`capture.onSessionEvent` strips the block before buffering, and a message that was *only* the block records
+nothing at all. A person asking *about* the tag (`为什么提示里会出现 <loci-context> 这个标签？`) keeps their
+question, because the strip is anchored on the tag, not on the word.
+
+### The question that started this
+
+Asked why one rule — *位置切换图标不要用简单的左右箭头* — was injected **397 times** into a session that
+was rarely touching icon placement. The answer is in `docs/REAL-TRAFFIC.md` §7 and it is not about that
+entry: the core takes every `kind='rule'` in scope and keeps six, all candidates share `importance 3` and
+`pinned 0` across the whole store, so ordering falls through to `mu_touched` — which every injection resets.
+Whichever six enter first stay, and in that session there were only **seven** candidates, so six of seven
+were shown every turn regardless of topic.
+
+336 tests, coverage lines 90.5 / branches 71.4 / functions 85.7.
+
 ## [5.1.4] — 2026-11-17
 
 R18 has its first numbers. They came with a warning attached.

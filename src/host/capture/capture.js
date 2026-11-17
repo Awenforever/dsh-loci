@@ -15,6 +15,7 @@
  */
 
 import { effectiveWriteScope } from '../scope.js';
+import { stripInjected } from '../inject/fence.js';
 
 /** Longest text kept per buffered message. */
 const MESSAGE_CHAR_CAP = 4000;
@@ -208,8 +209,16 @@ export class Capture {
       const buffer = this.#buffer(sessionId, session);
       if (event.type === 'user/message') {
         if (event.data?.source?.kind !== 'user') return;
-        const text = contentText(event.data.content).slice(0, MESSAGE_CHAR_CAP);
+        // The recall block is appended as its own user message, and it is tagged `source.kind === 'user'`
+        // like anything the person typed — so this filter alone let the block through to rule extraction.
+        // 5.1.3 fixed the curator's transcript and missed this path; a stored entry whose title was a
+        // rendered index line appeared afterwards, which is how the miss was found.
+        const raw = contentText(event.data.content);
+        const text = stripInjected(raw).slice(0, MESSAGE_CHAR_CAP);
         if (text.trim().length === 0) return;
+        // A message that was *only* the block is not something the person said; skip it rather than
+        // recording an empty turn.
+        if (raw.trim().length > 0 && text.trim().length === 0) return;
         buffer.messages.push({ seq: event.seq, role: 'user', text });
         buffer.bytes += Buffer.byteLength(text, 'utf8');
         this.#trim(buffer);
