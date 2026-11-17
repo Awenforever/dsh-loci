@@ -59,7 +59,7 @@ export function buildKnowledge(store, options = {}) {
   const marks = scopeKeys.map(() => '?').join(', ');
   const rows = store.db
     .prepare(
-      `SELECT id, kind, title, body, scope_label, status, pinned,
+      `SELECT id, kind, title, body, scope_label, status, pinned, applies, importance,
               COALESCE(verified_at, updated_at) AS at
        FROM memory
        WHERE scope_key IN (${marks})
@@ -89,6 +89,11 @@ export function buildKnowledge(store, options = {}) {
       gist: gistOf(row.body, row.title),
       scope: row.scope_label,
       pinned: row.pinned === 1 || row.pinned === true,
+      // Carried so the card can label what kind of memory this is. Without it the card shows a memory and
+      // leaves the reader to guess whether it applies to everything or only to some topics — which is the one
+      // thing that decides whether they will ever see it again.
+      applies: row.applies,
+      importance: Number(row.importance),
       at: Number(row.at) || null,
     })),
     pending,

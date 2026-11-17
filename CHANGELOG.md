@@ -4,6 +4,82 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [6.1.1] — 2026-11-17
+
+### The recall curve had an equilibrium in the wrong place
+
+`recallBoost` was applied without a cap, so a recall from the habitat pushed an entry **right, into the
+digestion zone**. That looks harmless and is not: the equilibrium of "time pushes left, recall pushes right"
+sits right of the habitat, and the more often an entry is used the further right it sits.
+
+| recalled every | equilibrium position |
+|---|---|
+| 5 μ  | ≈ 1630 μ — deep in the entrance |
+| 50 μ | ≈ 478 μ — the digestion zone |
+
+The entrance means *just arrived, not yet digested*. A memory injected 300 times is the most digested thing in
+the store. Without the cap the axis said the opposite.
+
+`recallDisplacement` now caps the pull at the distance to the habitat:
+
+```
+p >= 0   →  0            (nothing to rescue; use does not make an entry newer)
+p <  0   →  min(|p|, max(δ_min, δ_base · e^(−|p|/scale)))
+```
+
+An entry at the habitat that is used constantly **stays at the habitat**; one that stops being used sinks from
+there like everything else. Frequent use stops ageing an entry — it does not reverse it.
+
+Consequence worth stating plainly: recall no longer overshoots into the digestion zone, so
+`MEMORY-UNITS.md` §3.1's "a recalled memory must cross the digestion zone again" no longer describes the
+dynamics. Nothing needs to re-digest, because nothing is pushed back in.
+
+### Why exponential and not logarithmic
+
+The brief said "roughly logarithmic"; the exact function is a design choice. Exponential is chosen because it
+gives the cost of neglect a half-life: **every 347 μ of extra age doubles the number of recalls** needed to
+bring an entry back (`scale · ln 2`). A log curve would fall slower in the middle of the axis — rescuing an
+entry 1000 μ out would take ~15 recalls instead of ~25. Neither number is measurable with today's data, so the
+tie is broken by interpretability, not by pretending there is a measurement.
+`scripts/diag/recall-curve-compare.mjs` prints both.
+
+### Lifecycle symbols
+
+The flat dots are replaced by three symbols, one per lifecycle state, each derived from the store rather than
+decorated:
+
+| symbol | state | means |
+|---|---|---|
+| eight-point star | `new` | still right of the entrance threshold — has not finished arriving |
+| four-point star | `awake` | woken within the last 150 μ (~6 h) of the store's clock |
+| dim core in a breathing halo | `idle` | settled, drifting; the halo fades with age until only the core is left |
+
+Colour stays a separate axis: **green = standing, blue = topical**. Size is still `importance`, glow and
+opacity still fall with age, and the pulse still marks a recall that actually happened.
+
+The first attempt at the stars used polygons whose waist was too wide, so a four-point and an eight-point star
+both rendered as a `+`. Narrowed the four-point waist to 12% and rebuilt the eight-point as a proper
+16-vertex alternating star.
+
+### Stacking: the floating dots are gone
+
+The previous lane assignment picked "the first lane with no close neighbour", which produced dots sitting high
+with empty space underneath them — a dot in lane 3 meant three neighbours were *somewhere* near, not that
+three entries were below it. Entries are now **binned into columns** and each column fills from the track up,
+so a symbol's height means exactly how many entries share its neighbourhood.
+
+### The card
+
+- The latest title no longer has a two-line clamp. A memory title that is cut off cannot be recognised, and
+  recognising it is the entire point of showing it. The card grows instead.
+- It carries what kind of memory it is: an `always` / `topic` chip and the `kind`. Without them the card shows
+  a memory and leaves the reader to guess whether they will ever see it again.
+- The miniature axis shows **one** entry — the same memory named above — not all 45. Forty-five symbols in a
+  twelve-pixel strip was a smear that competed with the text; a single symbol answers the only question the
+  strip can answer: where that memory sits.
+
+378 tests, coverage lines 91.1 / branches 71.9 / functions 86.1, READY 11/11.
+
 ## [6.1.0] — 2026-11-17
 
 Memory can now be *looked at*. Plus a readability fix that had been hiding in plain sight.

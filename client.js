@@ -46,83 +46,131 @@ window.__ModuleLoader__.load({
      * to be measurement.
      */
     const PULSE_WINDOW = 40;
+    /**
+     * How long an entry still counts as "recently activated". Inside this window it carries a four-point star;
+     * as the window expires the star degrades into a halo.
+     */
+    const VITALITY_WINDOW = 150;
+
+    /**
+     * Which lifecycle symbol an entry gets.
+     *
+     * Three states, each from something the store measured — nothing here is decoration:
+     *
+     * - **new** — still right of the entrance threshold, so it has not finished arriving;
+     * - **awake** — woken within living memory of the store's own clock;
+     * - **idle** — everything else: written, settled, and now drifting.
+     */
+    function axisState(entry, R) {
+      const p = Number(entry.p);
+      if (Number.isFinite(p) && p >= 0.6 * R) return 'new';
+      const since = entry.sinceRecall;
+      if (since !== null && since !== undefined && Number(since) <= VITALITY_WINDOW) return 'awake';
+      return 'idle';
+    }
+
+    /**
+     * The memory axis as a picture.
+     *
+     * A list answers "what is in memory"; it cannot answer "where is everything". This draws the same signed
+     * axis the store uses and puts every verified entry on it.
+     *
+     * | property | means |
+     * |---|---|
+     * | horizontal position | `p` — the axis is the model, and a second coordinate system would be a second thing to keep true |
+     * | symbol | lifecycle: eight-point star = still arriving, four-point star = woken recently, dim core in a breathing halo = settled and drifting |
+     * | colour | `applies`: green = standing, blue = topical — two kinds of memory, not two moods |
+     * | size | `importance` — a mild cue, because that number is a guess made at write time |
+     * | glow and opacity | age: both fall off, so a dying memory fades rather than merely moving |
+     * | pulse | a recall that actually happened within the last few μ |
+     *
+     * **Nothing animates that is not data.** Breathing marks an entry the store still knows about; the pulse
+     * marks a recall. Position changes only when the clock advances.
+     */
     function memoryAxis({ entries, entranceDepth, compact = false, t }) {
       const R = Number(entranceDepth) || 2000;
       const list = Array.isArray(entries) ? entries : [];
       const placed = list.filter((entry) => entry.p !== null && entry.p !== undefined && Number.isFinite(Number(entry.p)));
 
       // The left edge stops at the forgotten boundary unless the data goes further, so the scale stays
-      // readable instead of spending half the canvas on empty space. An entry that has drifted past it is
-      // still drawn — the axis is `(−∞, +R]` and clamping would put it in the wrong place.
+      // readable instead of spending half the canvas on empty space.
       const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
       const left = Math.min(-0.6 * R, furthestLeft * 1.05);
       const span = Math.max(1e-6, R - left);
-      const at = (p) => ((Number(p) - left) / span) * 100;
+      // In compact mode the single symbol needs room for its halo, so the track is inset rather than
+      // running edge to edge — otherwise a dot near +R is clipped in half.
+      const at = (p) =>
+        compact ? 6 + ((Number(p) - left) / span) * 88 : ((Number(p) - left) / span) * 100;
 
-      // **Stack overlapping dots into lanes.**
+      // **Bin into columns, then fill each column from the baseline.**
       //
-      // The first version drew every entry on one line, and the screenshot showed why that fails: 21 of 45
-      // entries sit within a few percent of each other at the entrance and merged into a single blue smear.
-      // A picture that cannot be counted is not showing the data — and "everything is piled at the entrance"
-      // is *itself* the most useful thing this store has to say right now. Stacking makes that visible
-      // instead of hiding it behind a blob.
-      const minGap = compact ? 3.5 : 2.4;
-      const lanes = [];
+      // The first version drew everything on one line and 21 of 45 entries merged into a smear. The second
+      // assigned lanes by "first lane with no close neighbour", which produced dots floating high with empty
+      // space beneath them: a dot in lane 3 meant three neighbours were *somewhere* near, not that three
+      // entries sat below it. Binning fixes that — every column is contiguous from the track up, so a dot's
+      // height now means exactly how many entries share its neighbourhood.
+      const columnWidth = compact ? 20 : 2.6;
+      const binOf = (p) => Math.floor(at(p) / columnWidth);
       const sorted = [...placed].sort((a, b) => Number(a.p) - Number(b.p));
+      const seen = new Map();
       for (const entry of sorted) {
-        const x = at(entry.p);
-        let lane = 0;
-        while (lane < lanes.length && lanes[lane].some((taken) => Math.abs(taken - x) < minGap)) lane += 1;
-        if (lane === lanes.length) lanes.push([]);
-        lanes[lane].push(x);
-        entry.__lane = lane;
+        const bin = binOf(entry.p);
+        const depth = seen.get(bin) ?? 0;
+        seen.set(bin, depth + 1);
+        entry.__depth = depth;
       }
-      const laneCount = Math.max(1, lanes.length);
-      const laneStep = compact ? 6 : 9;
-      // The track is the baseline and the dots rise from it, like a histogram. Centring the stack on the
-      // line instead pushed the tallest columns above the container and into the section heading.
-      const baseline = compact ? 12 : laneCount * laneStep + 8;
-      const height = compact ? baseline + 4 : baseline + 22;
-      const laneY = (lane) => baseline - lane * laneStep;
+      const laneStep = compact ? 8 : 12;
+      const tallest = sorted.reduce((max, entry) => Math.max(max, entry.__depth), 0);
+      const baseline = compact ? 14 : (tallest + 1) * laneStep + 8;
+      const height = compact ? baseline + 6 : baseline + 26;
+      const laneY = (depth) => baseline - Number(depth) * laneStep;
 
-      const dot = (entry) => {
+      const symbol = (entry) => {
         const p = Number(entry.p);
+        const state = axisState(entry, R);
         const standing = entry.applies === 'always' || entry.pinned === true;
         const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
-        const size = compact ? 4 : 5 + importance;
-        const away = Math.min(1, Math.abs(p) / R);
-        const awake =
-          entry.sinceRecall !== null && entry.sinceRecall !== undefined && Number(entry.sinceRecall) <= PULSE_WINDOW;
+        const size = compact ? 10 : 8 + importance * 1.7;
+        // How much glow is left. An entry never recalled still carries a faint one until it reaches the
+        // forgotten end — that is "the halo fades as it ages" expressed as a number rather than an opinion.
+        const since = entry.sinceRecall;
+        const age = since === null || since === undefined ? VITALITY_WINDOW * 1.5 : Number(since);
+        const halo = Math.max(0, Math.min(1, 1 - age / (VITALITY_WINDOW * 1.5)));
+        const awake = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
         return h('span', {
           key: entry.id,
           className:
-            'loci-axis-dot' +
-            (standing ? ' loci-axis-dot-standing' : '') +
-            (awake ? ' loci-axis-dot-awake' : '') +
-            (p < -0.6 * R ? ' loci-axis-dot-fading' : ''),
-          title: `${entry.title ?? entry.id} — ${Math.round(p)} μ${Number(entry.injections) > 0 ? ` · shown ${entry.injections}×` : ' · never shown'}`,
+            'loci-sym' +
+            ' loci-sym-' + state +
+            (standing ? ' loci-sym-standing' : '') +
+            (awake ? ' loci-sym-awake' : ''),
+          title:
+            (entry.title ?? entry.id) +
+            ' — ' + Math.round(p) + ' μ' +
+            (standing ? ' · always' : ' · topical') +
+            (Number(entry.injections) > 0 ? ' · shown ' + entry.injections + '×' : ' · never shown'),
           style: {
-            left: `${at(p)}%`,
-            top: `${laneY(entry.__lane ?? 0)}px`,
-            width: `${size}px`,
-            height: `${size}px`,
-            opacity: String(1 - away * 0.65),
+            left: at(p) + '%',
+            top: laneY(entry.__depth) + 'px',
+            width: size + 'px',
+            height: size + 'px',
+            color: standing ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-brand-primary)',
+            '--halo': String(halo),
+            '--vital': String(halo),
+            opacity: String(0.4 + halo * 0.6),
             zIndex: Number(entry.injections) > 0 ? '3' : '2',
           },
         });
       };
 
-      // The ticks sit where those regions actually are, computed with the same mapping as the dots. The
-      // first version pinned them at 4% / 50% / 96%, which put "forgotten" in a place the forgotten region
-      // does not occupy whenever the left edge extended past `-R`.
       const tick = (key, p, label) =>
-        h('span', { key, className: 'loci-axis-tick', style: { left: `${at(p)}%` } }, label);
+        h('span', { key, className: 'loci-axis-tick', style: { left: at(p) + '%' } }, label);
 
       return h(
         'div',
-        { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: `${height}px` } },
-        h('div', { className: 'loci-axis-track', style: { top: `${baseline}px` } }),
-        ...sorted.map(dot),
+        { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: height + 'px' } },
+        h('div', { className: 'loci-axis-track', style: { top: baseline + 'px' } }),
+        ...sorted.map(symbol),
         compact
           ? []
           : [
@@ -165,6 +213,8 @@ window.__ModuleLoader__.load({
       'card.review': 'Review',
       'card.pendingHint': '{n} item(s) waiting for you in Review.',
       'card.latest': 'Latest',
+      'card.standing': 'always',
+      'card.topical': 'topic',
       'card.updated': 'updated',
       'card.pendingSentence': '{n} still need your review',
       'card.pinned': 'pinned',
@@ -342,35 +392,84 @@ window.__ModuleLoader__.load({
 .loci-card-foot-grow { flex: 1 1 auto; }
 .loci-card-empty { font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
 .loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
-.loci-card-known { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+.loci-card-known { display: flex; gap: 5px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
 .loci-card-known-tag { flex: 0 0 auto; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; color: var(--dsw-alias-label-secondary); }
-.loci-card-known-text { min-width: 0; font-size: 11.5px; line-height: 1.45; font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: var(--dsw-alias-label-primary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* No line clamp: a memory title that is cut off cannot be recognised, and recognising it is the whole point of
+   showing it. The card grows instead. */
+.loci-card-known-text { min-width: 0; flex: 1 1 100%; font-size: 11.5px; line-height: 1.5; font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: var(--dsw-alias-label-primary); white-space: normal; word-break: break-word; }
+/* What kind of memory it is: does it apply to every task, or only when the topic comes up. */
+.loci-card-chip { flex: 0 0 auto; font-size: 8.5px; line-height: 1.4; padding: 0 4px; border-radius: 3px;
+  border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); text-transform: lowercase; }
+.loci-card-chip.is-standing { border-color: var(--dsw-alias-state-success-primary); color: var(--dsw-alias-state-success-primary); }
+.loci-card-chip.is-quiet { border-color: transparent; padding: 0 2px; }
 .loci-card-hint-action { align-self: flex-start; margin: 0; padding: 2px 6px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 9px; line-height: 1.2; cursor: pointer; text-align: left; }
 .loci-card-hint-action:hover { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
 
-/* The memory axis: one horizontal track, one dot per entry, positioned by p. */
-.loci-axis { position: relative; height: 46px; margin: 4px 0 2px; }
-.loci-axis-track { position: absolute; left: 0; right: 0; top: 22px; height: 3px; border-radius: 2px;
+/* ---------------------------------------------------------------- the memory axis
+ *
+ * One horizontal track; one symbol per entry, positioned by p and stacked into columns.
+ *
+ * Three lifecycle symbols, because there are three things a memory can be doing:
+ *
+ *  - .loci-sym-new    an eight-point star — still arriving, not yet digested;
+ *  - .loci-sym-awake  a four-point star    — woken within living memory of the store's clock;
+ *  - .loci-sym-idle   a dim core inside a breathing halo — settled, and now drifting.
+ *
+ * Colour carries a different fact: green is a standing rule, blue is a topical note. Colour must not also
+ * carry lifecycle or the two become one unreadable axis.
+ */
+.loci-axis { position: relative; margin: 2px 0 0; }
+.loci-axis-track { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px;
   background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 22%,
-  var(--dsw-alias-state-success-primary) 50%, var(--dsw-alias-brand-primary) 100%); opacity: .22; }
-.loci-axis-dot { position: absolute; top: 22px; border-radius: 50%; background: var(--dsw-alias-brand-primary);
-  transform: translate(-50%, -50%); transition: left .6s cubic-bezier(.22,.61,.36,1), opacity .6s ease; }
-/* A standing rule is a different kind of memory from a topical note; a square survives being four pixels. */
-.loci-axis-dot-standing { border-radius: 1.5px; background: var(--dsw-alias-state-success-primary); }
-.loci-axis-dot-fading { background: var(--dsw-alias-state-idle-primary); }
-/* Pulse only ever means "woke up recently" — it is the one live signal on this axis. */
-.loci-axis-dot-awake { animation: loci-awake 1.6s ease-out 3; box-shadow: 0 0 0 0 var(--dsw-alias-brand-primary); }
-@keyframes loci-awake {
-  0%   { box-shadow: 0 0 0 0 var(--dsw-alias-brand-primary); }
-  70%  { box-shadow: 0 0 0 5px rgba(0,0,0,0); }
-  100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+  var(--dsw-alias-state-success-primary) 50%, var(--dsw-alias-brand-primary) 100%); opacity: .18; }
+
+/* The core every symbol shares. currentColor comes from the inline style, which is what makes
+   "standing green / topical blue" independent of lifecycle. */
+.loci-sym { position: absolute; transform: translate(-50%, -50%);
+  transition: left .7s cubic-bezier(.22,.61,.36,1), opacity .7s ease, width .4s ease, height .4s ease; }
+.loci-sym::before, .loci-sym::after { content: ''; position: absolute; }
+
+/* 1. Still arriving: eight points, bright, energised. */
+.loci-sym-new::before { inset: 0; background: currentColor;
+  clip-path: polygon(50% 0%, 58% 31%, 85% 15%, 69% 42%, 100% 50%, 69% 58%, 85% 85%, 58% 69%, 50% 100%, 42% 69%, 15% 85%, 31% 58%, 0% 50%, 31% 42%, 15% 15%, 42% 31%);
+  animation: loci-arrive 2.4s ease-in-out infinite; }
+.loci-sym-new::after { inset: -55%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 62%); opacity: calc(var(--halo) * .45); }
+
+/* 2. Woken recently: four points, breathing. The arms retract as --vital falls, which is the star
+   degrading back into a halo instead of switching off. */
+.loci-sym-awake::before { inset: 0; background: currentColor;
+  clip-path: polygon(50% 0%, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0% 50%, 44% 44%);
+  transform: scale(calc(.55 + var(--vital) * .55));
+  animation: loci-breathe 2.8s ease-in-out infinite; }
+.loci-sym-awake::after { inset: -45%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 66%); opacity: calc(var(--halo) * .34); }
+
+/* 3. Settled: a dim core that still reads brighter than its own halo, inside a breathing ring.
+   As --halo falls the ring disappears and only the core is left. */
+.loci-sym-idle::before { inset: 32%; border-radius: 50%; background: currentColor; opacity: .92; }
+.loci-sym-idle::after { inset: -60%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 68%);
+  opacity: calc(var(--halo) * .3); animation: loci-breathe 4.2s ease-in-out infinite; }
+
+/* A recall that actually happened, in the last few μ of the store's clock. */
+.loci-sym-awake.loci-sym-awake { animation: none; }
+.loci-sym.loci-sym-awake[style] { }
+@keyframes loci-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
+@keyframes loci-arrive { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.1) rotate(22.5deg); } }
+@keyframes loci-pulse {
+  0%   { filter: drop-shadow(0 0 0 currentColor); }
+  45%  { filter: drop-shadow(0 0 5px currentColor); }
+  100% { filter: drop-shadow(0 0 0 currentColor); }
 }
+
 .loci-axis-tick { position: absolute; bottom: 2px; font-size: 8.5px; color: var(--dsw-alias-label-secondary);
   transform: translateX(-50%); pointer-events: none; white-space: nowrap; }
-.loci-axis-compact { height: 14px; margin: 0; }
-.loci-axis-compact .loci-axis-track { top: 6px; height: 2px; }
-.loci-axis-compact .loci-axis-dot { top: 6px; }
+
+/* The card miniature shows one entry — the latest — so the track exists only to place it. */
+.loci-axis-compact { margin: 0; }
+.loci-axis-compact .loci-axis-track { height: 1px; opacity: .12; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 18px max(24px, calc((100% - 960px) / 2)) 10px; }
 .loci-title { font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: -0.01em; }
@@ -716,6 +815,15 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'loci-card-known' },
               h('span', { className: 'loci-card-known-tag' }, t('card.latest')),
+              // What kind of memory this is. Without it the card shows a memory and leaves the reader to guess
+              // whether it applies to every task or only to some topics — which is the one thing that decides
+              // whether they will ever see it again.
+              top?.applies === 'always'
+                ? h('span', { className: 'loci-card-chip is-standing' }, t('card.standing'))
+                : top?.applies === 'topic'
+                  ? h('span', { className: 'loci-card-chip' }, t('card.topical'))
+                  : null,
+              top?.kind ? h('span', { className: 'loci-card-chip is-quiet' }, top.kind) : null,
               h('span', { className: 'loci-card-known-text' }, latest),
             )
           : null,
@@ -736,16 +844,20 @@ window.__ModuleLoader__.load({
               h('span', { className: 'loci-card-bar-label' }, `${t('card.budget')} ${indexBytes} / ${budget} B`),
             )
           : null,
-        // A miniature of the panel's axis: the shape of the store in one thin strip, no labels. It answers
-        // a question the counts below cannot — whether the memory is clustering, spreading, or sinking.
-        data?.mu?.entries?.length > 0
-          ? memoryAxis({
-              entries: data.mu.entries,
-              entranceDepth: data.mu.parameters?.entranceDepth,
-              compact: true,
-              t,
-            })
-          : null,
+        // The miniature shows **one** entry — the latest, the same memory named above — not the whole store.
+        // Drawing all 45 in a 12-pixel strip produced a smear that said nothing and competed with the text; a
+        // single symbol on a track says where that one memory sits, which is the only question this strip can
+        // answer. It uses the same lifecycle symbols as the full axis so it reads as the same picture.
+        (() => {
+          const latestEntry = (data?.mu?.entries ?? []).find((entry) => entry.id === top?.id);
+          if (latestEntry === undefined) return null;
+          return memoryAxis({
+            entries: [latestEntry],
+            entranceDepth: data.mu.parameters?.entranceDepth,
+            compact: true,
+            t,
+          });
+        })(),
         // All the counts in one line, because they answer one question between them: what is in this
         // store, and is it being used. They used to sit in a three-column grid at the top *and* a
         // footer at the bottom, which spent a row on each.

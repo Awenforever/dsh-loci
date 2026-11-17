@@ -95,13 +95,18 @@ test('criterion 1 through the store: an entry drifts left as the clock advances,
   assert.ok(after < before, `expected drift left from ${before}, got ${after}`);
 });
 
-test('criterion 3 through the store: injecting an entry pulls it right', (t) => {
+test('criterion 3 through the store: injecting an entry pulls it right once it has left the habitat', (t) => {
+  // Recall only rescues what has sunk. An entry still right of the habitat is close enough that a boost would
+  // push it back toward the entrance, so the store applies none — see `recallDisplacement`. This test places an
+  // entry left of zero the way ageing does, then checks that being injected brings it back.
   const { store, scopes } = openTestStore(t);
   const written = write(store, scopes, { kind: 'semantic', title: '会被注入的记忆', body: '正文。' });
-  const noise = write(store, scopes, { kind: 'semantic', title: '噪音条目', body: '用来推进时钟。' });
-  for (let i = 0; i < 20; i += 1) store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [noise.entry.id] });
+  const now = store.muNow();
+  store.db
+    .prepare('UPDATE memory_usage SET p_base = ?, mu_base = ? WHERE id = ?')
+    .run(-300, now, written.entry.id);
   const drifted = positionOfId(store, scopes, written.entry.id);
-  assert.ok(drifted < R, 'the drift test needs the entry to have left the entrance');
+  assert.ok(drifted < 0, 'the entry starts left of the habitat');
 
   store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [written.entry.id] });
   const recalled = positionOfId(store, scopes, written.entry.id);
@@ -111,12 +116,30 @@ test('criterion 3 through the store: injecting an entry pulls it right', (t) => 
 test('reading also pulls right, by the same rule as injection', (t) => {
   const { store, scopes } = openTestStore(t);
   const written = write(store, scopes, { kind: 'semantic', title: '会被读取的记忆', body: '正文。' });
-  const noise = write(store, scopes, { kind: 'semantic', title: '噪音条目', body: '用来推进时钟。' });
-  for (let i = 0; i < 20; i += 1) store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [noise.entry.id] });
+  const now = store.muNow();
+  store.db
+    .prepare('UPDATE memory_usage SET p_base = ?, mu_base = ? WHERE id = ?')
+    .run(-300, now, written.entry.id);
   const drifted = positionOfId(store, scopes, written.entry.id);
-  assert.ok(drifted < R, 'the entry has left the entrance');
   store.recordRead(written.entry.id);
   assert.ok(positionOfId(store, scopes, written.entry.id) > drifted, 'a read is use');
+});
+
+test('an entry at the habitat is not pushed back toward the entrance by use', (t) => {
+  // The defect the cap exists to prevent. Without it, an entry injected every few μ reaches equilibrium deep
+  // in the entrance region — and the entrance means "just arrived, not yet digested", which is the opposite
+  // of what hundreds of injections mean.
+  const { store, scopes } = openTestStore(t);
+  const written = write(store, scopes, { kind: 'semantic', title: '一直被用', body: '正文。' });
+  const now = store.muNow();
+  store.db.prepare('UPDATE memory_usage SET p_base = 0, mu_base = ? WHERE id = ?').run(now, written.entry.id);
+
+  for (let i = 0; i < 50; i += 1) {
+    store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [written.entry.id] });
+  }
+  const p = positionOfId(store, scopes, written.entry.id);
+  assert.ok(p <= 0.001, `use must not carry an entry right of the habitat, got ${p}`);
+  assert.ok(p > -50, 'and it must not sink either, because every recall returns it to the habitat');
 });
 
 test('criterion 5: writing and using are different places, not the same one', (t) => {

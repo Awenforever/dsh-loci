@@ -102,14 +102,28 @@ export function anchorForCreation(muNow, entranceDepth = AXIS_DEFAULTS.entranceD
 }
 
 /**
- * How far right a recall moves an entry at position `p`.
+ * The raw recall curve: how much displacement a single recall is *worth* at position `p`.
  *
- * Large near 0 so a slightly aged memory is recovered by one use; small far away so "used once" and
- * "used constantly" never look the same; floored so that no position is a dead end.
+ * This is the curve before any capping. It is kept separate because the shape is what `docs/AXIS.md` §2.3
+ * documents and what the tests pin down; `anchorAfterRecall` decides how much of it an entry actually gets.
+ *
+ * **Shape: exponential, and why not a log.** The brief said "roughly logarithmic"; the exact function is a
+ * design choice. Exponential is chosen because it makes the *cost* of neglect grow geometrically, which is the
+ * behaviour that matters:
+ *
+ *  - every **347 μ** of extra age doubles the number of recalls needed to bring an entry back
+ *    (`scale · ln 2`), so the curve has a half-life a person can reason about;
+ *  - at the habitat one recall is worth `recallBase`; at the entrance it is worth `recallBase · e^(−R/scale)`,
+ *    small enough that "used once" never looks like "used constantly".
+ *
+ * A logarithmic decay would fall *slower* than this in the middle of the axis: rescuing an entry 1000 μ out
+ * would take ~15 recalls instead of ~25. Neither number is measurable with today's data, so the tie is broken
+ * by interpretability rather than by pretending there is a measurement. `scripts/diag/recall-curve-compare.mjs`
+ * prints both.
  *
  * @param p - current position.
  * @param parameters - overrides for `recallBase`, `recallScale`, `recallFloor`.
- * @returns the (positive) displacement.
+ * @returns the (positive) displacement the curve is worth.
  */
 export function recallBoost(p, parameters = {}) {
   const base = Number(parameters.recallBase ?? AXIS_DEFAULTS.recallBase);
@@ -121,6 +135,41 @@ export function recallBoost(p, parameters = {}) {
 }
 
 /**
+ * How far right a recall actually moves an entry, given where it is.
+ *
+ * ```
+ * p >= 0        →  0            (already at or right of the habitat; a recall has nothing to rescue)
+ * p <  0        →  min(|p|, max(δ_min, δ_base · e^(−|p| / scale)))
+ * ```
+ *
+ * **The cap at `|p|` is the whole design.** Without it the equilibrium of "time pushes left, recall pushes
+ * right" sits *right* of the habitat, and the more often an entry is used the further right it sits:
+ *
+ * | recalled every | equilibrium position |
+ * |---|---|
+ * | 5 μ  | ≈ 1630 μ — deep in the entrance |
+ * | 50 μ | ≈ 478 μ — the digestion zone |
+ *
+ * That inverts the axis. The entrance means "just arrived, not yet digested"; a memory injected 300 times is
+ * the most digested thing in the store. Capping the pull at the distance to the habitat gives instead:
+ * an entry at 0 that is used constantly **stays at 0**, and one that stops being used starts sinking from 0
+ * like everything else. Frequent use stops ageing the entry; it does not make it newer.
+ *
+ * A consequence worth stating: recall does **not** overshoot into the digestion zone, so `MEMORY-UNITS.md`
+ * §3.1's "a recalled memory must cross the digestion zone again" no longer describes the dynamics. Nothing
+ * needs to re-digest, because nothing is pushed back in.
+ *
+ * @param p - current position.
+ * @param parameters - curve overrides plus `entranceDepth`.
+ * @returns the displacement, always `>= 0` and never more than the distance to the habitat.
+ */
+export function recallDisplacement(p, parameters = {}) {
+  const position = Number.isFinite(Number(p)) ? Number(p) : 0;
+  if (position >= 0) return 0;
+  return Math.min(Math.abs(position), recallBoost(position, parameters));
+}
+
+/**
  * The anchor pair after a recall.
  *
  * @param anchor - current `{pBase, muBase}`.
@@ -129,13 +178,9 @@ export function recallBoost(p, parameters = {}) {
  * @returns `{pBase, muBase, from, to, boost}` — the new anchor plus what happened, for the audit.
  */
 export function anchorAfterRecall(anchor, muNow, parameters = {}) {
-  const entrance = Number(parameters.entranceDepth ?? AXIS_DEFAULTS.entranceDepth);
   const current = positionOf(anchor, muNow) ?? 0;
-  const boost = recallBoost(current, parameters);
-  // Recall can carry an entry toward the entrance but never past it: `+R` is where things land, and
-  // overshooting would mean a much-used old memory reads as newer than one written this minute.
-  const next = Math.min(entrance, current + boost);
-  return { pBase: next, muBase: Number(muNow), from: current, to: next, boost: next - current };
+  const boost = recallDisplacement(current, parameters);
+  return { pBase: current + boost, muBase: Number(muNow), from: current, to: current + boost, boost };
 }
 
 /**
