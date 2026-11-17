@@ -1548,16 +1548,17 @@ export class Store {
       return {
         now,
         entries: [],
-        bands: { fresh: 0, active: 0, cool: 0, cold: 0 },
+        regions: { entrance: 0, digesting: 0, habitat: 0, compressing: 0, forgotten: 0, unknown: 0 },
         untracked: 0,
-        edges: { fresh: 5, active: 50, cool: 500, derived: false },
+        parameters: this.#axisParameters(),
         retireAfter: 0,
       };
     }
     const marks = Array.isArray(keys) && keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
     const rows = this.db
       .prepare(
-        `SELECT m.id, m.title, u.p_base, u.mu_base, m.mu_born
+        `SELECT m.id, m.title, m.applies, m.pinned, m.importance, u.p_base, u.mu_base,
+                COALESCE(u.inject_count, 0) AS injections, m.mu_born
            FROM memory m
            JOIN memory_head h ON h.ord = m.ord
            LEFT JOIN memory_usage u ON u.id = m.id
@@ -1575,6 +1576,14 @@ export class Store {
         id: row.id,
         title: row.title,
         p,
+        // The fields a picture needs to say something a list cannot. `applies` decides the shape (a standing
+        // rule is a different kind of thing from a topical note), and `sinceRecall` decides whether the dot
+        // is pulsing: a recall writes `mu_base`, so μ elapsed since then is "how long ago it was woken".
+        applies: row.applies,
+        pinned: Number(row.pinned) === 1,
+        importance: Number(row.importance),
+        injections: Number(row.injections),
+        sinceRecall: row.mu_base === null || row.mu_base === undefined ? null : Math.max(0, now - Number(row.mu_base)),
         region: p === null ? 'unknown' : axisRegion(p, parameters.entranceDepth),
         tracked: p !== null,
       };

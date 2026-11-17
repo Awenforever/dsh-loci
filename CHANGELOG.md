@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [6.1.0] — 2026-11-17
+
+Memory can now be *looked at*. Plus a readability fix that had been hiding in plain sight.
+
+### The memory axis
+
+The panel's Statistics tab draws the signed axis and puts every verified entry on it. The sidebar card
+carries the same thing as a miniature — no labels, no counts, just the shape.
+
+Each visual property maps to something the store measured, and to nothing else:
+
+| property | means |
+|---|---|
+| horizontal position | `p` — the axis is the model, and a second coordinate system would be a second thing to keep true |
+| shape | square = standing (`applies: always` or pinned), circle = topical |
+| size | `importance` — a mild cue, because that number is a guess made at write time |
+| opacity | distance from the habitat in *both* directions: an entry at the entrance is not settled yet, one far left is going |
+| pulse | recalled within the last 40 μ — the only genuinely live signal on the axis |
+
+**Nothing animates that is not data.** Position changes only when the clock advances, so dots slide between
+positions on refresh rather than swimming continuously. A dot that swam for its own sake would be decoration
+pretending to be measurement.
+
+### Two things the screenshot caught that the code did not
+
+The first render put every entry on one line, and 21 of 45 entries sit within a few percent of each other at
+the entrance — they merged into a single blue smear. **A picture that cannot be counted is not showing the
+data**, and "everything is piled at the entrance" is itself the most useful thing this store has to say. Dots
+now stack into lanes, with the track as a baseline and columns rising from it.
+
+The tick labels were pinned at 4% / 50% / 96% while the dots were placed by an arbitrary left edge, so
+"forgotten" sat wherever it happened to land. Ticks are now computed with the same mapping as the dots.
+
+### The sidebar card was set at 9.5px
+
+`Latest` followed by a memory title at `font-size: 9.5px` with no explicit font family. At that size Chinese
+characters — which are dense enough that they need roughly 12px to be legible — blur into a grey ribbon. Now
+11.5px, line-height 1.45, and an explicit stack (`Segoe UI` for Latin, `Microsoft YaHei UI` for CJK) instead
+of inheriting whatever the host happened to set.
+
+### Data
+
+`muPositions` entries now carry `applies`, `pinned`, `importance`, `injections` and `sinceRecall` (μ elapsed
+since the last recall, derived from `mu_base`), because a picture needs to say things a list cannot.
+
+377 tests, coverage lines 91.1 / branches 71.9 / functions 86.1, READY 11/11.
+
 ## [6.0.1] — 2026-11-17
 
 6.0.0 built the axis and left three readers pointing at the old column. This finishes the wiring.

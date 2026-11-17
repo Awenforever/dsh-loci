@@ -11,7 +11,10 @@
     "regionDigesting": "digesting",
     "regionHabitat": "habitat",
     "regionCompressing": "compressing",
-    "regionForgotten": "forgotten"
+    "regionForgotten": "forgotten",
+    "axisForgotten": "forgotten",
+    "axisHabitat": "habitat",
+    "axisEntrance": "entrance"
   },
   "settings": {
     "title": "Loci"

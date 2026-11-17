@@ -23,6 +23,116 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const { useCallback, useEffect, useMemo, useState } = React;
 
+    /**
+     * The memory axis as a picture.
+     *
+     * A list answers "what is in memory"; it cannot answer "where is everything". This draws the same signed
+     * axis the store uses and puts every verified entry on it, so the shape of the whole store is visible at
+     * a glance: what is still arriving, what has settled, what is quietly sinking.
+     *
+     * Each visual property maps to something the store actually measured:
+     *
+     * - **horizontal position** is `p` — the axis is the model, and a second coordinate system would be a
+     *   second thing to keep true;
+     * - **shape** is `applies` (square = standing, circle = topical): two kinds of memory, and a shape stays
+     *   legible when the dot is four pixels wide;
+     * - **size** is `importance` — a mild cue, because that number is a guess the model made at write time;
+     * - **opacity** falls off with distance from the habitat in *both* directions: an entry at the entrance is
+     *   not settled yet and one far left is going; both are less present than one at 0;
+     * - **pulse** means recalled within the last few μ, which is the only genuinely live signal here.
+     *
+     * **Nothing animates that is not data.** Position changes only when the clock advances, so the slide
+     * between positions happens on refresh. A dot that swam for its own sake would be decoration pretending
+     * to be measurement.
+     */
+    const PULSE_WINDOW = 40;
+    function memoryAxis({ entries, entranceDepth, compact = false, t }) {
+      const R = Number(entranceDepth) || 2000;
+      const list = Array.isArray(entries) ? entries : [];
+      const placed = list.filter((entry) => entry.p !== null && entry.p !== undefined && Number.isFinite(Number(entry.p)));
+
+      // The left edge stops at the forgotten boundary unless the data goes further, so the scale stays
+      // readable instead of spending half the canvas on empty space. An entry that has drifted past it is
+      // still drawn — the axis is `(−∞, +R]` and clamping would put it in the wrong place.
+      const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
+      const left = Math.min(-0.6 * R, furthestLeft * 1.05);
+      const span = Math.max(1e-6, R - left);
+      const at = (p) => ((Number(p) - left) / span) * 100;
+
+      // **Stack overlapping dots into lanes.**
+      //
+      // The first version drew every entry on one line, and the screenshot showed why that fails: 21 of 45
+      // entries sit within a few percent of each other at the entrance and merged into a single blue smear.
+      // A picture that cannot be counted is not showing the data — and "everything is piled at the entrance"
+      // is *itself* the most useful thing this store has to say right now. Stacking makes that visible
+      // instead of hiding it behind a blob.
+      const minGap = compact ? 3.5 : 2.4;
+      const lanes = [];
+      const sorted = [...placed].sort((a, b) => Number(a.p) - Number(b.p));
+      for (const entry of sorted) {
+        const x = at(entry.p);
+        let lane = 0;
+        while (lane < lanes.length && lanes[lane].some((taken) => Math.abs(taken - x) < minGap)) lane += 1;
+        if (lane === lanes.length) lanes.push([]);
+        lanes[lane].push(x);
+        entry.__lane = lane;
+      }
+      const laneCount = Math.max(1, lanes.length);
+      const laneStep = compact ? 6 : 9;
+      // The track is the baseline and the dots rise from it, like a histogram. Centring the stack on the
+      // line instead pushed the tallest columns above the container and into the section heading.
+      const baseline = compact ? 12 : laneCount * laneStep + 8;
+      const height = compact ? baseline + 4 : baseline + 22;
+      const laneY = (lane) => baseline - lane * laneStep;
+
+      const dot = (entry) => {
+        const p = Number(entry.p);
+        const standing = entry.applies === 'always' || entry.pinned === true;
+        const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
+        const size = compact ? 4 : 5 + importance;
+        const away = Math.min(1, Math.abs(p) / R);
+        const awake =
+          entry.sinceRecall !== null && entry.sinceRecall !== undefined && Number(entry.sinceRecall) <= PULSE_WINDOW;
+        return h('span', {
+          key: entry.id,
+          className:
+            'loci-axis-dot' +
+            (standing ? ' loci-axis-dot-standing' : '') +
+            (awake ? ' loci-axis-dot-awake' : '') +
+            (p < -0.6 * R ? ' loci-axis-dot-fading' : ''),
+          title: `${entry.title ?? entry.id} — ${Math.round(p)} μ${Number(entry.injections) > 0 ? ` · shown ${entry.injections}×` : ' · never shown'}`,
+          style: {
+            left: `${at(p)}%`,
+            top: `${laneY(entry.__lane ?? 0)}px`,
+            width: `${size}px`,
+            height: `${size}px`,
+            opacity: String(1 - away * 0.65),
+            zIndex: Number(entry.injections) > 0 ? '3' : '2',
+          },
+        });
+      };
+
+      // The ticks sit where those regions actually are, computed with the same mapping as the dots. The
+      // first version pinned them at 4% / 50% / 96%, which put "forgotten" in a place the forgotten region
+      // does not occupy whenever the left edge extended past `-R`.
+      const tick = (key, p, label) =>
+        h('span', { key, className: 'loci-axis-tick', style: { left: `${at(p)}%` } }, label);
+
+      return h(
+        'div',
+        { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: `${height}px` } },
+        h('div', { className: 'loci-axis-track', style: { top: `${baseline}px` } }),
+        ...sorted.map(dot),
+        compact
+          ? []
+          : [
+              tick('far', -0.6 * R, t('panel.axisForgotten')),
+              tick('mid', 0, t('panel.axisHabitat')),
+              tick('near', 0.6 * R, t('panel.axisEntrance')),
+            ],
+      );
+    }
+
     const NS = 'loci';
     const API = '/api/loci';
     const ENTRY_ID = 'dsh-loci';
@@ -193,6 +303,9 @@ window.__ModuleLoader__.load({
       'panel.regionHabitat': 'habitat',
       'panel.regionCompressing': 'compressing',
       'panel.regionForgotten': 'forgotten',
+      'panel.axisForgotten': 'forgotten',
+      'panel.axisHabitat': 'habitat',
+      'panel.axisEntrance': 'entrance',
       'panel.distance': 'Distance from the working set',
       'panel.distanceHint':
         'Measured in memory units — units of work, not dates. Retirement is off until a threshold is calibrated, so this is where growth shows up first.',
@@ -231,10 +344,33 @@ window.__ModuleLoader__.load({
 .loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
 .loci-card-known { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
 .loci-card-known-tag { flex: 0 0 auto; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; color: var(--dsw-alias-label-secondary); }
-.loci-card-known-text { min-width: 0; font-size: 9.5px; color: var(--dsw-alias-label-primary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.loci-card-known-text { min-width: 0; font-size: 11.5px; line-height: 1.45; font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: var(--dsw-alias-label-primary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .loci-card-hint-action { align-self: flex-start; margin: 0; padding: 2px 6px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 9px; line-height: 1.2; cursor: pointer; text-align: left; }
 .loci-card-hint-action:hover { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .loci-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
+
+/* The memory axis: one horizontal track, one dot per entry, positioned by p. */
+.loci-axis { position: relative; height: 46px; margin: 4px 0 2px; }
+.loci-axis-track { position: absolute; left: 0; right: 0; top: 22px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 22%,
+  var(--dsw-alias-state-success-primary) 50%, var(--dsw-alias-brand-primary) 100%); opacity: .22; }
+.loci-axis-dot { position: absolute; top: 22px; border-radius: 50%; background: var(--dsw-alias-brand-primary);
+  transform: translate(-50%, -50%); transition: left .6s cubic-bezier(.22,.61,.36,1), opacity .6s ease; }
+/* A standing rule is a different kind of memory from a topical note; a square survives being four pixels. */
+.loci-axis-dot-standing { border-radius: 1.5px; background: var(--dsw-alias-state-success-primary); }
+.loci-axis-dot-fading { background: var(--dsw-alias-state-idle-primary); }
+/* Pulse only ever means "woke up recently" — it is the one live signal on this axis. */
+.loci-axis-dot-awake { animation: loci-awake 1.6s ease-out 3; box-shadow: 0 0 0 0 var(--dsw-alias-brand-primary); }
+@keyframes loci-awake {
+  0%   { box-shadow: 0 0 0 0 var(--dsw-alias-brand-primary); }
+  70%  { box-shadow: 0 0 0 5px rgba(0,0,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+}
+.loci-axis-tick { position: absolute; bottom: 2px; font-size: 8.5px; color: var(--dsw-alias-label-secondary);
+  transform: translateX(-50%); pointer-events: none; white-space: nowrap; }
+.loci-axis-compact { height: 14px; margin: 0; }
+.loci-axis-compact .loci-axis-track { top: 6px; height: 2px; }
+.loci-axis-compact .loci-axis-dot { top: 6px; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 18px max(24px, calc((100% - 960px) / 2)) 10px; }
 .loci-title { font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: -0.01em; }
@@ -599,6 +735,16 @@ window.__ModuleLoader__.load({
               ),
               h('span', { className: 'loci-card-bar-label' }, `${t('card.budget')} ${indexBytes} / ${budget} B`),
             )
+          : null,
+        // A miniature of the panel's axis: the shape of the store in one thin strip, no labels. It answers
+        // a question the counts below cannot — whether the memory is clustering, spreading, or sinking.
+        data?.mu?.entries?.length > 0
+          ? memoryAxis({
+              entries: data.mu.entries,
+              entranceDepth: data.mu.parameters?.entranceDepth,
+              compact: true,
+              t,
+            })
           : null,
         // All the counts in one line, because they answer one question between them: what is in this
         // store, and is it being used. They used to sit in a three-column grid at the top *and* a
@@ -1219,6 +1365,12 @@ window.__ModuleLoader__.load({
                     'div',
                     null,
                     h('div', { className: 'loci-section' }, t('panel.axis')),
+                    // The picture first, the counts under it: a person reads the shape, then the numbers.
+                    memoryAxis({
+                      entries: data.mu.entries ?? [],
+                      entranceDepth: data.mu.parameters?.entranceDepth,
+                      t,
+                    }),
                     h(
                       'div',
                       { className: 'loci-grid' },
