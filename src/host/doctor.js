@@ -118,6 +118,28 @@ export function runDoctor(options) {
           `compressing ${regions.compressing ?? 0} / forgotten ${regions.forgotten ?? 0} · ${shape}`,
       ),
     );
+    // Compaction is the half of the model a position alone cannot show: an entry that has travelled left has
+    // also *lost detail*, and that is a fact about its text, not its coordinate.
+    const levels = store.db
+      .prepare(
+        `SELECT compact_level AS level, COUNT(*) AS n
+           FROM memory m JOIN memory_head h ON h.ord = m.ord
+          WHERE h.status = 'verified' AND m.valid_to IS NULL
+          GROUP BY compact_level ORDER BY compact_level`,
+      )
+      .all();
+    const compacted = levels.filter((row) => Number(row.level) > 0);
+    const total = levels.reduce((sum, row) => sum + Number(row.n), 0);
+    const brief = compacted.length === 0
+      ? `${total} entries, none compacted yet`
+      : compacted.map((row) => `L${row.level}: ${row.n}`).join(' / ');
+    checks.push(
+      check(
+        'compaction',
+        'ok',
+        `${brief} · levels rise with distance and never fall; originals stay as older revisions`,
+      ),
+    );
   } catch (error) {
     checks.push(check('memory unit', 'warn', `could not read: ${String(error?.message ?? error)}`));
   }

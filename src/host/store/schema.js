@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -127,6 +127,12 @@ CREATE TABLE IF NOT EXISTS memory (
   -- Entries written before v8 also become 'topic', because the honest reading of "we never asked" is
   -- "not proven standing", not "standing".
   applies        TEXT NOT NULL DEFAULT 'topic' CHECK (applies IN ('always', 'topic')),
+  -- v11: how much detail this entry has lost on its way left. 0 = as written.
+  --
+  -- Set by the compaction pass from the entry's position, and only ever increases: a memory that has been
+  -- digested does not become whole again by being recalled. Recall moves it right on the axis; the text it
+  -- already lost stays lost. Anything else would make the axis a lie about what the entry says.
+  compact_level  INTEGER NOT NULL DEFAULT 0,
   UNIQUE (id, revision)
 );
 

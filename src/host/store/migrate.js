@@ -242,6 +242,28 @@ export const SHIPPED_MIGRATIONS = [
       writeMeta(db, 'mu_rescaled_from_legacy', String(MU_RESCALE));
     },
   },
+  {
+    from: 10,
+    to: 11,
+    /**
+     * Give every entry a compaction level.
+     *
+     * The axis has always claimed that a travelling memory is digested and then compressed. Until v11 the entry
+     * itself never changed: it decayed in position while keeping every byte. This column is where that
+     * degradation is recorded.
+     *
+     * Existing rows start at **0**, not at their computed level. Compacting them here would rewrite the content
+     * of memories nobody asked to have rewritten, on the strength of positions that were themselves inferred
+     * from the old model (`docs/AXIS.md` §6). The first compaction pass after the upgrade does that work
+     * visibly, on positions the new dynamics produced.
+     */
+    up(db) {
+      if (!db.prepare('PRAGMA table_info(memory)').all().some((row) => row.name === 'compact_level')) {
+        db.exec('ALTER TABLE memory ADD COLUMN compact_level INTEGER NOT NULL DEFAULT 0');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS ix_memory_compact ON memory (compact_level) WHERE compact_level > 0');
+    },
+  },
 ];
 
 /**

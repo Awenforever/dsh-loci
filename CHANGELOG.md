@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [7.1.0] — 2026-11-18
+
+A memory now loses detail as it travels left. Schema v11.
+
+### The gap this closes
+
+The axis has modelled a memory moving from the entrance to the forgotten end since 6.0.0, but the memory itself
+never changed. `MEMORY-UNITS.md` §3 says a travelling memory is *digested* — deduplicated, trimmed, summarised —
+and then *compressed* — details dropped. Without that, "forgotten" was a label on a row that still carried every
+byte. **The shape changed; the thing did not.**
+
+### Compaction, without a model
+
+`src/host/store/compact.js` derives a level from the position, using the same boundaries as the axis regions
+(two sets would drift apart within a release):
+
+| level | position | share kept |
+|---|---|---|
+| L0 full | `p > 0.35R` | 100% |
+| L1 digested | `0.05R < p ≤ 0.35R` | 60% |
+| L2 core | `-0.6R < p ≤ 0.05R` | 32% |
+| L3 mote | `p ≤ -0.6R` | 16% |
+
+**What compaction may not touch**: `title` (a memory whose name is lost cannot be found), `whenCondition` (the
+premise — a fact rendered without it is a lie), `applies`/`importance`/`pinned` (judgements, not detail),
+`evidence` (the quote gate depends on it). The rule is: drop what the reader could reconstruct, never what they
+would need in order to know whether to trust the entry.
+
+**Losslessness**: every compaction writes a new revision; the previous text stays in `memory` as an older
+revision. First real pass on the live store: **42 of 48 entries, 4951 → 1721 characters, 42/42 originals
+recoverable.**
+
+### Three bugs the implementation exposed
+
+1. **Non-monotone levels.** One shared character floor let level 3 keep a whole short sentence and come out
+   *longer* than level 2 had truncated it — a memory apparently growing as it aged. The floor is now per level.
+2. **`ord` is the primary key.** A revision is a new row, not an update; cloning at the same `ord` hit a UNIQUE
+   violation. `memory_head` is now repointed at the new row.
+3. **`muUseWeight` was still 1.** The new driver's weight of 0.002 lived in `mu.js`, but the config default was
+   `1` and `live()` always returned it — so every injection still advanced the clock by `log(5) ≈ 1.61`. Measured:
+   **19 injections moved the clock 30 μ in one hour**, which is exactly the failure 7.0.0 was released to
+   remove. The default now references the constant.
+
+### A deliberate choice about migration
+
+Existing rows start at level 0 and are **not** compacted by the migration. Their positions were inferred from the
+old model (`AXIS.md` §6); rewriting someone's text on the strength of a guessed coordinate would be guessing
+overwriting fact. The first maintenance pass after the upgrade does the work, on positions the new dynamics
+computed themselves.
+
+388 tests, coverage lines 91.5 / branches 72.1 / functions 86.5, READY 11/11.
+
+### Verification
+
+`scripts/diag/capture-dsh.ps1` now captures the **real DSH window** for acceptance. A preview page is not
+evidence that the running application changed.
+
 ## [7.0.0] — 2026-11-17
 
 The clock was counting the wrong thing. Schema v10.

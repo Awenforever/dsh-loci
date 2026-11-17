@@ -15,6 +15,8 @@
  * that cannot resolve the peer still boots the plugin with our defaults and
  * no Config schema (the Loader then passes the raw row config through).
  */
+import { MU_USE_WEIGHT } from './store/mu.js';
+
 let z = null;
 try {
   const mod = await import('@deepseek-ai/schemastery');
@@ -191,8 +193,16 @@ export const DEFAULTS = Object.freeze({
    * choice until a real distribution has been measured.
    */
   muAddWeight: 1,
-  /** Weight of the activity component. See `muAddWeight`. */
-  muUseWeight: 1,
+  /**
+   * Weight of the activity component.
+   *
+   * **0.002, not 1.** `docs/MU-DRIVER.md` §3 argues that an injection is a very weak signal: it means the prompt
+   * was assembled with this entry in it, which is the machinery running, not the agent's understanding moving.
+   * Leaving this at 1 kept the old behaviour in force through the config default — each injection advanced the
+   * clock by `log(5) ≈ 1.61` because four entries went into the prompt, which is exactly the failure the new
+   * driver was introduced to remove. Measured: 19 injections in one hour moved the clock 30 μ.
+   */
+  muUseWeight: MU_USE_WEIGHT,
   /**
    * Retire an entry once it is this many memory units from the working set. `0` disables retirement.
    *

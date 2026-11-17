@@ -128,10 +128,16 @@ test('C3: the prompt states μ distances and never a calendar date', (t) => {
   assert.match(stable.text, /units of work, not dates/, 'and the unit is explained once');
 });
 
-test('the defaults keep retirement off and both weights neutral', () => {
+test('the defaults keep retirement off and separate write from use', () => {
   assert.equal(DEFAULTS.muRetireAfter, 0, 'a threshold must come from a measured distribution, not a guess');
   assert.equal(DEFAULTS.muAddWeight, 1);
-  assert.equal(DEFAULTS.muUseWeight, 1);
+  // The use weight is deliberately not 1 — see docs/MU-DRIVER.md §3. An injection is the machinery running, not
+  // the agent learning. Leaving this at 1 kept the old failure alive through the config default: every injection
+  // advanced the clock by log(5) ≈ 1.61 because four entries went into the prompt.
+  assert.ok(DEFAULTS.muUseWeight > 0 && DEFAULTS.muUseWeight < 0.01, `use weight must be near zero, got ${DEFAULTS.muUseWeight}`);
+  const oneInjection = muDelta(0, 4, 1, DEFAULTS.muUseWeight);
+  const oneWrite = muDelta(1, 0, 1, DEFAULTS.muUseWeight, { accretion: 1 });
+  assert.ok(oneWrite > oneInjection * 50, `a write must outweigh an injection by a wide margin (${oneWrite} vs ${oneInjection})`);
   assert.equal(DEFAULTS.workingTtlDays, 0, 'wall-clock expiry is gone');
   assert.equal(DEFAULTS.candidateTtlDays, 0);
 });

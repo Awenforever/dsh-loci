@@ -22,6 +22,7 @@ import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
 import { MU_TURN_WEIGHT, MU_USE_WEIGHT, deriveBandEdges, muAdvance, muBand, muNow, muTrail } from './mu.js';
 import { bigramJaccard } from './tokenize.js';
+import { compactFlag, planCompaction } from './compact.js';
 import { AXIS_DEFAULTS, anchorAfterRecall, anchorForCreation, axisRegion, positionOf } from './axis.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
@@ -1852,7 +1853,22 @@ export class Store {
   maintenance(options = {}) {
     this.#assertWritable();
     const now = options.now ?? this.now();
-    const summary = { expiredWorking: 0, closedCandidates: 0, reindexed: false, optimized: false };
+    const summary = { expiredWorking: 0, closedCandidates: 0, reindexed: false, optimized: false, compacted: 0 };
+    // **Compaction: a memory loses detail as it travels left.**
+    //
+    // Until v11 the axis moved entries but never changed them — a "forgotten" row still carried every byte, so
+    // the picture claimed a transformation that had not happened. This pass applies it: the position decides
+    // the level, the level decides how much of the body survives, and the previous text stays in `memory` as an
+    // older revision.
+    //
+    // It runs in maintenance rather than on every read for two reasons: rewriting rows during a read would make
+    // reads expensive, and a bounded, observable pass is something a person can check afterwards.
+    try {
+      summary.compacted = this.#compactPass(now);
+    } catch (error) {
+      // Compaction is housekeeping; it must never take down a turn.
+      summary.compactError = String(error?.message ?? error);
+    }
     // Retirement is measured in memory units, never in days.
     //
     // Before 5.0.0 this ran two UPDATEs comparing `created_at` against wall clock: `working` after 7
@@ -2164,6 +2180,78 @@ export class Store {
       return { pBase: Number(row.p_base), muBase: Number(row.mu_base) };
     }
     return { pBase: 0, muBase: muNow(this.db) };
+  }
+
+  /**
+   * Apply one round of compaction.
+   *
+   * Each entry that has travelled far enough gets a **new revision** with a shorter body; the previous text
+   * stays in `memory` as the older revision, so nothing is destroyed and `loci_get --includeHistory` still
+   * returns the original.
+   *
+   * @param now - wall clock for the revision stamp.
+   * @returns how many entries were compacted.
+   */
+  #compactPass(now) {
+    const parameters = this.#axisParameters();
+    const muNowValue = this.muNow();
+    const rows = this.db
+      .prepare(
+        `SELECT m.ord, m.id, m.revision, m.body, m.flags, m.compact_level, u.p_base, u.mu_base
+           FROM memory m
+           JOIN memory_head h ON h.ord = m.ord
+           LEFT JOIN memory_usage u ON u.id = m.id
+          WHERE h.status = 'verified' AND m.valid_to IS NULL`,
+      )
+      .all();
+    if (rows.length === 0) return 0;
+
+    // A revision is a *new row*: `ord` is the primary key, so the previous revision keeps its own ord and
+    // `memory_head` is repointed at the new one. That is what makes the original recoverable.
+    const insert = this.db.prepare(
+      `INSERT INTO memory (id, revision, kind, scope, scope_key, scope_label, title, title_norm, body, tags,
+                           entities, status, trust_source, flags, valid_from, valid_to, recorded_at, supersedes,
+                           superseded_by, evidence, source_session, source_event, verified_at, verified_by, pinned,
+                           tier, importance, content_hash, pattern, fix, prevents, when_condition, created_at,
+                           updated_at, deleted_at, mu_born, applies, compact_level)
+       SELECT id, ?, kind, scope, scope_key, scope_label, title, title_norm, ?, tags,
+              entities, status, trust_source, ?, valid_from, valid_to, recorded_at, supersedes,
+              superseded_by, evidence, source_session, source_event, verified_at, verified_by, pinned,
+              tier, importance, content_hash, pattern, fix, prevents, when_condition, created_at,
+              ?, deleted_at, mu_born, applies, ?
+         FROM memory WHERE ord = ?`,
+    );
+
+    let compacted = 0;
+    withTransaction(this.db, () => {
+      for (const row of rows) {
+        const position = positionOf({ pBase: row.p_base, muBase: row.mu_base }, muNowValue);
+        const plan = planCompaction(
+          { body: row.body, position, compactLevel: row.compact_level },
+          parameters.entranceDepth,
+        );
+        if (!plan.changed) continue;
+
+        const nextRevision = Number(row.revision) + 1;
+        const flags = (() => {
+          try {
+            const parsed = JSON.parse(row.flags ?? '[]');
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })();
+        const flag = compactFlag(plan.to);
+        if (flag !== null && !flags.includes(flag)) flags.push(flag);
+        const flagsJson = JSON.stringify(flags);
+
+        insert.run(nextRevision, plan.body, flagsJson, now, plan.to, row.ord);
+        const newOrd = Number(this.db.prepare('SELECT last_insert_rowid() AS n').get().n);
+        this.db.prepare('UPDATE memory_head SET ord = ?, revision = ? WHERE id = ?').run(newOrd, nextRevision, row.id);
+        compacted += 1;
+      }
+    });
+    return compacted;
   }
 
   #lessonFields(input) {
