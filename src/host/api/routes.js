@@ -109,7 +109,13 @@ export function registerApiRoutes(ctx, deps) {
       usage: store.usageReport({ scopeKeys, limit: 50 }),
       // Where entries sit in memory units, and how the clock got where it is. The question "how old
       // is this" has exactly one answer in this product, and the panel should be able to show it.
-      mu: store.muPositions({ scopeKeys }),
+      //
+      // **The axis is not scoped, and that is deliberate.** Scope answers "what may this conversation read";
+      // the axis answers "where is my memory". Scoping the picture to the current conversation made it show a
+      // handful of dots or none at all, because entries live in the session scope they were written under — a
+      // map of one room is not a map. The counts beside it stay scoped, because those describe what this
+      // conversation can see.
+      mu: store.muPositions({ scopeKeys: store.allScopeKeys() }),
       muTrail: store.muTrail(20),
     });
   });

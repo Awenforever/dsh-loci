@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [7.2.0] — 2026-11-18
+
+Found by running the real application, not by running tests.
+
+### The panel was dead, and every test passed
+
+`client.js` had **two** `memoryAxis` functions. The later one shadowed the earlier and called `axisState`, which
+no longer existed — a leftover from replacing the lifecycle symbols with the vitality gradient. Clicking **Stats**
+threw `ReferenceError: axisState is not defined` during render, React unmounted the panel, and the UI showed a
+highlighted nav item above an empty page.
+
+Nothing in the test suite touches the client bundle, so 388 tests passed while the panel could not be opened at
+all. The screenshot harness reported `slot entry crashed in 'main'` — the app had been saying so the whole time,
+and only a real run listened.
+
+**This is the argument for real screenshots over preview pages**: a preview built from the same CSS looked
+perfect, because the CSS was never the broken part.
+
+### The axis was scoped to one conversation
+
+`/api/loci/stats` built the axis from `activeScopeKeys()` — the scope of the last prompt the Host assembled. Every
+verified entry lives in the *session* scope it was written under, so the picture was a handful of dots or none.
+Scope answers "what may this conversation read"; the axis answers "where is my memory". **A map of one room is not
+a map.** The axis now always describes the whole store; the counts beside it stay scoped, because those really
+are about this conversation.
+
+### A field, not a histogram
+
+Stacking overlapping entries into columns made every cluster a skyscraper: 43 of 48 entries sit in the
+compressing region, so the axis became three towers with nothing between them. Truthful aggregate, poor picture.
+Each star now gets a **deterministic** vertical offset derived from its id — deterministic because a random offset
+would rearrange the picture on every refresh, and a memory that jumps around cannot be watched over time.
+
+### Stars
+
+`clip-path` waist narrowed so a four-point sparkle reads as four points instead of a plus sign, and the glow uses
+a slightly wider version of the same shape so the two layers do not add up to eight points.
+
+### Verification
+
+`scripts/diag/dsh-ui-shot.mjs` drives the real DSH Web UI over CDP: it signs a cookie from the credentials key,
+opens the panel, clicks the Stats tab, waits for the axis to paint, captures, and **prints page exceptions**. The
+last part is what turned "the panel is blank" into a one-line cause.
+
+388 tests, coverage lines 91.5 / branches 72.2 / functions 86.5, READY 11/11.
+
 ## [7.1.0] — 2026-11-18
 
 A memory now loses detail as it travels left. Schema v11.

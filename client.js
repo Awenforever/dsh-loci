@@ -97,45 +97,45 @@ window.__ModuleLoader__.load({
      * Colour stays a separate axis: **green = standing, blue = topical**. Size is still `importance`.
      */
     function memoryAxis({ entries, entranceDepth, compact = false, t }) {
-      const R = Number(entranceDepth) || 2000;
+      const R = Number(entranceDepth) || 400;
       const list = Array.isArray(entries) ? entries : [];
       const placed = list.filter((entry) => entry.p !== null && entry.p !== undefined && Number.isFinite(Number(entry.p)));
 
       const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
       const left = Math.min(-0.6 * R, furthestLeft * 1.05);
       const span = Math.max(1e-6, R - left);
-      // In compact mode the single symbol needs room for its halo, so the track is inset rather than running
-      // edge to edge — otherwise a star near +R is clipped in half.
       const at = (p) => (compact ? 8 + ((Number(p) - left) / span) * 84 : ((Number(p) - left) / span) * 100);
 
-      // **Bin into columns, then fill each column from the baseline.**
+      // **A field, not a histogram.**
       //
-      // Drawing every entry on one line merged 21 of 45 into a smear; assigning lanes by "first lane with no
-      // close neighbour" produced stars floating high with empty space beneath them, because a lane index
-      // only meant "some neighbours are near", not "this many entries sit below". Binning makes a star's
-      // height mean exactly how many entries share its neighbourhood.
-      const columnWidth = compact ? 20 : 2.6;
-      const binOf = (p) => Math.floor(at(p) / columnWidth);
-      const sorted = [...placed].sort((a, b) => Number(a.p) - Number(b.p));
-      const seen = new Map();
-      for (const entry of sorted) {
-        const bin = binOf(entry.p);
-        const depth = seen.get(bin) ?? 0;
-        seen.set(bin, depth + 1);
-        entry.__depth = depth;
-      }
-      const laneStep = compact ? 12 : 13;
-      const tallest = sorted.reduce((max, entry) => Math.max(max, entry.__depth), 0);
-      const baseline = compact ? 16 : (tallest + 1) * laneStep + 12;
-      const height = compact ? baseline + 8 : baseline + 28;
-      const laneY = (depth) => baseline - Number(depth) * laneStep;
+      // Stacking entries into columns made every cluster a skyscraper: 43 of 48 entries sit in the compressing
+      // region, so the axis became three towers with nothing between them. That is a truthful aggregate and a
+      // poor picture — a memory space should read as a scatter of lights whose *density* shows the clustering,
+      // not as a bar chart in disguise.
+      //
+      // Instead each star gets a small deterministic vertical offset derived from its id. Deterministic matters:
+      // a random offset would make the picture rearrange itself on every refresh, and a memory that appears to
+      // jump around cannot be watched over time.
+      const band = compact ? 16 : 64;
+      const centre = compact ? 18 : 50;
+      const jitter = (id) => {
+        let hash = 0;
+        const text = String(id);
+        for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+        // Two hashes so that neighbours in the id space do not line up in a diagonal.
+        const a = (hash % 997) / 997;
+        const b = (Math.floor(hash / 997) % 991) / 991;
+        return ((a + b) / 2 - 0.5) * band;
+      };
 
       const star = (entry) => {
+        const p = Number(entry.p);
         const vitality = vitalityOf(entry, R);
         const standing = entry.applies === 'always' || entry.pinned === true;
         const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
-        // The whole scale moved up: a star needs enough pixels to show a spike, a glow and a core.
-        const size = compact ? 15 : 9 + importance * 1.8;
+        // Big enough that the four points read as points and not as a plus sign: a star needs roughly 12px
+        // before its spikes are distinguishable from a cross.
+        const size = compact ? 14 : 12 + importance * 2.6;
         const since = entry.sinceRecall;
         const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
         return h(
@@ -145,19 +145,18 @@ window.__ModuleLoader__.load({
             className: 'loci-sym' + (pulse ? ' loci-sym-pulse' : ''),
             title:
               (entry.title ?? entry.id) +
-              ' — ' + Math.round(Number(entry.p)) + ' μ' +
+              ' — ' + Math.round(p) + ' μ' +
               (standing ? ' · always' : ' · topical') +
               ' · vitality ' + vitality.toFixed(2),
             style: {
               left: at(entry.p) + '%',
-              top: laneY(entry.__depth) + 'px',
+              top: centre + jitter(entry.id) + 'px',
               width: size + 'px',
               height: size + 'px',
               color: standing ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-brand-primary)',
               '--vital': vitality.toFixed(3),
             },
           },
-          // Three layers, in paint order: the circular halo, the star-shaped glow, the crisp star.
           h('i', { className: 'loci-halo' }),
           h('i', { className: 'loci-glow' }),
           h('i', { className: 'loci-star' }),
@@ -167,11 +166,12 @@ window.__ModuleLoader__.load({
       const tick = (key, p, label) =>
         h('span', { key, className: 'loci-axis-tick', style: { left: at(p) + '%' } }, label);
 
+      const height = compact ? 34 : band + 46;
       return h(
         'div',
         { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: height + 'px' } },
-        h('div', { className: 'loci-axis-track', style: { top: baseline + 'px' } }),
-        ...sorted.map(star),
+        h('div', { className: 'loci-axis-track', style: { top: centre + 'px' } }),
+        ...placed.map(star),
         compact
           ? []
           : [
@@ -200,102 +200,6 @@ window.__ModuleLoader__.load({
      * **Nothing animates that is not data.** Breathing marks an entry the store still knows about; the pulse
      * marks a recall. Position changes only when the clock advances.
      */
-    function memoryAxis({ entries, entranceDepth, compact = false, t }) {
-      const R = Number(entranceDepth) || 2000;
-      const list = Array.isArray(entries) ? entries : [];
-      const placed = list.filter((entry) => entry.p !== null && entry.p !== undefined && Number.isFinite(Number(entry.p)));
-
-      // The left edge stops at the forgotten boundary unless the data goes further, so the scale stays
-      // readable instead of spending half the canvas on empty space.
-      const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
-      const left = Math.min(-0.6 * R, furthestLeft * 1.05);
-      const span = Math.max(1e-6, R - left);
-      // In compact mode the single symbol needs room for its halo, so the track is inset rather than
-      // running edge to edge — otherwise a dot near +R is clipped in half.
-      const at = (p) =>
-        compact ? 6 + ((Number(p) - left) / span) * 88 : ((Number(p) - left) / span) * 100;
-
-      // **Bin into columns, then fill each column from the baseline.**
-      //
-      // The first version drew everything on one line and 21 of 45 entries merged into a smear. The second
-      // assigned lanes by "first lane with no close neighbour", which produced dots floating high with empty
-      // space beneath them: a dot in lane 3 meant three neighbours were *somewhere* near, not that three
-      // entries sat below it. Binning fixes that — every column is contiguous from the track up, so a dot's
-      // height now means exactly how many entries share its neighbourhood.
-      const columnWidth = compact ? 20 : 2.6;
-      const binOf = (p) => Math.floor(at(p) / columnWidth);
-      const sorted = [...placed].sort((a, b) => Number(a.p) - Number(b.p));
-      const seen = new Map();
-      for (const entry of sorted) {
-        const bin = binOf(entry.p);
-        const depth = seen.get(bin) ?? 0;
-        seen.set(bin, depth + 1);
-        entry.__depth = depth;
-      }
-      const laneStep = compact ? 8 : 12;
-      const tallest = sorted.reduce((max, entry) => Math.max(max, entry.__depth), 0);
-      const baseline = compact ? 14 : (tallest + 1) * laneStep + 8;
-      const height = compact ? baseline + 6 : baseline + 26;
-      const laneY = (depth) => baseline - Number(depth) * laneStep;
-
-      const symbol = (entry) => {
-        const p = Number(entry.p);
-        const state = axisState(entry, R);
-        const standing = entry.applies === 'always' || entry.pinned === true;
-        const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
-        const size = compact ? 10 : 8 + importance * 1.7;
-        // How much glow is left. An entry never recalled still carries a faint one until it reaches the
-        // forgotten end — that is "the halo fades as it ages" expressed as a number rather than an opinion.
-        const since = entry.sinceRecall;
-        const age = since === null || since === undefined ? VITALITY_WINDOW * 1.5 : Number(since);
-        const halo = Math.max(0, Math.min(1, 1 - age / (VITALITY_WINDOW * 1.5)));
-        const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
-        return h('span', {
-          key: entry.id,
-          className:
-            'loci-sym' +
-            ' loci-sym-' + state +
-            (standing ? ' loci-sym-standing' : '') +
-            // `pulse` is deliberately not called `awake`: an entry in the `new` state that was just recalled
-            // would otherwise carry both `loci-sym-new` and `loci-sym-awake`, and the later four-point rule
-            // would win — drawing a brand-new memory as a settled one.
-            (pulse ? ' loci-sym-pulse' : ''),
-          title:
-            (entry.title ?? entry.id) +
-            ' — ' + Math.round(p) + ' μ' +
-            (standing ? ' · always' : ' · topical') +
-            (Number(entry.injections) > 0 ? ' · shown ' + entry.injections + '×' : ' · never shown'),
-          style: {
-            left: at(p) + '%',
-            top: laneY(entry.__depth) + 'px',
-            width: size + 'px',
-            height: size + 'px',
-            color: standing ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-brand-primary)',
-            '--halo': String(halo),
-            '--vital': String(halo),
-            opacity: String(0.4 + halo * 0.6),
-            zIndex: Number(entry.injections) > 0 ? '3' : '2',
-          },
-        });
-      };
-
-      const tick = (key, p, label) =>
-        h('span', { key, className: 'loci-axis-tick', style: { left: at(p) + '%' } }, label);
-
-      return h(
-        'div',
-        { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: height + 'px' } },
-        h('div', { className: 'loci-axis-track', style: { top: baseline + 'px' } }),
-        ...sorted.map(symbol),
-        compact
-          ? []
-          : [
-              tick('far', -0.6 * R, t('panel.axisForgotten')),
-              tick('mid', 0, t('panel.axisHabitat')),
-              tick('near', 0.6 * R, t('panel.axisEntrance')),
-            ],
-      );
-    }
 
     const NS = 'loci';
     const API = '/api/loci';
@@ -556,7 +460,7 @@ window.__ModuleLoader__.load({
 /* 2. The star-shaped glow. It is the spike shape, blurred, so a dying memory's glow keeps the star's form
       instead of collapsing into a circle — the halo above is what makes it round, and the halo goes first. */
 .loci-glow { inset: 0; background: currentColor;
-  clip-path: polygon(50% 0%, 57% 43%, 100% 50%, 57% 57%, 50% 100%, 43% 57%, 0% 50%, 43% 43%);
+  clip-path: polygon(50% 0%, 55% 42%, 100% 50%, 55% 58%, 50% 100%, 45% 58%, 0% 50%, 45% 42%);
   filter: blur(2px);
   transform: scale(calc(1.05 + var(--vital) * 0.55));
   opacity: clamp(0, calc(var(--vital) * 1.15), .8); }
@@ -564,7 +468,7 @@ window.__ModuleLoader__.load({
 /* 3. The star itself. Spike length and brightness both fall with vitality, so the last stage of a memory's
       life is the spikes retracting into a small dull core rather than the symbol switching off. */
 .loci-star { inset: 0; background: currentColor;
-  clip-path: polygon(50% 0%, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0% 50%, 44% 44%);
+  clip-path: polygon(50% 0%, 53.5% 42%, 100% 50%, 53.5% 58%, 50% 100%, 46.5% 58%, 0% 50%, 46.5% 42%);
   transform: scale(calc(0.42 + var(--vital) * 0.58));
   opacity: clamp(.3, calc(0.3 + var(--vital) * 0.7), 1);
   filter: brightness(calc(0.55 + var(--vital) * 0.95)) saturate(calc(0.6 + var(--vital) * 0.7)); }
