@@ -95,7 +95,7 @@ test('the section still renders when the core is empty', (t) => {
   assert.equal(/Always applies/.test(stable.text), false, 'no "Always applies" header over an empty core');
   assert.match(stable.text, /Index —/, 'but the block still identifies its scope');
   assert.match(stable.text, /loci_search/, 'and says where the rest of the memory went');
-  assert.match(stable.text, /ages are in μ/, 'and still explains the unit the slice will use');
+  assert.match(stable.text, /positions are in μ/, 'and still explains the unit the slice will use');
 });
 
 test('a topical entry is still reachable through the slice — the point of topic is retrieval, not exclusion', (t) => {

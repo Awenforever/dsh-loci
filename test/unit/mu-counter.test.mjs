@@ -101,9 +101,11 @@ test('C3: the prompt states μ distances and never a calendar date', (t) => {
   const slice = composeSliceMessage({ store, scopeKeys: [scopes.workspace], scopeLabel: scopes.labels.workspace, query: 'atlas 的回滚窗口多久？' });
   for (const [name, text] of [['stable', stable.text], ['slice', slice.text]]) {
     assert.doesNotMatch(text, /\d{4}-\d{2}-\d{2}/, `${name} must carry no calendar date`);
-    assert.match(text, /μ/, `${name} must state that ages are in memory units`);
+    assert.match(text, /μ/, `${name} must state that positions are in memory units`);
   }
-  assert.match(slice.text, /μ ago|now/, 'a line carries a distance');
+  // The line carries a *position* now, not an age. The invariant is unchanged: a μ number that places the
+  // entry, and never a calendar date.
+  assert.match(slice.text, /[+−]?\d+(?:\.\d+)? μ/, 'a line carries a position in μ');
   assert.match(stable.text, /units of work, not dates/, 'and the unit is explained once');
 });
 
@@ -140,7 +142,9 @@ test('the same entry reports the same age in the core and in the slice', (t) => 
     scopeLabel: 'x',
     query: '删除前做断言',
   });
-  const ageIn = (text) => (text.match(/·\s(now|\d+(?:\.\d+)? μ ago)\s·/) ?? [])[0];
+  // The line format changed with the axis — a signed position instead of an age — but the property this
+  // test exists for did not: one entry must not carry two different answers in one prompt.
+  const ageIn = (text) => (text.match(/·\s(no position|[+−]?\d+(?:\.\d+)? μ)\s·/) ?? [])[0];
   const coreAge = ageIn(stable.text);
   const sliceAge = ageIn(slice.text);
   assert.ok(coreAge !== undefined, 'the core states an age');

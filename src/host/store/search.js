@@ -20,6 +20,7 @@
  */
 import { createHash } from 'node:crypto';
 import { blobToVector, cosine } from './embedding.js';
+import { positionOf } from './axis.js';
 import { buildQueryPlan, makeSnippet, normalizeText } from './tokenize.js';
 
 /** How many full-text candidates to pull. */
@@ -425,11 +426,11 @@ export async function search(store, request) {
   if (candidateIds.length > 0) {
     const usage = store.db
       .prepare(
-        `SELECT id, COALESCE(mu_touched, 0) AS mu FROM memory_usage
+        `SELECT id, p_base, mu_base FROM memory_usage
           WHERE id IN (${candidateIds.map(() => '?').join(', ')})`,
       )
       .all(...candidateIds);
-    for (const row of usage) muTouches.set(row.id, Number(row.mu));
+    for (const row of usage) muTouches.set(row.id, positionOf({ pBase: row.p_base, muBase: row.mu_base }, muNow));
   }
   const ranked = [];
   for (const row of byId.values()) {
@@ -457,13 +458,15 @@ export async function search(store, request) {
     ? lexical.runHit || lexical.runSpan >= 3 || (lexical.runSpan === 2 && lexical.runSpanHub === false && lexical.runSpanInTitle)
     : lexical.coverage >= 0.5;
     if (!lexicalAdmitted && entityHits === 0 && vectorScore === 0) continue;
-    // Distance from the working set in memory units, never calendar age.
+    // Distance from the habitat on the signed axis, never calendar age.
     //
     // This used to be `exp(-age / (30 * DAY))`, which made a note written yesterday and never used
     // outrank a rule in daily use written last year. "Recent" means "close to the working set", and the
-    // working set is defined by use, not by the order in which rows were written.
-    const distance = Math.max(0, muNow - Number(muTouches.get(row.id) ?? 0));
-    const recency = Math.exp(-distance / MU_RECENCY_SCALE);
+    // working set is the habitat at zero — an entry at the entrance is new but not yet settled, an entry far
+    // left is being forgotten, and both are further from usefulness than one sitting at zero.
+    const position = muTouches.get(row.id);
+    const distance = position === undefined || position === null ? Number.POSITIVE_INFINITY : Math.abs(position);
+    const recency = Number.isFinite(distance) ? Math.exp(-distance / MU_RECENCY_SCALE) : 0;
     const score = lexical.score + 0.5 * Math.min(entityHits, 3) + vectorScore + 0.05 * recency;
     const hits = [];
     if (lexicalAdmitted) hits.push('lexical');

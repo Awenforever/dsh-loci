@@ -63,7 +63,7 @@ console.log(`\n2. stable section: ${text.length} chars, ${Buffer.byteLength(text
 console.log(`   claims "Always applies":  ${/Always applies/.test(text)}  (must be false)`);
 console.log(`   names its scope:          ${/Index —/.test(text)}`);
 console.log(`   points at the rest:       ${/loci_search/.test(text)}`);
-console.log(`   explains the μ unit:      ${/ages are in μ/.test(text)}`);
+console.log(`   explains the μ unit:      ${/positions are in μ/.test(text)}`);
 console.log(`   carries a fence tag:      ${/<loci-context/.test(text)}`);
 
 // 3. retrieval still works — this is the whole product when nothing is standing
@@ -91,7 +91,7 @@ const verdict =
   core.lines.length === 0 &&
   !/Always applies/.test(text) &&
   /loci_search/.test(text) &&
-  /ages are in μ/.test(text) &&
+  /positions are in μ/.test(text) &&
   text.length > 0 &&
   hits >= questions.length - 1 &&
   readable === corpus.length;

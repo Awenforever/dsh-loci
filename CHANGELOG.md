@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [6.0.1] — 2026-11-17
+
+6.0.0 built the axis and left three readers pointing at the old column. This finishes the wiring.
+
+### What 6.0.0 missed
+
+The axis was correct and the data was correct, but the *consumers* were not all migrated:
+
+| reader | was | now |
+|---|---|---|
+| `selectCore` ordering | `ORDER BY mu_touched DESC` — the deprecated column | `(p_base + mu_base) DESC`, which is position up to a query-constant offset |
+| slice ordering tie-break | `muTouched` delta | the evaluated position; an entry with no anchor ranks last, not first |
+| `search` recency | `exp(-(muNow − mu_touched)/scale)` | `exp(-|p|/scale)` — distance from the **habitat**, since the entrance is also far from usefulness |
+| rendered line | `3 μ ago` | `+1800 μ` / `0 μ` / `−271 μ` |
+
+The rendering change matters more than it looks. "3 μ ago" was the right summary under a model with no
+places; on a signed axis a position is a *place*, and what the model needs to know is which side of the
+habitat it is on — right means not yet digested, left means being compressed. A signed number says that
+without a word. The footer now reads "positions are in μ, measured from the habitat at 0".
+
+### The degraded-mode check caught it
+
+`readiness` reported **READY 11/11** while the prompt was still printing ages, because the readiness check
+tested the store's shape and the degraded-mode check tested the *rendered text* — and only the second one
+noticed the footer still said "ages". The assertion is fixed, and the fact that a check failed on a wording
+change is the check working: a prompt nobody reads is a prompt nobody maintains.
+
+377 tests, coverage lines 91.0 / branches 72.0 / functions 86.1, READY 11/11.
+
 ## [6.0.0] — 2026-11-17
 
 The axis the document described was never built. This builds it. Schema v9.
