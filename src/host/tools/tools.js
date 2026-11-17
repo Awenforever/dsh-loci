@@ -508,7 +508,8 @@ export function createTools(deps) {
       properties: {
         questions: {
           type: 'number',
-          description: 'How many fixture questions, 1-5. Defaults to 3; more means more model calls and a higher chance of exhausting the budget.',
+          description:
+            'How many fixture questions, 1-5. Defaults to 2. Each question costs two model calls at roughly half a minute each, plus two control calls that always run first.',
         },
         dryRun: { type: 'boolean', description: 'Seed the fixture and stop before calling the model.' },
       },
@@ -518,10 +519,9 @@ export function createTools(deps) {
       schema: OUTPUT_SCHEMA,
       render: (_args, value) => [{ type: 'text', text: renderAnswerEval(value) }],
     },
-    // Three questions by default: eight bounded model calls fit inside the budget, where five took
-    // twelve and overran it. The framework timeout only stops waiting — it does not cancel the request —
-    // so the work itself has to be sized to finish.
-    timeoutMs: 180_000,
+    // Sized to the work, not to a guess: six bounded calls at 30–40 s each. The framework timeout only
+    // stops waiting — it does not cancel the request — so the work itself has to finish inside it.
+    timeoutMs: 300_000,
     isConcurrencySafe: () => false,
     execute: async (args, exec) => {
       const context = execContext(exec);
@@ -531,7 +531,7 @@ export function createTools(deps) {
         store,
         scopes: context.scopes,
         complete,
-        limit: Number.isFinite(args?.questions) ? Number(args.questions) : 3,
+        limit: Number.isFinite(args?.questions) ? Number(args.questions) : 2,
         dryRun: args?.dryRun === true,
         log,
       });
@@ -694,12 +694,19 @@ function renderAnswerEval(value) {
   const line = (label, tally, bytesValue) =>
     `${label}: correct ${tally.correct ?? 0} · wrong ${tally.wrong ?? 0}${tally.invented ? ` · invented ${tally.invented}` : ''}${tally.abstained ? ` · abstained ${tally.abstained}` : ''} · ${bytesValue} B`;
   // Measured tokens when the adapter sent a usage chunk; an estimate when it did not — and the line says
-  // which, because an estimate presented as a measurement is a fabricated number.
+  // which, because an estimate presented as a measurement is a fabricated number. A condition whose calls
+  // reported no usage is named as unreported rather than printed as zero: "0 in / 0 out" would read as
+  // "free", which is the opposite of what a missing number means.
   const measured = value.cost.measured ?? {};
+  const tokensFor = (reported, input, output, answered, estimate) =>
+    reported === 0
+      ? `not reported (${answered} call${answered === 1 ? '' : 's'}, ~${estimate} est.)`
+      : `${input} in / ${output} out${reported < answered ? ` (${answered - reported} unreported)` : ''}`;
   const costLine =
     (measured.answered ?? 0) > 0
-      ? `tokens (measured): ${measured.inputWith ?? 0} in / ${measured.outputWith ?? 0} out with memory · ${measured.inputWithout ?? 0} in / ${measured.outputWithout ?? 0} out without`
-      : `tokens (estimated, no usage chunk from the adapter): ~${value.cost.estimatedTokensWith} with · ~${value.cost.estimatedTokensWithout} without`;
+      ? `tokens: with memory ${tokensFor(measured.reportedWith ?? 0, measured.inputWith ?? 0, measured.outputWith ?? 0, measured.answered ?? 0, value.cost.estimatedTokensWith)} · ` +
+        `without ${tokensFor(measured.reportedWithout ?? 0, measured.inputWithout ?? 0, measured.outputWithout ?? 0, measured.answered ?? 0, value.cost.estimatedTokensWithout)}`
+      : `tokens: nothing scored, so no usage was collected`;
   const lines = [
     `questions ${value.questions}${value.incomplete > 0 ? ` · ${value.incomplete} incomplete (bounded by the per-call timeout, excluded from the score)` : ''}`,
     line('without memory', value.withoutMemory, value.cost.promptBytesWithout),

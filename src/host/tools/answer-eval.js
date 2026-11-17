@@ -91,7 +91,9 @@ export async function runAnswerEval({
   dryRun = false,
   log,
   perCallTimeoutMs = 60_000,
-  totalBudgetMs = 150_000,
+  // Measured cost on this Host is 30–40 s per call: two controls plus two questions twice is six calls, so
+  // a 150 s budget ran out mid-run and silently dropped the controls. The budget is sized to the work.
+  totalBudgetMs = 240_000,
 }) {
   if (typeof complete !== 'function') return { error: 'no model route' };
   const rows = [];
@@ -172,6 +174,23 @@ export async function runAnswerEval({
 
   const results = [];
   let incomplete = 0;
+
+  // Controls first.
+  //
+  // They are the hallucination check, and they used to run last — so when the budget ran out they were
+  // the first thing silently dropped, and a report without them invites exactly the wrong conclusion: a
+  // model that invents answers scores the same on the fixture as one that does not. Two short calls cost
+  // about seventy seconds and are worth taking off the top.
+  const controls = [];
+  for (const control of ANSWER_CONTROLS) {
+    const answer = await ask(control.question);
+    controls.push(
+      answer.error === undefined
+        ? { question: control.question, verdict: score(answer.text, control.accepts), answer: answer.text.slice(0, 200), usage: answer.usage }
+        : { question: control.question, verdict: 'incomplete', error: answer.error },
+    );
+  }
+
   for (const row of rows) {
     const memory = memoryBlockFor(store, scopes, { id: row.entryId, title: row.fact.title });
     const without = await ask(row.fact.question);
@@ -206,16 +225,6 @@ export async function runAnswerEval({
     });
   }
 
-  const controls = [];
-  for (const control of ANSWER_CONTROLS) {
-    const answer = await ask(control.question);
-    controls.push(
-      answer.error === undefined
-        ? { question: control.question, verdict: score(answer.text, control.accepts), answer: answer.text.slice(0, 200) }
-        : { question: control.question, verdict: 'incomplete', error: answer.error },
-    );
-  }
-
   const completeResults = results.filter((item) => item.incomplete === undefined);
   const tally = (list, pick) => {
     const out = { correct: 0, wrong: 0, abstained: 0, invented: 0 };
@@ -240,13 +249,16 @@ export async function runAnswerEval({
       answerBytesWithout: sum(completeResults, (item) => item.without.answerBytes),
       answerBytesWith: sum(completeResults, (item) => item.withMemory.answerBytes),
       // Real numbers when the adapter sends a usage chunk, an estimate otherwise — and the report says
-      // which one it is, because "estimated tokens" presented as measured is a fabricated number.
+      // which. A missing usage chunk is counted, not rendered as zero: "0 in / 0 out" reads as "this cost
+      // nothing", which is the opposite of what an unreported call means.
       measured: {
         inputWithout: sum(completeResults, (item) => item.without.usage?.inputTokens ?? 0),
         outputWithout: sum(completeResults, (item) => item.without.usage?.outputTokens ?? 0),
         inputWith: sum(completeResults, (item) => item.withMemory.usage?.inputTokens ?? 0),
         outputWith: sum(completeResults, (item) => item.withMemory.usage?.outputTokens ?? 0),
-        answered: completeResults.filter((item) => item.without.usage !== undefined || item.withMemory.usage !== undefined).length,
+        reportedWithout: completeResults.filter((item) => item.without.usage !== undefined).length,
+        reportedWith: completeResults.filter((item) => item.withMemory.usage !== undefined).length,
+        answered: completeResults.length,
       },
       estimatedTokensWith: Math.round(sum(completeResults, (item) => item.promptBytes.withMemory) / 4),
       estimatedTokensWithout: Math.round(sum(completeResults, (item) => item.promptBytes.without) / 4),

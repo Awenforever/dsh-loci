@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.4] — 2026-11-17
+
+R18 has its first numbers. They came with a warning attached.
+
+### The measurement
+
+Two runs against the live store and the real model route:
+
+```
+questions 1   without memory: correct 0 · wrong 1    with memory: correct 1 · wrong 0
+questions 2   without memory: correct 0 · wrong 2    with memory: correct 2 · wrong 0
+```
+
+Every question the model could not answer alone, it answered correctly once the memory block was present.
+Prompt cost: **+318 B** for one question, **+637 B** for two. Measured tokens, from the `usage` chunk that
+5.1.2 started reading: **142 in / 91 out** for the first run.
+
+### The warning: the model invents answers
+
+The first run's controls — two questions whose facts **do not exist** — came back **invented 2 · abstained
+0**. Asked about a project that was never mentioned, the model produced a confident number rather than
+admitting it did not know.
+
+That does not invalidate the with/without difference, which is grounded in a specific fabricated token
+(`四十七分钟`). It does mean the *without* score is partly a measure of confident guessing rather than of
+ignorance, and the report now says so above the score.
+
+It also explains why the second run's `invented 0` must not be read as an improvement: the budget ran out
+before the controls ran. Which was the next bug.
+
+### Controls now run first
+
+They were last, so a short budget dropped them silently — and a report without them invites exactly the
+wrong reading, because a model that fabricates scores the same on the fixture as one that does not. Two
+short calls, taken off the top.
+
+### Budgets sized to the work
+
+Measured cost on this Host is 30–40 s per call. Six calls (two controls, two questions twice) do not fit in
+150 s, which is why the first multi-question run ended with `1 incomplete`. Total budget is now 240 s, the
+tool timeout 300 s, and the default two questions. The framework timeout only stops *waiting*; the work has
+to finish inside it.
+
+### A missing usage chunk is not a zero
+
+`tokens: ... 0 in / 0 out without` read as "the calls without memory were free", when the truth was that no
+usage chunk arrived for them. The report now counts reported versus scored calls and prints `not reported`
+with the estimate beside it.
+
+334 tests, coverage lines 90.5 / branches 71.4 / functions 85.7.
+
 ## [5.1.3] — 2026-11-17
 
 Renaming a unit found a bug that had been quietly writing memory about memory.

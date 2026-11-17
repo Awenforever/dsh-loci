@@ -154,6 +154,35 @@ test('no usage chunk falls back to an estimate and says so', async (t) => {
     },
     limit: 1,
   });
-  assert.equal(report.cost.measured.answered, 0, 'nothing was measured');
+  // `answered` counts scored questions; `reported*` counts the calls that actually carried a usage chunk.
+  // Conflating the two is how "0 in / 0 out" came to mean "free" instead of "unreported".
+  assert.equal(report.cost.measured.reportedWith, 0, 'no call reported usage');
+  assert.equal(report.cost.measured.answered, 1, 'but one question was scored');
   assert.ok(report.cost.estimatedTokensWith > 0, 'so an estimate is offered instead');
+});
+
+test('controls run first, so a short budget cannot drop the hallucination check', async (t) => {
+  // Before this ordering, controls ran last and were the first thing silently lost when the budget ran
+  // out — and a report without them invites exactly the wrong reading: a model that invents answers
+  // scores the same on the fixture as one that does not.
+  const { store, scopes } = openTestStore(t);
+  const order = [];
+  const report = await runAnswerEval({
+    store,
+    scopes,
+    complete: async ({ prompt }) => {
+      const control = ANSWER_CONTROLS.find((item) => prompt.endsWith(item.question));
+      if (control !== undefined) {
+        order.push('control');
+        return 'I have no record of that.';
+      }
+      order.push('fixture');
+      return 'I do not know.';
+    },
+    limit: 2,
+  });
+  const firstFixture = order.indexOf('fixture');
+  const lastControl = order.lastIndexOf('control');
+  assert.ok(lastControl < firstFixture, `controls must come first, order was ${order.join(',')}`);
+  assert.equal(report.controls.abstained, ANSWER_CONTROLS.length, 'both controls were answered honestly');
 });
