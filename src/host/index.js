@@ -27,9 +27,10 @@ import { registerCommands } from './commands.js';
 import { runDoctor } from './doctor.js';
 import { rescueMiss } from './recall/rescue.js';
 import { composeSliceMessage } from './recall/compose.js';
+import { stripInjected } from './inject/fence.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '5.1.2';
+export const VERSION = '5.1.3';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -414,7 +415,11 @@ export function apply(ctx, rawConfig = {}) {
           /* diagnostic only */
         }
         if (event?.type !== 'user/message') return;
-        const text = firstTextOf(event.data?.content);
+        // The message carries the block this plugin injected during `agent/pre-step`, because the log is
+        // written after that. Everything downstream — the curator's transcript, rule extraction — treats
+        // this as what the person said, so the block has to come off here. Storing it produced entries
+        // whose titles were index lines quoting other entries, and the loop had already run twice.
+        const text = stripInjected(firstTextOf(event.data?.content));
         if (text.length === 0) return;
         if ((session?.header?.delegationDepth ?? 0) > 0) return;
         if (lastUserText.size >= 256) lastUserText.clear();

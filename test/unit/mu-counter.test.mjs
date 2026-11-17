@@ -8,8 +8,8 @@ import { openTestStore, workspaceFields } from '../helpers.mjs';
 /**
  * The memory unit, and the three constraints it imposes.
  *
- * There is no independent notion of time in this store: MU *is* time, and "older" may only mean
- * "further from the working set in MU". These tests are the ones that would have caught the system
+ * There is no independent notion of time in this store: μ *is* time, and "older" may only mean
+ * "further from the working set in μ". These tests are the ones that would have caught the system
  * this replaced, where memory expired because the calendar advanced and ordering preferred the newest
  * row over the most useful one.
  */
@@ -88,7 +88,7 @@ test('C2: ordering prefers the used entry over the newer one', (t) => {
   assert.deepEqual(Object.keys(p.bands).sort(), ['active', 'cold', 'cool', 'fresh']);
 });
 
-test('C3: the prompt states MU distances and never a calendar date', (t) => {
+test('C3: the prompt states μ distances and never a calendar date', (t) => {
   const { store, scopes } = openTestStore(t);
   store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'rule', title: '删除前做断言', body: '先校验路径。' });
   store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' });
@@ -97,9 +97,9 @@ test('C3: the prompt states MU distances and never a calendar date', (t) => {
   const slice = composeSliceMessage({ store, scopeKeys: [scopes.workspace], scopeLabel: scopes.labels.workspace, query: 'atlas 的回滚窗口多久？' });
   for (const [name, text] of [['stable', stable.text], ['slice', slice.text]]) {
     assert.doesNotMatch(text, /\d{4}-\d{2}-\d{2}/, `${name} must carry no calendar date`);
-    assert.match(text, /MU/, `${name} must state that ages are in memory units`);
+    assert.match(text, /μ/, `${name} must state that ages are in memory units`);
   }
-  assert.match(slice.text, /MU ago|now/, 'a line carries a distance');
+  assert.match(slice.text, /μ ago|now/, 'a line carries a distance');
   assert.match(stable.text, /units of work, not dates/, 'and the unit is explained once');
 });
 
@@ -135,7 +135,7 @@ test('the same entry reports the same age in the core and in the slice', (t) => 
     scopeLabel: 'x',
     query: '删除前做断言',
   });
-  const ageIn = (text) => (text.match(/·\s(now|\d+(?:\.\d+)? MU ago)\s·/) ?? [])[0];
+  const ageIn = (text) => (text.match(/·\s(now|\d+(?:\.\d+)? μ ago)\s·/) ?? [])[0];
   const coreAge = ageIn(stable.text);
   const sliceAge = ageIn(slice.text);
   assert.ok(coreAge !== undefined, 'the core states an age');
@@ -146,8 +146,8 @@ test('the same entry reports the same age in the core and in the slice', (t) => 
 
 // ---------------------------------------------------------------- band calibration, from real data
 //
-// The live store forced two corrections. First, `mu_touched = 0` means "no MU history" rather than
-// "touched at MU zero": the v7 migration stamped existing rows with the counter's starting value, so
+// The live store forced two corrections. First, `mu_touched = 0` means "no μ history" rather than
+// "touched at μ zero": the v7 migration stamped existing rows with the counter's starting value, so
 // they sit at p = muNow and dominate every high percentile while saying nothing about age — counting
 // them turned 7 cool entries into 12. Second, edges derived from the distribution are only meaningful
 // on entries that were actually observed.
@@ -176,7 +176,7 @@ test('too few samples fall back to the fixed edges rather than describing the sa
   assert.deepEqual([edges.fresh, edges.active, edges.cool], [5, 50, 500]);
 });
 
-test('entries with no MU history are counted apart and kept out of the bands', (t) => {
+test('entries with no μ history are counted apart and kept out of the bands', (t) => {
   const { store, scopes } = openTestStore(t);
   const touched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
   const untouched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'c', body: 'd' });

@@ -17,6 +17,8 @@
  * @module dsh-loci/inject/sanitize
  */
 
+import { looksLikeIndexLine } from './fence.js';
+
 /** Hard storage ceilings; larger input is truncated, never rejected silently. */
 export const LIMITS = Object.freeze({
   titleChars: 200,
@@ -235,6 +237,14 @@ export function prepareForStorage(input, config) {
 
   const instructionLike = detectInstructionLike(`${safeTitle}\n${body}`);
   if (instructionLike) flags.push('instruction-like');
+
+  // Second line of defence against the injection feedback loop.
+  //
+  // The first is `stripInjected` where the user message enters the transcript, and it depends on the
+  // wrapper tag being present. If a format change or a truncated frame loses the wrapper, the shape of a
+  // rendered index line is still unmistakable — an entry id followed by `· <kind> · <n> μ ago ·` — and no
+  // person types that. Storing it would put memory into memory.
+  if (looksLikeIndexLine(safeTitle) || looksLikeIndexLine(body)) flags.push('index-echo');
 
   // A citation back to the code the fact came from (`src/host/store.js:120`).
   // It lives with the evidence rather than in its own column: provenance is what

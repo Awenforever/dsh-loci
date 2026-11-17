@@ -209,7 +209,7 @@ export const DEFAULTS = Object.freeze({
    * `auto` is the default because the right numbers depend on how fast this store's clock moves, which
    * is a property of how the person works rather than of the plugin. It falls back to the fixed edges
    * below twenty samples, where a percentile describes the sample rather than the distribution.
-   * Entries with no MU history (`mu_touched = 0`) are excluded from the derivation — they sit at
+   * Entries with no μ history (`mu_touched = 0`) are excluded from the derivation — they sit at
    * `p = muNow` and would otherwise dominate the high percentiles while saying nothing about age.
    */
   muBandEdges: 'auto',

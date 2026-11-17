@@ -97,22 +97,22 @@ export function runDoctor(options) {
   // The store's only clock, and how far its entries sit from the working set.
   //
   // Worth a row of its own because it is the one number that explains "why is this entry being
-  // recalled" — and because retiring on MU is off until a real distribution has been measured, which
+  // recalled" — and because retiring on μ is off until a real distribution has been measured, which
   // means a store that grows forever is expected behaviour right now and should be visible as such.
   try {
     const positions = store.muPositions({});
     const bands = positions.bands;
     const tracked = positions.entries.length - positions.untracked;
-    const history = positions.untracked > 0 ? ` · ${positions.untracked} without MU history` : '';
+    const history = positions.untracked > 0 ? ` · ${positions.untracked} without μ history` : '';
     const edges = positions.edges?.derived
-      ? `bands from ${tracked} observed (${positions.edges.fresh.toFixed(0)}/${positions.edges.active.toFixed(0)}/${positions.edges.cool.toFixed(0)} MU)`
+      ? `bands from ${tracked} observed (${positions.edges.fresh.toFixed(0)}/${positions.edges.active.toFixed(0)}/${positions.edges.cool.toFixed(0)} μ)`
       : 'bands fixed 5/50/500 (too few samples to derive)';
     checks.push(
       check(
         'memory unit',
         'ok',
-        `${positions.now.toFixed(1)} MU · ${tracked} tracked${history} · fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold} · ${edges} · retirement ${
-          positions.retireAfter > 0 ? `after ${positions.retireAfter} MU` : 'off (not derived from distance)'
+        `${positions.now.toFixed(1)} μ · ${tracked} tracked${history} · fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold} · ${edges} · retirement ${
+          positions.retireAfter > 0 ? `after ${positions.retireAfter} μ` : 'off (not derived from distance)'
         }`,
       ),
     );

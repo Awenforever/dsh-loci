@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.3] — 2026-11-17
+
+Renaming a unit found a bug that had been quietly writing memory about memory.
+
+### μ, not MU
+
+The memory unit is a unit, so it should be written like one: **μ**, one character, the way `s` and `kg` are.
+`3 μ ago` and `3 MU ago` are both 10 bytes — μ is two bytes in UTF-8 — but μ is one character fewer, and it
+reads as a symbol rather than an abbreviation of two words.
+
+Identifiers, config keys and columns stay ASCII (`mu_now`, `mu_touched`, `muRetireAfter`); only what a person
+or a model reads changed. That includes the `μ ago` marker the slice uses to decide whether to explain
+itself, the doctor line, the panel, and the three shipped documents. `CHANGELOG` keeps `MU` where it always
+said `MU`: rewriting a historical entry would be editing the record.
+
+### What the rename uncovered
+
+Chasing a stray ASCII `MU` through the rendered prompt led to a memory whose own **title** was:
+
+```
+- m_01M7JM0DEWP9313M0EWX · rule · 3.5 MU ago · 所以 agent 自身无法拼出有效 URL…
+```
+
+The plugin's injected block is prepended to the user message during `agent/pre-step`, and the session log is
+written *after* that. Everything downstream — the curator's transcript, rule extraction — treated that
+message as what the person said, so index lines were re-extracted as memory. In the live store this had
+produced **five entries**, one of them quoting another, so the loop had already run twice and each round
+made the next block bigger. Nothing failed; the store simply filled with memory about memory.
+
+Three layers now, because one would have been a single point of failure:
+
+1. **`stripInjected`** where a user message enters the transcript — the block comes off before anything reads
+   it. Handles an unclosed fence too, since a truncated frame is the same bug in a rarer shape.
+2. **`looksLikeIndexLine`** at the storage boundary — if a format change loses the wrapper, an entry id
+   followed by the `· <kind> · <n> μ ago ·` separators is still a shape no person types. Entries carrying it
+   are flagged `index-echo`.
+3. **The live store was cleaned**: five echoes soft-deleted after a dry run showed the three originals they
+   quoted were intact. `scripts/diag/index-echo-cleanup.mjs` does this and refuses to run without `--apply`.
+
+Both functions live in `src/host/inject/fence.js` — a module with no imports of its own — because
+`sanitize.js` and `compose.js` already depend on each other in one direction and putting the strip in either
+would have made a cycle.
+
+### A note on how this was found
+
+Not by testing. By looking at what the renderer actually emitted, in bytes, because PowerShell's console
+displays μ as a lookalike glyph and "it looks right" is not evidence. The rename was cosmetic; the bug it
+surfaced was not.
+
+333 tests, coverage lines 90.6 / branches 71.3 / functions 85.7.
+
 ## [5.1.2] — 2026-11-17
 
 The timeout was still not real, and the token cost was available all along.

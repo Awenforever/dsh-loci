@@ -8,8 +8,8 @@
 | 命令 | 回答什么 | 频率 |
 |---|---|---|
 | `node scripts/report-production.mjs` | **它现在健康吗**——忆/记/时钟三块聚合，末尾一行结论 | 每次改动后、每天 |
-| `node scripts/cli.mjs doctor` | 存储本身是否完好（schema、行数、MU 分布、向量通道） | 同上 |
-| `node scripts/eval-memory.mjs` | 两个半边的**能力**有没有退化（召回/改述/换词上限/记/门/MU 分布） | 每个版本 |
+| `node scripts/cli.mjs doctor` | 存储本身是否完好（schema、行数、μ 分布、向量通道） | 同上 |
+| `node scripts/eval-memory.mjs` | 两个半边的**能力**有没有退化（召回/改述/换词上限/记/门/μ 分布） | 每个版本 |
 
 `report-production.mjs --json` 输出机器可读版本，供后续趋势分析。
 

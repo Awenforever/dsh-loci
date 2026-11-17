@@ -1,11 +1,11 @@
 /**
  * The memory unit: the only clock this store has.
  *
- * There is no independent notion of time inside dsh-loci. MU *is* time, and the rule that follows from
+ * There is no independent notion of time inside dsh-loci. μ *is* time, and the rule that follows from
  * that is the whole reason this module exists rather than a timestamp comparison somewhere:
  *
- * - "flowing" means MU changed;
- * - "older" can only mean further from the working set, measured in MU;
+ * - "flowing" means μ changed;
+ * - "older" can only mean further from the working set, measured in μ;
  * - nothing may age because a calendar advanced.
  *
  * That is not a preference. Wall clock would age every memory equally across a night when nothing
@@ -19,7 +19,7 @@
  * mu   += delta
  * ```
  *
- * `log(1) = 0` is the load-bearing detail: with no new memory and no recall, MU does not move at all.
+ * `log(1) = 0` is the load-bearing detail: with no new memory and no recall, μ does not move at all.
  * Sleeping costs nothing. `log` also means the hundredth memory written on a busy day costs less than
  * the first, which is what keeps a large intake from accelerating the ageing of everything already
  * stored.
@@ -28,7 +28,7 @@
  *
  * It is not a duration, not minutes, not comparable across installs. One injection of eight entries
  * advances `log(9) ≈ 2.2`, so an ordinary forty-step turn can advance dozens of units. Only
- * **differences** between two MU readings mean anything, and only within one store.
+ * **differences** between two μ readings mean anything, and only within one store.
  * @module dsh-loci/store/mu
  */
 import { readMeta, writeMeta, META_KEYS } from './schema.js';
@@ -42,7 +42,7 @@ const TRAIL_LIMIT = 5000;
  * @param use - entries injected or looked up in this step.
  * @param wAdd - weight of the growth component.
  * @param wUse - weight of the activity component.
- * @returns the MU increment, `>= 0`.
+ * @returns the μ increment, `>= 0`.
  */
 export function muDelta(add, use, wAdd = 1, wUse = 1) {
   const growth = Math.max(0, Number(add) || 0) * (Number(wAdd) || 0);
@@ -53,7 +53,7 @@ export function muDelta(add, use, wAdd = 1, wUse = 1) {
 /**
  * Read the counter.
  * @param db - open handle.
- * @returns the current MU, `0` on a store that has never advanced.
+ * @returns the current μ, `0` on a store that has never advanced.
  */
 export function muNow(db) {
   const raw = readMeta(db, META_KEYS.muNow);
@@ -122,13 +122,13 @@ export function muTrail(db, limit = 20) {
 }
 
 /**
- * Band a distance in MU.
+ * Band a distance in μ.
  *
  * The four boundaries are **initial hypotheses, not measurements** — they exist so the distribution can
  * be read and argued about, and they are configuration so they can be corrected without a code change.
  * Nothing outside reporting uses them yet.
  *
- * @param p - distance in MU (smaller is fresher).
+ * @param p - distance in μ (smaller is fresher).
  * @param edges - `{fresh, active, cool}` upper bounds.
  * @returns `'fresh' | 'active' | 'cool' | 'cold'`.
  */
@@ -170,7 +170,7 @@ export function quantile(sorted, fraction) {
  *
  * Retirement is deliberately *not* derived from these — see the note in `store.muPositions`.
  *
- * @param distances - ascending distances in MU, entries with a real MU history only.
+ * @param distances - ascending distances in μ, entries with a real μ history only.
  * @returns `{fresh, active, cool, derived}`.
  */
 export function deriveBandEdges(distances) {
