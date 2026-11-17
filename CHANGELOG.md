@@ -4,6 +4,76 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.3.0] — 2026-11-17
+
+Production readiness, as ten checks rather than an opinion. And the last unknown is closed.
+
+### The last unknown
+
+Whether a model would ever answer `applies` — if not, the column would have become a second `importance`:
+present, sorted on, always the default. **It does.** The first real curator write after the signal existed:
+
+```
+08:03:59  m_01M7M8HGKZC98DXX32NY
+  trust_source = curator        supplied.applies = true
+  applies = topic
+  "插件坞同侧堆叠按先来后到，不按 id 排序，也不固定让词元额度置顶"
+```
+
+One sample, and it is right: a specific stacking behaviour is topical. One sample is also not a rate — the
+honest statement is "the path works", not "35% of entries will be standing".
+
+### The check script found two things the code did not
+
+`scripts/diag/readiness.mjs` runs ten checks and refuses to say READY unless all pass. It immediately caught:
+
+**1. The echo quarantine did not quarantine.** An entry written at 13:56 carried
+`flags: ["index-echo"]` **and status `verified`**: the detector fired, the enforcement was never written,
+and the feedback loop continued with a label on it. `#resolveStatus` now returns `disputed` for an echo
+**before** it considers an explicit `verified`, because the caller claiming verified is exactly the case that
+cannot be trusted — the extractor believed it had found a rule. The legacy row has been quarantined too, so
+the store matches the rule it now enforces.
+
+**2. A check counted deleted rows as live defects.** Three withdrawn echoes still carried the old `MU`
+marker, so the check reported a historical artefact as a current one. A readiness check has to describe the
+store as it is used, not as it once was.
+
+### And a systemic misread in my own diagnostics
+
+`index.js` records `written: <count>` — a **number**. Three of my diagnostic scripts read it as an array,
+so `Array.isArray(...).length` was always 0 and they reported **"curation has never written anything, 0.0%
+before and after"**. The corrected numbers:
+
+```
+before  ran 45 · wrote 14 · entries 29
+after   ran 14 · wrote  5 · entries  8
+write rate 31.1% → 35.7%
+```
+
+`report-production.mjs` had this right all along (`Number(event.written ?? 0)`), which is why the production
+report and the ad-hoc script disagreed. The ad-hoc script was wrong.
+
+> The pattern worth naming: I produced three confident conclusions this session from instruments I had not
+> calibrated — a zero standing count from a wrong denominator, a zero write rate from a wrong type, and a
+> behaviour claim from an absent field. **Each was caught by checking the instrument against a second
+> source**, and none by re-reading the conclusion.
+
+### The ten checks
+
+Version · schema · applies values · no echoes · μ not MU · core membership · audit readable · **degraded
+mode** · **rollback** · test gates.
+
+The two that mattered most:
+
+- **degraded mode**: with nothing standing, the section still renders (264 B, names its scope, points at
+  `loci_search`, explains μ) and retrieval answered 4/4. This is why readiness does **not** depend on any
+  model answering `applies` — not filling it degrades to pure retrieval, which is a working product.
+- **rollback**: v8 → v7 → v8 on a copy, with the cost stated (classification is lost, content is not).
+
+`node scripts/diag/readiness.mjs` prints READY only when all ten pass.
+
+361 tests, coverage lines 90.8 / branches 72.0 / functions 85.9.
+
 ## [5.2.3] — 2026-11-17
 
 A deployment that cannot be reverted is not ready. The rollback was never tested, and it was wrong.

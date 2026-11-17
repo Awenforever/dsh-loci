@@ -106,8 +106,11 @@ for (const line of lines) {
   } else if (event.event === 'curate') {
     if (event.ran === true) {
       marks.curateRan += 1;
-      marks.entriesFromCuration += Array.isArray(event.written) ? event.written.length : 0;
-      if ((event.written ?? []).length > 0) marks.curateWrote += 1;
+      // `written` is a **count**, not an array — `index.js` records `outcome.written.length`. Reading it as
+      // an array made every curation look fruitless, which is how a wrong conclusion about "curation has
+      // stopped writing" got printed once.
+      marks.entriesFromCuration += Number(event.written ?? 0);
+      if (Number(event.written ?? 0) > 0) marks.curateWrote += 1;
     }
     const reason = String(event.reason ?? '(none)');
     curateReasons[reason] = (curateReasons[reason] ?? 0) + 1;

@@ -213,7 +213,7 @@ export function detectInstructionLike(text) {
  *
  * @param input - `{title, body, tags, entities, evidence}`.
  * @param config - effective config (`secretPolicy`, `indexLineMaxChars`).
- * @returns `{title, body, tags, entities, evidence, flags, redactions, instructionLike, rejected}`.
+ * @returns `{title, body, tags, entities, evidence, flags, redactions, instructionLike, indexEcho, rejected}`.
  */
 export function prepareForStorage(input, config) {
   const policy = config?.secretPolicy === 'reject' ? 'reject' : 'redact';
@@ -240,11 +240,16 @@ export function prepareForStorage(input, config) {
 
   // Second line of defence against the injection feedback loop.
   //
-  // The first is `stripInjected` where the user message enters the transcript, and it depends on the
-  // wrapper tag being present. If a format change or a truncated frame loses the wrapper, the shape of a
-  // rendered index line is still unmistakable — an entry id followed by `· <kind> · <n> μ ago ·` — and no
-  // person types that. Storing it would put memory into memory.
-  if (looksLikeIndexLine(safeTitle) || looksLikeIndexLine(body)) flags.push('index-echo');
+  // The first is `stripInjected` where the user message enters the transcript, and it depends on the wrapper
+  // tag being present. If a format change loses the tag, the shape of a rendered index line still gives it
+  // away: an entry id followed by `· <kind> · <n> μ ago ·` is not something a person types.
+  //
+  // **Flagging is not enough.** The first version pushed a flag and stored the entry anyway, verified — so a
+  // real echo landed in the live store at 13:56 with `flags: ["index-echo"]` and full trust, which is the
+  // loop continuing with a label on it. It is quarantined like any other instruction-shaped text: `indexEcho`
+  // tells the store to store it as `disputed`, where it is kept for inspection and never injected.
+  const indexEcho = looksLikeIndexLine(safeTitle) || looksLikeIndexLine(body);
+  if (indexEcho) flags.push('index-echo');
 
   // A citation back to the code the fact came from (`src/host/store.js:120`).
   // It lives with the evidence rather than in its own column: provenance is what
@@ -297,6 +302,7 @@ export function prepareForStorage(input, config) {
     flags,
     redactions: [...new Set(redactions)],
     instructionLike,
+    indexEcho,
     rejected: policy === 'reject' && redactions.length > 0,
   };
 }

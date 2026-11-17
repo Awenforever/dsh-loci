@@ -415,7 +415,9 @@ export class Store {
     // not that it supports different words.
     const sameScope = input.scopeKey === undefined || input.scopeKey === head.row.scope_key;
     const keepsVerification = sameScope && this.#textWasVerified(id, contentHash);
-    const status = input.status ?? (prepared.instructionLike ? 'disputed' : keepsVerification ? 'verified' : 'candidate');
+    const status =
+      input.status ??
+      (prepared.indexEcho || prepared.instructionLike ? 'disputed' : keepsVerification ? 'verified' : 'candidate');
 
     const ord = withTransaction(this.db, () => {
       this.db
@@ -1914,6 +1916,14 @@ export class Store {
     // working memory is scratch for this session; it is never injected, so it
     // never needs verifying.
     if (input.kind === 'working') return 'candidate';
+    // An index echo is quarantined before anything else is considered — including an explicit `verified`.
+    //
+    // The first version flagged it and stored it anyway, and a real echo landed in the live store at 13:56
+    // with `flags: ["index-echo"]` and full trust: the feedback loop continuing with a label on it. A caller
+    // claiming `verified` is exactly the case that cannot be trusted here, because the extractor that
+    // produced the echo believed it had found a rule.
+    if (prepared.indexEcho) return 'disputed';
+    if (prepared.instructionLike) return 'disputed';
     if (['candidate', 'verified', 'disputed'].includes(input.status)) return input.status;
     if (prepared.instructionLike) return 'disputed';
     // An import or a session summary is not testimony: neither is something the

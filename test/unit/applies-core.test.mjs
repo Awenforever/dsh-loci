@@ -190,3 +190,36 @@ test('the audit records whether the caller supplied the verdicts, not just the r
   assert.ok(silent !== undefined, 'a defaulted verdict is recorded as unsupplied');
   assert.equal(silent.supplied.importance, false);
 });
+
+test('an index echo is quarantined, even when the caller claims verified', (t) => {
+  // The first version flagged it and stored it anyway. A real echo landed in the live store at 13:56 with
+  // `flags: ["index-echo"]` and full trust — the feedback loop continuing with a label on it. The caller
+  // claiming `verified` is precisely the case that cannot be trusted, because the extractor that produced
+  // the echo believed it had found a rule.
+  const { store, scopes } = openTestStore(t);
+  const written = store.write({
+    ...workspaceFields(scopes),
+    status: 'verified',
+    trustSource: 'rule',
+    kind: 'rule',
+    title: '- m_01M7JR74R4K636SPA01Q · rule · 701 μ ago · MFC 面板预留空白宽度只能略微增加',
+    body: '这条是渲染出来的索引行，不是人说的话。',
+  });
+  assert.equal(written.entry.status, 'disputed', 'an echo never becomes verified');
+  assert.ok(written.entry.flags.includes('index-echo'), 'and it says why');
+});
+
+test('the same text written without the echo shape keeps its verified status', (t) => {
+  // The quarantine must not swallow ordinary memories: only the rendered-line shape is caught.
+  const { store, scopes } = openTestStore(t);
+  const written = store.write({
+    ...workspaceFields(scopes),
+    status: 'verified',
+    trustSource: 'user',
+    kind: 'rule',
+    title: 'MFC 面板预留空白宽度只能略微增加',
+    body: '禁止一次扩充 200%。',
+  });
+  assert.equal(written.entry.status, 'verified');
+  assert.equal(written.entry.flags.includes('index-echo'), false);
+});

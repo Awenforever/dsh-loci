@@ -33,7 +33,8 @@ for (const line of lines) {
 
 console.log(`curate events since 5.2.0: ${curates.length}`);
 for (const event of curates.slice(-5)) {
-  console.log(`  ran=${event.ran} reason=${JSON.stringify(String(event.reason ?? '').slice(0, 40))} written=${Array.isArray(event.written) ? event.written.length : 0}`);
+  // `written` is a count, not an array — see the note in session-traffic.mjs.
+  console.log(`  ran=${event.ran} reason=${JSON.stringify(String(event.reason ?? '').slice(0, 40))} written=${Number(event.written ?? 0)}`);
   if (event.rawHead !== undefined) console.log(`    rawHead: ${JSON.stringify(String(event.rawHead).slice(0, 200))}`);
 }
 
