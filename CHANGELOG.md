@@ -4,6 +4,72 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.2.1] — 2026-11-17
+
+Feedback rides on the write, because a model does not go looking for the health of its own memory.
+
+### The constraint that shaped it
+
+It reads tool results and nothing else. A "memory health" report nobody opens is worth nothing, so every
+note has to arrive attached to an action the model was going to take anyway — **writing**.
+
+Three notes, each computable by the store and actionable in the same turn:
+
+| note | computed from | what the model can do |
+|---|---|---|
+| "N of your M recent writes have never been injected" | `inject_count = 0` on this session's own writes | check whether the scope is one it reads from |
+| "N entries are waiting for review and never reach the prompt" | `status = 'candidate'` in scope | stop believing it saved something usable |
+| "N of M entries are marked always — far more than that should mean" | ratio of `always` in scope | reclassify; this is the failure §7 of the contract names |
+
+**Deliberately absent:** anything about whether an entry was *useful*. That needs the outcome of a task,
+which the store never sees; claiming it would be fabrication. Also absent: anything longer than a line — a
+note that needs a paragraph gets skimmed, and a skimmed note costs bytes on every write to no effect.
+
+### A bug the tests found, not the code
+
+The review-queue query read `scope_key` from `memory_head`, which has only `id / ord / revision / status`.
+It threw, the `catch` swallowed it, and the note silently never appeared. The catch is correct — a diagnostic
+must never be the cause of a failed write — but it also meant a wrong query was indistinguishable from a
+quiet store. **A test caught it.** That is the trade a swallow makes, and it is worth naming.
+
+### The `applies` arity question, answered by structure rather than by opinion
+
+Asked whether two values are enough, or whether `project` ("every task in this project, not elsewhere") is
+missing. Measured on the live store:
+
+```
+topical entries already confined to a narrow scope: 22 of 22
+topical entries in a global scope:                  0
+```
+
+`scope` already ranges over session / workspace / global, so `scope=workspace` + `applies=always` **is** that
+middle. A third `applies` value would be the same statement written into a second field, and two fields
+describing one thing is how they drift apart.
+
+**That is a conditional conclusion, and the condition is testable**: a third value becomes necessary the day
+an entry must be "every task in this project" while living in `global` scope. None exists today.
+
+### The split, verified against a live session
+
+Same session, before and after 5.2.0:
+
+```
+before  160 renders · 11 distinct entries   (one rule shown 442 times in total)
+after     4 renders ·  4 distinct entries   ← exactly the four standing ones, that rule now 0
+```
+
+Zero is also what "the rule was lost" looks like, so it was falsified: asked questions that concern it —
+
+```
+"把位置切换的图标换成齿轮"            FOUND
+"位置切换那个图标不好看，换一个"       FOUND
+"左上角那个切换按钮的图标想改一下"     FOUND
+"icon for the position toggle…"     MISSED   ← known: CJK bigram matching, no cross-language
+unrelated questions                  3/3 clean
+```
+
+Out of the core, back when the subject comes up. 358 tests, coverage lines 90.7 / branches 71.8 / functions 85.9.
+
 ## [5.2.0] — 2026-11-17
 
 The write contract can now say when a memory applies. Schema v8.

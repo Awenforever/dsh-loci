@@ -13,6 +13,7 @@ import { indexTitle, renderSafe } from '../inject/sanitize.js';
 import { MemoryNotFoundError, MemoryRejectedError, RevisionConflictError } from '../store/store.js';
 import { formatDate } from '../inject/index-section.js';
 import { runAnswerEval } from './answer-eval.js';
+import { writeFeedback } from './write-feedback.js';
 
 const KINDS = ['working', 'episodic', 'semantic', 'procedural', 'rule'];
 const SCOPES = ['session', 'workspace', 'project', 'global'];
@@ -330,6 +331,20 @@ export function createTools(deps) {
         trustSource: 'tool',
       };
 
+      // Feedback rides on the write rather than living in a report, because a model does not go looking for
+      // the health of its own memory — it reads tool results and nothing else. See
+      // `docs/MEMORY-CONTRACT.md` §5 and `write-feedback.js`.
+      const feedbackFor = () =>
+        writeFeedback({
+          store,
+          sessionId: context.sessionId,
+          scopeKeys: readScopeKeys(context.scopes, { includeGlobal: config('includeGlobal') }),
+        });
+      const withFeedback = (value) => {
+        const notes = feedbackFor();
+        return notes.length === 0 ? value : { ...value, feedback: notes };
+      };
+
       if (op === 'update') {
         if (id === undefined) throw new Error('id is required for update');
         if (title === undefined || body === undefined) throw new Error('title and body are required for update');
@@ -339,12 +354,12 @@ export function createTools(deps) {
           body,
           expectedRevision: int(args, 'expectedRevision', { min: 1 }),
         });
-        return { op, ...result };
+        return withFeedback({ op, ...result });
       }
 
       if (title === undefined || body === undefined) throw new Error('title and body are required');
       const result = store.write({ ...base, op: 'create', title, body });
-      return { op: 'create', ...result };
+      return withFeedback({ op: 'create', ...result });
     },
   };
 
@@ -617,6 +632,9 @@ function renderWrite(value) {
   for (const hit of value.possibleDuplicates ?? []) {
     lines.push(`possible duplicate: ${hit.id} · ${renderSafe(indexTitle(hit.title, 80))}`);
   }
+  // The store's own observations, after the facts about this write. They are information, not instructions:
+  // phrased as what is true, so a model can act on it without being told what to think.
+  for (const note of value.feedback ?? []) lines.push(`note: ${note}`);
   return lines.join('\n');
 }
 
