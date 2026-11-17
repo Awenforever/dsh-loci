@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -105,6 +105,14 @@ CREATE TABLE IF NOT EXISTS memory (
   deleted_at     INTEGER,
   -- v7: the memory unit this entry was born at. The store's only clock.
   mu_born        REAL,
+  -- v8: whether this applies to every task or only when its subject comes up.
+  --
+  -- 'topic' is the default on purpose. Defaulting to 'always' would bake the bug this column exists to
+  -- fix into the default path: every rule would be injected every turn, which is exactly what the live
+  -- store showed — one rule about icon placement injected 397 times into a session about something else.
+  -- Entries written before v8 also become 'topic', because the honest reading of "we never asked" is
+  -- "not proven standing", not "standing".
+  applies        TEXT NOT NULL DEFAULT 'topic' CHECK (applies IN ('always', 'topic')),
   UNIQUE (id, revision)
 );
 
@@ -115,6 +123,8 @@ CREATE INDEX IF NOT EXISTS ix_memory_title ON memory (scope_key, title_norm);
 CREATE INDEX IF NOT EXISTS ix_memory_valid ON memory (valid_from, valid_to);
 CREATE INDEX IF NOT EXISTS ix_memory_tier   ON memory (scope_key, status, tier, created_at);
 CREATE INDEX IF NOT EXISTS ix_memory_recent ON memory (scope_key, status, created_at DESC);
+-- v8: the core query asks for standing entries in scope; without this it scans every rule and filters.
+CREATE INDEX IF NOT EXISTS ix_memory_applies ON memory (scope_key, applies, status);
 CREATE INDEX IF NOT EXISTS ix_memory_source ON memory (source_session);
 
 CREATE TABLE IF NOT EXISTS memory_head (

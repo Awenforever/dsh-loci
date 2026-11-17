@@ -4,6 +4,82 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.2.0] — 2026-11-17
+
+The write contract can now say when a memory applies. Schema v8.
+
+### The question that started it
+
+A rule about the position-toggle icon was injected **397 times** into a session that was rarely touching
+icon placement. The cause was not a bad sort: `loci_write` had **no parameter for when a memory applies**.
+`importance` had a column, a sort key and no caller — all 29 entries sat at the default `3` — so ordering
+fell through to `mu_touched`, which `recordInjection` resets on every render. Whichever six rules entered
+the core first stayed there forever.
+
+### `applies: 'always' | 'topic'`
+
+One question decides it: **does the thing this entry is about appear in every task?**
+
+`always` is about how work is done — "AGENTS.md keeps only pointers", "look at the result before declaring
+it done". `topic` is about one thing — "the grid card shows only flow deviation", "the toggle icon must not
+be plain arrows". A firm constraint on one screen is still topical: the constraint is firm, its subject is
+not always present.
+
+**The default is `topic`**, and the v7→v8 migration applies it to every existing row. That is the
+conservative reading: we never asked whether a stored rule is standing, so the honest answer is "not
+proven", and unproven means it goes through retrieval. Backfilling `always` would have preserved the exact
+behaviour this release exists to end.
+
+### What it did to the live store
+
+```
+before   6 rules injected every turn, one of them 397 times, section 678 B
+after    4 standing rules, section 823 B, the other 28 reachable by retrieval
+```
+
+The migration also surfaced that one rule existed as **three separate entries** — same rule, three
+phrasings, written independently by the extractor and the curator — which are now folded into one.
+
+### `importance` finally has an entry point — and an honest description
+
+It is the model's own judgement, **allowed to be wrong**, revised later from what happens to the entry. The
+first draft asked for "the cost of getting it wrong", which nobody can know at write time and which
+produced a table of identical values. The correction machinery is **not implemented yet** — see below.
+
+### `whenCondition` is finally shown
+
+Stored since v3, displayed on none. A conditional fact rendered as an unconditional title is worse than not
+injecting it: the model reasons from a premise it cannot see. Injected lines now carry `· when: <premise>`,
+truncated at 60 characters.
+
+This came directly from the operator: *"VM 是运行在 invictus 上的，所以只要 invictus 可达，VM 就可达，不是
+单纯的 always 就能判定的"* — which also established that `applies` (when to show) and `whenCondition`
+(when it is true) are different axes and must not be collapsed.
+
+### `CORE_BUDGET_BYTES` demoted from constraint to safety valve (500 → 1500)
+
+Its origin was `b561bfc`: a "hard 500 B cap" introduced because a first version admitted every semantic
+entry and filled the core with filler. **It was a patch over a question, not a measurement** — and once
+`applies` answered the question, the cap's only remaining effect was to silently overrule
+`CORE_MAX_ENTRIES`. Four standing entries need 558 B, so the cap was deciding that three of four would be
+shown, using a number nobody measured.
+
+`CORE_MAX_ENTRIES` (6) is now the governing constraint. **But 6 is not measured either** — see the
+`docs/MEMORY-CONTRACT.md` §3.2 note on why the obvious statistic is circular.
+
+### Not implemented, and why
+
+- **Automatic `importance` correction.** The planned signals are not there: `read_count` is 0/39 (titles are
+  self-contained, so nothing is opened), and the five entries with `revision > 1` are all my own `applies`
+  migration, not corrections. Designing a formula over absent data is how `read_count` was misread before.
+- **Write-time feedback.** Planned for the next release.
+
+### Tests
+
+`docs/MEMORY-CONTRACT.md` is the design of record. Nine tests pin the new contract — including that an
+empty core is a correct result that must not be filled with topical filler, and that a topical rule is still
+reachable through retrieval. 351 tests, coverage lines 90.7 / branches 71.8 / functions 85.7.
+
 ## [5.1.5] — 2026-11-17
 
 The 5.1.3 fix covered one path. There were two.

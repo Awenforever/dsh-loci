@@ -47,7 +47,7 @@ function sectionFor(store, scopes, sessionId, storeRef) {
 
 test('an ordinary conversation receives the section', (t) => {
   const { store, scopes } = openTestStore(t);
-  seed(store, scopes, [{ kind: 'rule', title: '删除前做断言', body: '先校验路径。' }]);
+  seed(store, scopes, [{ kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' }]);
   const text = sectionFor(store, scopes, 'session-user', store).text({});
   assert.match(text, /删除前做断言/);
 });
@@ -55,7 +55,7 @@ test('an ordinary conversation receives the section', (t) => {
 test('the manager receives nothing at all, not even the pointer', (t) => {
   const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' },
     { kind: 'semantic', title: '回滚窗口是三十分钟', body: '超过就升级。' },
   ]);
   store.exemptFromInjection('session-manager', 'curator');
@@ -87,7 +87,7 @@ test('an exemption can be lifted', (t) => {
 
 test('one manager does not exempt another conversation', (t) => {
   const { store, scopes } = openTestStore(t);
-  seed(store, scopes, [{ kind: 'rule', title: '删除前做断言', body: '先校验路径。' }]);
+  seed(store, scopes, [{ kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' }]);
   store.exemptFromInjection('session-manager', 'curator');
   const text = sectionFor(store, scopes, 'session-someone-else', store).text({});
   assert.match(text, /删除前做断言/, 'the exemption must be per session, not global');

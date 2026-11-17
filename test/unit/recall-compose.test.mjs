@@ -28,7 +28,7 @@ const compose = (store, scopes, query) =>
 test('the core holds rules and pinned entries, never merely recent ones', (t) => {
   const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '永远不要在周五发版', body: '周五发版没人接。' },
+    { kind: 'rule', applies: 'always', title: '永远不要在周五发版', body: '周五发版没人接。' },
     { kind: 'semantic', title: 'atlas 服务上线先走灰度', body: '先灰度再全量。' },
     { kind: 'semantic', title: '最近写入的普通事实', body: '越新越容易被当成永久的。' },
   ]);
@@ -44,7 +44,7 @@ test('the core stops at its byte budget', (t) => {
   const { store, scopes } = openTestStore(t);
   const entries = [];
   for (let i = 0; i < 40; i += 1) {
-    entries.push({ kind: 'rule', title: `规则第 ${i} 条：这是一段用来占字节的比较长的规则文本`, body: '正文。' });
+    entries.push({ kind: 'rule', applies: 'always', title: `规则第 ${i} 条：这是一段用来占字节的比较长的规则文本`, body: '正文。' });
   }
   seed(store, scopes, entries);
   const core = selectCore({ store, scopeKeys: scopesOf(scopes), budgetBytes: 300 });
@@ -93,7 +93,7 @@ test('a truly empty store injects nothing', (t) => {
 
 test('an unverified candidate is announced, not silently dropped', (t) => {
   const { store, scopes } = openTestStore(t);
-  store.write({ ...workspaceFields(scopes), kind: 'rule', trustSource: 'tool', title: '候选不该出现', body: '没引文。' });
+  store.write({ ...workspaceFields(scopes), kind: 'rule', applies: 'always', trustSource: 'tool', title: '候选不该出现', body: '没引文。' });
   const composed = compose(store, scopes, '候选');
   assert.match(composed.text, /await review/, 'a person waiting to approve must be visible in the prompt');
   assert.doesNotMatch(composed.text, /候选不该出现/, 'but the candidate itself must not leak in as a fact');
@@ -113,7 +113,7 @@ test('a question that matches nothing still says the memory exists', (t) => {
 
 test('the pointer counts what the section did not show', (t) => {
   const { store, scopes } = openTestStore(t);
-  const entries = [{ kind: 'rule', title: '一条规则', body: '正文。' }];
+  const entries = [{ kind: 'rule', applies: 'always', title: '一条规则', body: '正文。' }];
   for (let i = 0; i < 25; i += 1) entries.push({ kind: 'semantic', title: `填充事实 ${i}`, body: '正文。' });
   seed(store, scopes, entries);
   const composed = compose(store, scopes, '一条规则');
@@ -134,7 +134,7 @@ test('the section spends far less than the fixed index it replaces', (t) => {
 test('slice mode changes what the registered section renders', (t) => {
   const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' },
     { kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' },
   ]);
   const build = (mode) =>
@@ -165,7 +165,7 @@ test('slice mode changes what the registered section renders', (t) => {
 
 test('the query-dependent half is a separate block, produced from a supplied question', (t) => {  const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' },
     { kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' },
   ]);
   const block = composeSliceMessage({
@@ -191,7 +191,7 @@ test('the query-dependent half is a separate block, produced from a supplied que
 
 test('the section degrades to the core when there is no question yet', (t) => {
   const { store, scopes } = openTestStore(t);
-  seed(store, scopes, [{ kind: 'rule', title: '删除前做断言', body: '先校验路径。' }]);
+  seed(store, scopes, [{ kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' }]);
   const section = createIndexSection({
     store,
     config: (key) => ({ ...DEFAULTS, recallMode: 'slice' })[key],

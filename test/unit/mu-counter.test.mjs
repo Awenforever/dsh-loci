@@ -121,6 +121,7 @@ test('the same entry reports the same age in the core and in the slice', (t) => 
     status: 'verified',
     trustSource: 'user',
     kind: 'rule',
+    applies: 'always',
     title: '删除前做断言',
     body: '先校验路径。',
   });

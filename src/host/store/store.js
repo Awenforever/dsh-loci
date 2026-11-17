@@ -319,6 +319,9 @@ export class Store {
         sourceEvent: Number.isSafeInteger(input.sourceEvent) ? input.sourceEvent : null,
         pinned: input.pinned === true ? 1 : 0,
         importance: Number.isInteger(input.importance) ? input.importance : 3,
+        // Anything other than an explicit 'always' is 'topic'. See `docs/MEMORY-CONTRACT.md` §1: the
+        // conservative default is the point, because "we did not ask" is not evidence of standing.
+        applies: input.applies === 'always' ? 'always' : 'topic',
         contentHash,
         createdAt: now,
         now,
@@ -432,6 +435,10 @@ export class Store {
         sourceEvent: Number.isSafeInteger(input.sourceEvent) ? input.sourceEvent : null,
         pinned: input.pinned === true ? 1 : Number(head.row.pinned),
         importance: Number.isInteger(input.importance) ? input.importance : Number(head.row.importance),
+        // An update that does not restate `applies` keeps the previous verdict. Reclassifying is a
+        // decision, and silence is not one — fixing a typo in a title must not quietly turn a standing
+        // rule into a topical one.
+        applies: input.applies === 'always' ? 'always' : input.applies === 'topic' ? 'topic' : (head.row.applies ?? 'topic'),
         contentHash,
         // A revision that does not restate the lesson keeps the previous shape: fixing a
         // typo in the title must not silently erase why the lesson exists.
@@ -2041,10 +2048,10 @@ export class Store {
         `INSERT INTO memory (
            id, revision, kind, scope, scope_key, scope_label, title, title_norm, body, tags, entities,
            status, trust_source, flags, valid_from, valid_to, recorded_at, supersedes, superseded_by,
-           evidence, source_session, source_event, verified_at, verified_by, pinned, importance, tier,
+           evidence, source_session, source_event, verified_at, verified_by, pinned, importance, applies, tier,
            content_hash, created_at, updated_at, deleted_at,
            pattern, fix, prevents, when_condition
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)`,
       )
       .run(
         row.id,
@@ -2073,6 +2080,7 @@ export class Store {
         row.verifiedBy,
         row.pinned,
         row.importance,
+        row.applies ?? 'topic',
         tierOf(row.kind, row.pinned),
         row.contentHash,
         row.createdAt,

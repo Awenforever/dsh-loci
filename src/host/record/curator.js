@@ -27,12 +27,21 @@ export const CURATOR_CONTRACT = `You maintain a long-term memory store. You are 
 memories that already exist in scope. Decide what should be remembered.
 
 Return ONLY a JSON object, no prose and no code fences:
-{"keep":[{"kind":"rule|semantic|procedural","title":"...","body":"...","evidenceQuote":"...","topic":"..."}],"drop":[{"title":"...","why":"..."}]}
+{"keep":[{"kind":"rule|semantic|procedural","applies":"always|topic","title":"...","body":"...","evidenceQuote":"...","whenCondition":"...","topic":"..."}],"drop":[{"title":"...","why":"..."}]}
 
 Rules you must follow:
 - kind "rule" is a constraint that must always hold ("never deploy on Friday").
 - kind "procedural" is how to do something in this project.
 - kind "semantic" is a fact about the project or the person.
+- applies answers one question: **does the thing this is about appear in every task?**
+  "always" means it is about how work is done — "AGENTS.md keeps only pointers", "check the port by PID".
+  "topic" means it is about one thing — "the grid card shows only flow deviation", "the position toggle
+  icon must not be plain arrows". A firm constraint on one screen is still topic: the constraint is firm,
+  its subject is not always present. When unsure, use "topic" — topical entries are still found by
+  retrieval, while a wrong "always" is shown on every turn forever.
+- whenCondition, when present, is the premise the statement depends on ("the VM is reachable as long as
+  invictus is"). Omit it for statements that hold unconditionally. A conditional fact stored without its
+  condition will be reasoned from when the condition is false.
 - title is one line, at most 120 characters, self-contained.
 - body is the full statement, at most 2000 characters.
 - evidenceQuote MUST be copied verbatim from a user message in the transcript. If you cannot quote
@@ -254,6 +263,13 @@ export function parseCuratorReply(raw, options = {}) {
       title,
       body,
       evidenceQuote,
+      // Anything other than an explicit `always` stays topical. The store enforces the same rule; doing it
+      // here too means a malformed reply cannot smuggle a standing entry past the validator.
+      applies: candidate.applies === 'always' ? 'always' : 'topic',
+      whenCondition:
+        typeof candidate.whenCondition === 'string' && candidate.whenCondition.trim().length > 0
+          ? candidate.whenCondition.trim().slice(0, 300)
+          : undefined,
       topic: typeof candidate.topic === 'string' ? candidate.topic.slice(0, 60) : undefined,
     });
   }
@@ -296,6 +312,12 @@ export async function curate({ store, scope, messages, callModel, sessionId, exi
     try {
       const result = store.write({
         kind: item.kind,
+        // The curator decides applicability for everything it writes, the same way `loci_write` does.
+        // Without this the store's default (`topic`) would apply to every curated entry forever, so the
+        // standing set could only ever grow through the explicit tool — and the model's judgement about
+        // "does this come up in every task" would be unavailable on the path that writes most memories.
+        applies: item.applies,
+        whenCondition: item.whenCondition,
         scope: scope.scope,
         scopeKey: scope.scopeKey,
         scopeLabel: scope.scopeLabel,

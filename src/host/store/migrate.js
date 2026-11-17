@@ -128,6 +128,31 @@ export const SHIPPED_MIGRATIONS = [
       writeMeta(db, META_KEYS.muNow, String(current));
     },
   },
+  {
+    from: 7,
+    to: 8,
+    why:
+      'A rule about icon placement was injected 397 times into a session about something else. The core ' +
+      'took every kind=rule because there was no way to say "this one only applies when the subject ' +
+      'comes up" — importance had a column and a sort key but no caller ever passed it, so all 29 rules ' +
+      'sat at the default 3 and ordering fell through to a clock that every injection reset. This adds ' +
+      'the missing field.',
+    // The default is `topic`, applied to every existing row.
+    //
+    // That is deliberately the conservative reading: we never asked whether a stored rule is standing,
+    // so the honest answer is "not proven", and unproven means it goes through retrieval like everything
+    // else. Backfilling `always` would preserve the exact behaviour this migration exists to end.
+    //
+    // A person can reclassify afterwards; `scripts/diag/applies-classify.mjs` produces the list and the
+    // evidence for each verdict, and every change is a normal revision the audit keeps.
+    up(db) {
+      addColumnIfMissing(db, 'memory', 'applies', "TEXT NOT NULL DEFAULT 'topic'");
+      db.exec("CREATE INDEX IF NOT EXISTS ix_memory_applies ON memory (scope_key, applies, status)");
+      // Rows added by the ALTER carry the default; make it explicit so a later default change cannot
+      // silently reinterpret existing data.
+      db.prepare("UPDATE memory SET applies = 'topic' WHERE applies IS NULL OR applies = ''").run();
+    },
+  },
 ];
 
 /**

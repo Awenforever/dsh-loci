@@ -24,8 +24,23 @@
  */
 import { renderSafe, indexTitle } from '../inject/sanitize.js';
 
-/** Bytes allowed for the always-on core. */
-export const CORE_BUDGET_BYTES = 500;
+/**
+ * Safety valve for a single entry that is unreasonably long — **not** the constraint on how many fit.
+ *
+ * History: this was 500, chosen when the core admitted every `kind = 'rule'` and the fix for "six pieces of
+ * filler under the heading Always applies" was "make it not fit". Four standing entries need 558 B, so the
+ * cap was silently deciding that three of four would be shown — a byte count nobody measured, overruling
+ * `CORE_MAX_ENTRIES`, which is the constraint that actually says what the core is for.
+ *
+ * The two constraints were fighting and the accidental one was winning. `CORE_MAX_ENTRIES` now governs:
+ * "how many rules can one task reasonably need on every turn" is a question with an answer, while "how many
+ * bytes" is just its shadow. This ceiling stays only to stop one runaway entry from eating the budget.
+ *
+ * **Not calibrated yet.** The honest state is that the entry count (6) is the thing to measure against real
+ * tasks, using `applies` to tell standing from topical. Until then neither number should be treated as
+ * measured fact.
+ */
+export const CORE_BUDGET_BYTES = 1500;
 
 /** Bytes allowed for the per-question slice. */
 export const SLICE_BUDGET_BYTES = 1200;
@@ -39,24 +54,38 @@ const SLICE_MAX_ENTRIES = 8;
 /**
  * Kinds that may belong in the always-on core.
  *
- * Only `rule`, and only when pinned, is unconditional. A first version also admitted every
- * `semantic` entry and ordered by recency, which put six pieces of unrelated filler at the top
- * of the prompt under the heading "Always applies" — the exact opposite of the intent. "Always"
- * has to mean always; recency belongs in the slice.
+ * **Removed in v8.** It used to be `'rule'`, on the reasoning that only a rule is unconditional. That
+ * conflated two questions: *what kind of thing is this* (`kind`) and *when does it apply* (`applies`). The
+ * live store showed the cost — every rule entered the core, including "the position toggle icon must not be
+ * plain arrows", because being a rule said nothing about how often its subject appears.
+ *
+ * `applies = 'always'` now answers the second question directly, and `kind` goes back to answering only the
+ * first. Keeping both in the filter was how a topical rule could impersonate a standing one.
  */
-const CORE_SQL_KIND = 'rule';
 
 /** Bytes of one rendered line, in UTF-8. */
 const lineBytes = (line) => Buffer.byteLength(line, 'utf8');
 
 /**
  * Render one entry as an index line.
- * @param entry - stored entry.
- * @param date - `YYYY-MM-DD` string.
+ *
+ * **The condition rides with the line.** `whenCondition` was stored on every entry type and displayed on
+ * none, so a conditional fact — "the VM is reachable as long as invictus is" — reached the model as an
+ * unconditional title. That is worse than not injecting it: the model would reason from a premise it
+ * could not see. A condition that costs bytes is still cheaper than a confident wrong inference.
+ *
+ * Kept short on purpose (60 chars): this shares the budget with the title, and a truncated condition still
+ * says "there is a premise here, open the entry".
+ *
+ * @param entry - stored entry, whose `whenCondition` may be null.
+ * @param age - rendered distance in μ.
  * @returns the line, escaped for the section.
  */
 function renderLine(entry, age) {
-  return `- ${entry.id} · ${entry.kind} · ${age} · ${renderSafe(indexTitle(entry.title, 120))}`;
+  const head = `- ${entry.id} · ${entry.kind} · ${age} · ${renderSafe(indexTitle(entry.title, 120))}`;
+  const condition = typeof entry.whenCondition === 'string' ? entry.whenCondition.trim() : '';
+  if (condition.length === 0) return head;
+  return `${head} · when: ${renderSafe(indexTitle(condition, 60))}`;
 }
 
 /**
@@ -84,13 +113,34 @@ const formatMu = (p) => {
  * @param options - `store`, `scopeKeys`, `budgetBytes`.
  * @returns `{lines, ids, bytes, total}`.
  */
+/**
+ * Pick the always-on core: entries that apply to every task, most important first.
+ *
+ * **What changed and why.** This used to take every `kind = 'rule'` entry in scope and keep six, ordered by
+ * pinned, importance, then `mu_touched`. In the live store all 29 rules shared `importance = 3` and
+ * `pinned = 0` — `importance` had a column and a sort key but no caller ever passed it — so ordering fell
+ * through to `mu_touched`, which `recordInjection` resets on every render. Whichever six entered first
+ * stayed forever, and one rule about icon placement was injected 397 times into a session that was rarely
+ * touching icon placement.
+ *
+ * The fix is not a better sort. It is asking the right question: **does the thing this entry is about
+ * appear in every task?** That is `applies`, and only `always` belongs here. `pinned` still counts, because
+ * it is a person saying "show me this" in so many words.
+ *
+ * `kind` is no longer part of the filter: a standing preference can be `semantic` ("reply in Chinese"), and
+ * a `rule` can be entirely topical. Two fields describing one thing is how they drift apart.
+ *
+ * **An empty core is a correct result.** A young store has no standing entries and should show none. This
+ * deliberately does not fall back to the most important topical entries: filling the gap would make the
+ * contract unverifiable, because a reader would see a core and assume everything in it is standing.
+ */
 export function selectCore({ store, scopeKeys, budgetBytes = CORE_BUDGET_BYTES, now = Date.now() }) {
   if (!Array.isArray(scopeKeys) || scopeKeys.length === 0) return { lines: [], ids: [], bytes: 0, total: 0 };
   const marks = scopeKeys.map(() => '?').join(', ');
   const muNow = store.muNow();
   const rows = store.db
     .prepare(
-      `SELECT m.id, m.kind, m.title, m.pinned, m.importance,
+      `SELECT m.id, m.kind, m.title, m.pinned, m.importance, m.applies, m.when_condition,
               COALESCE(u.mu_touched, 0) AS mu_touched
          FROM memory m
          JOIN memory_head h ON h.ord = m.ord
@@ -98,18 +148,23 @@ export function selectCore({ store, scopeKeys, budgetBytes = CORE_BUDGET_BYTES, 
         WHERE m.scope_key IN (${marks})
           AND h.status = 'verified'
           AND m.valid_to IS NULL
-          AND (m.kind = ? OR m.pinned = 1)
+          AND (m.applies = 'always' OR m.pinned = 1)
         ORDER BY m.pinned DESC, m.importance DESC, mu_touched DESC
         LIMIT 60`,
     )
-    .all(...scopeKeys, CORE_SQL_KIND);
+    .all(...scopeKeys);
 
   const lines = [];
   const ids = [];
   let bytes = 0;
   for (const row of rows) {
     if (lines.length >= CORE_MAX_ENTRIES) break;
-    const line = renderLine(row, formatMu(muNow - Number(row.mu_touched ?? 0)));
+    // SQL rows carry `when_condition`; `renderLine` speaks the stored camelCase shape. Mapping here keeps
+    // the renderer dealing in one vocabulary instead of two naming conventions.
+    const line = renderLine(
+      { ...row, whenCondition: row.when_condition ?? null },
+      formatMu(muNow - Number(row.mu_touched ?? 0)),
+    );
     const size = lineBytes(line) + 1;
     if (bytes + size > budgetBytes) break;
     lines.push(line);
@@ -225,7 +280,7 @@ function scanScope({ store, scopeKeys, terms }) {
   }
   const rows = store.db
     .prepare(
-      `SELECT m.id, m.kind, m.title, m.body,
+      `SELECT m.id, m.kind, m.title, m.body, m.when_condition,
               COALESCE(u.mu_touched, 0)   AS mu_touched,
               COALESCE(u.inject_count, 0) AS injections,
               COALESCE(u.read_count, 0)   AS reads
@@ -255,6 +310,9 @@ function scanScope({ store, scopeKeys, terms }) {
       kind: row.kind,
       title: row.title,
       body,
+      // Carried through so `renderLine` can put the premise on the line. A conditional fact rendered as
+      // an unconditional one is how the model reasons from a premise it was never shown.
+      whenCondition: row.when_condition ?? null,
       score,
       muTouched: Number(row.mu_touched ?? 0),
       // Usage feeds back into selection, but only as a tie-breaker and only upward.
@@ -278,7 +336,7 @@ function pack(hits, budgetBytes, now, muNow) {
   let bytes = 0;
   for (const hit of hits) {
     const line = renderLine(
-      { id: hit.id, kind: hit.kind, title: hit.title },
+      { id: hit.id, kind: hit.kind, title: hit.title, whenCondition: hit.whenCondition ?? null },
       formatMu((Number(muNow) || 0) - hit.muTouched),
     );
     const size = lineBytes(line) + 1;

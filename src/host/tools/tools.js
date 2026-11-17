@@ -170,7 +170,11 @@ export function createTools(deps) {
         whenCondition: {
           type: 'string',
           description:
-            'For kind "procedural": the situation this lesson was written for. Stored and shown, never used to decide whether the entry is injected.',
+            'The condition under which this statement is true, when it is not unconditionally true. ' +
+            'Use it whenever the fact has a premise: "the VM is reachable as long as invictus is" is not ' +
+            'a standing truth, it is a conditional one, and storing it without the condition invites the ' +
+            'model to reason from it when the premise is false. Also used for a lesson\'s situation. ' +
+            'Stored and shown with the entry; it does not by itself decide injection.',
         },
         relations: {
           type: 'array',
@@ -190,6 +194,31 @@ export function createTools(deps) {
         validFrom: { type: 'string', description: 'ISO time the fact became true (default: now).' },
         ttlDays: { type: 'integer', description: 'Close the fact after N days (default: no expiry).' },
         pinned: { type: 'boolean' },
+        applies: {
+          type: 'string',
+          enum: ['topic', 'always'],
+          description:
+            'Whether this applies to every task, or only when its subject comes up (default: topic). ' +
+            'Ask one question: does the *thing this is about* appear in every task? ' +
+            '"AGENTS.md keeps only pointers", "final acceptance needs a screenshot", "find the port by PID" ' +
+            'are about how work is done, so they are always. "The grid card shows only flow deviation", ' +
+            '"the position toggle icon must not be plain arrows" are about one screen, so they are topic. ' +
+            'A hard constraint on one UI element is still topic — the constraint is firm, its subject is not ' +
+            'always present. When unsure, choose topic: topic entries are still found by retrieval, while a ' +
+            'wrong always costs every turn.',
+        },
+        importance: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 5,
+          description:
+            'Your own judgement of how much this matters — a guess you are allowed to be wrong about, and ' +
+            'the system revises it later from what actually happens to the entry (how often it is ' +
+            'corrected, whether it is ever withdrawn). Do not treat this as a precision instrument: an ' +
+            'earlier design asked for "the cost of getting it wrong", which no one can know at write time, ' +
+            'and every entry ended up at the default. ' +
+            '5 = you would be surprised if it were not followed; 3 = useful; 1 = a note to self.',
+        },
         sourceIds: {
           type: 'array',
           items: { type: 'string' },
@@ -282,6 +311,10 @@ export function createTools(deps) {
         fix: str(args, 'fix', { fallback: undefined }),
         prevents: str(args, 'prevents', { fallback: undefined }),
         whenCondition: str(args, 'whenCondition', { fallback: undefined }),
+        // The two fields that decide whether this entry is shown every turn or found by retrieval.
+        // `importance` had a column, a sort key and no caller for eleven releases; `applies` is new.
+        applies: oneOf(args, 'applies', ['topic', 'always'], undefined),
+        importance: Number.isInteger(args?.importance) ? args.importance : undefined,
         evidence: {
           ...(evidenceQuote === undefined ? {} : { quote: evidenceQuote }),
           ...(str(args, 'evidenceNote', { fallback: undefined }) === undefined

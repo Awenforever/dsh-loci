@@ -275,3 +275,35 @@ test('an empty keep list is a decision, not a failure', () => {
   assert.equal(parsed.error, undefined);
   assert.deepEqual(parsed.items, []);
 });
+
+test('a curated item carries its own applies verdict, and defaults to topic', async (t) => {
+  // The curator writes most memories, so if it cannot state applicability, the standing set can only grow
+  // through the explicit tool and the store default would govern everything this path ever writes.
+  const withVerdict = parseCuratorReply(
+    JSON.stringify({
+      keep: [
+        { kind: 'rule', applies: 'always', title: '验收前必须看图', body: '不图不算完。', evidenceQuote: '验收前必须看图' },
+        { kind: 'rule', title: '默认应当 topical', body: '没有声明。', evidenceQuote: '验收前必须看图' },
+        { kind: 'semantic', applies: 'always', title: '有条件的事实', body: 'VM 可达。', evidenceQuote: '验收前必须看图', whenCondition: 'invictus 可达时' },
+      ],
+      drop: [],
+    }),
+    { messages: [{ role: 'user', text: '验收前必须看图，其他都是次要的。' }] },
+  );
+  assert.equal(withVerdict.items.length, 3);
+  assert.equal(withVerdict.items[0].applies, 'always', 'an explicit verdict is kept');
+  assert.equal(withVerdict.items[1].applies, 'topic', 'silence is topical, not standing');
+  assert.equal(withVerdict.items[2].whenCondition, 'invictus 可达时', 'the premise survives validation');
+});
+
+test('a malformed applies value cannot smuggle a standing entry through', () => {
+  const parsed = parseCuratorReply(
+    JSON.stringify({
+      keep: [{ kind: 'rule', applies: 'ALWAYS', title: '大小写不对', body: '正文。', evidenceQuote: '验收前必须看图' }],
+      drop: [],
+    }),
+    { messages: [{ role: 'user', text: '验收前必须看图。' }] },
+  );
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0].applies, 'topic', 'anything unrecognised falls back to the safe default');
+});

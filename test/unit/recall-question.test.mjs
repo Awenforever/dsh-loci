@@ -31,7 +31,7 @@ function scopesOf(scopes) {
 test('the stable half holds no question-dependent entry', (t) => {
   const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' },
     { kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' },
   ]);
   const stable = composeStable({ store, scopeKeys: scopesOf(scopes), scopeLabel: scopes.labels.workspace });
@@ -43,7 +43,7 @@ test('the stable half holds no question-dependent entry', (t) => {
 test('the same question produces the match in the per-turn block', (t) => {
   const { store, scopes } = openTestStore(t);
   seed(store, scopes, [
-    { kind: 'rule', title: '删除前做断言', body: '先校验路径。' },
+    { kind: 'rule', applies: 'always', title: '删除前做断言', body: '先校验路径。' },
     { kind: 'semantic', title: 'atlas 的回滚窗口是三十分钟', body: '超过就升级。' },
   ]);
   const block = composeSliceMessage({
