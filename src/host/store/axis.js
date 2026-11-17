@@ -48,22 +48,22 @@
  */
 export const AXIS_DEFAULTS = Object.freeze({
   /** Depth of the entrance: a new entry starts here and takes this many μ to reach the habitat. */
-  entranceDepth: 2000,
+  entranceDepth: 400,
   /**
    * Recall amplitude at p = 0.
    *
-   * Chosen so that `rescueDepth()` lands near 105 μ (~4 hours of neglect): a memory that went a few hours
-   * unused comes back in one call, while one that has been ignored for days cannot be rescued by a single
-   * accidental use. That gap is the point — `MEMORY-UNITS.md` §3.1 requires that "used once" and "used
-   * constantly" never look the same.
+   * Set so `rescueDepth()` lands near 23 μ — about three quarters of a working day at the measured rate of
+   * ~30 μ/day. A memory neglected for less than a day comes back with one use; one neglected for a week needs
+   * many. That gap is the point: `MEMORY-UNITS.md` §3.1 requires that "used once" and "used constantly" never
+   * look the same.
    */
-  recallBase: 130,
+  recallBase: 30,
   /** How fast the amplitude decays with distance: δ = base · exp(−|p| / scale). */
-  recallScale: 500,
+  recallScale: 100,
   /** Floor on recall amplitude. It must stay above zero or the abyss in MEMORY-UNITS §7.1 returns. */
-  recallFloor: 1,
-  /** μ the clock advances per day, measured from the live store (0 → ~1160 μ in ~2 days). */
-  muPerDay: 580,
+  recallFloor: 0.1,
+  /** μ the clock advances per working day, measured from the live store under the v10 driver. */
+  muPerDay: 30,
 });
 
 /**

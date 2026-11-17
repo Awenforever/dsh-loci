@@ -30,7 +30,7 @@ import { composeSliceMessage } from './recall/compose.js';
 import { stripInjected } from './inject/fence.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '6.1.2';
+export const VERSION = '7.0.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];

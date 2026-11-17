@@ -47,26 +47,139 @@ window.__ModuleLoader__.load({
      */
     const PULSE_WINDOW = 40;
     /**
-     * How long an entry still counts as "recently activated". Inside this window it carries a four-point star;
-     * as the window expires the star degrades into a halo.
+     * How long a recall still counts as "recently activated".
      */
     const VITALITY_WINDOW = 150;
 
     /**
-     * Which lifecycle symbol an entry gets.
+     * Vitality: one number, 0..1, saying how alive an entry is right now.
      *
-     * Three states, each from something the store measured — nothing here is decoration:
+     * Two things make a memory vivid and they are the same thing measured from different sides: it has just
+     * been written (it is still near the entrance) or it has just been used (it was pulled back). Everything
+     * the picture shows is this one number, so the eye reads a single gradient rather than decoding several
+     * encodings at once.
      *
-     * - **new** — still right of the entrance threshold, so it has not finished arriving;
-     * - **awake** — woken within living memory of the store's own clock;
-     * - **idle** — everything else: written, settled, and now drifting.
+     * @returns 1 for a brand-new or just-recalled entry, falling to 0 as it settles and then fades.
      */
-    function axisState(entry, R) {
+    function vitalityOf(entry, R) {
       const p = Number(entry.p);
-      if (Number.isFinite(p) && p >= 0.6 * R) return 'new';
+      // Newness: still near the entrance means it has not finished arriving.
+      const newness = Number.isFinite(p) ? Math.max(0, Math.min(1, p / R)) : 0;
+      // Recency of use: a recall pulls the entry back, and this says how long ago that was.
       const since = entry.sinceRecall;
-      if (since !== null && since !== undefined && Number(since) <= VITALITY_WINDOW) return 'awake';
-      return 'idle';
+      const recency = since === null || since === undefined ? 0 : Math.max(0, 1 - Number(since) / VITALITY_WINDOW);
+      // How far into the compression region it has sunk. This is the part that never recovers on its own.
+      const sunk = Number.isFinite(p) ? Math.max(0, Math.min(1, -p / (0.6 * R))) : 0;
+      const alive = Math.max(newness, recency);
+      return Math.max(0, Math.min(1, alive * (1 - sunk * 0.85)));
+    }
+
+    /**
+     * The memory axis as a picture.
+     *
+     * A list answers "what is in memory"; it cannot answer "where is everything". This draws the same signed
+     * axis the store uses and puts every verified entry on it.
+     *
+     * **One symbol, one gradient.** Every entry is a four-point star; what changes between them is how much
+     * life it has left, and that single number drives every optical property at once:
+     *
+     * | as vitality falls | what happens |
+     * |---|---|
+     * | 1.0 → 0.55 | the wide circular halo shrinks and vanishes |
+     * | 0.55 → 0.2 | the glow that remains is *star-shaped* (it follows the spike), and dims |
+     * | 0.2 → 0 | the spikes retract, brightness drops, and what is left is a dim mote |
+     *
+     * The vocabulary is the standard one for sparkle graphics — flare intensity, spike length, spike density,
+     * glow radius ([GIMP's sparkle filter](https://docs.gimp.org/2.8/pt_BR/plug-in-sparkle.html) exposes
+     * exactly these), so the picture should read the way a lens flare reads rather than being learned from
+     * scratch.
+     *
+     * Colour stays a separate axis: **green = standing, blue = topical**. Size is still `importance`.
+     */
+    function memoryAxis({ entries, entranceDepth, compact = false, t }) {
+      const R = Number(entranceDepth) || 2000;
+      const list = Array.isArray(entries) ? entries : [];
+      const placed = list.filter((entry) => entry.p !== null && entry.p !== undefined && Number.isFinite(Number(entry.p)));
+
+      const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
+      const left = Math.min(-0.6 * R, furthestLeft * 1.05);
+      const span = Math.max(1e-6, R - left);
+      // In compact mode the single symbol needs room for its halo, so the track is inset rather than running
+      // edge to edge — otherwise a star near +R is clipped in half.
+      const at = (p) => (compact ? 8 + ((Number(p) - left) / span) * 84 : ((Number(p) - left) / span) * 100);
+
+      // **Bin into columns, then fill each column from the baseline.**
+      //
+      // Drawing every entry on one line merged 21 of 45 into a smear; assigning lanes by "first lane with no
+      // close neighbour" produced stars floating high with empty space beneath them, because a lane index
+      // only meant "some neighbours are near", not "this many entries sit below". Binning makes a star's
+      // height mean exactly how many entries share its neighbourhood.
+      const columnWidth = compact ? 20 : 2.6;
+      const binOf = (p) => Math.floor(at(p) / columnWidth);
+      const sorted = [...placed].sort((a, b) => Number(a.p) - Number(b.p));
+      const seen = new Map();
+      for (const entry of sorted) {
+        const bin = binOf(entry.p);
+        const depth = seen.get(bin) ?? 0;
+        seen.set(bin, depth + 1);
+        entry.__depth = depth;
+      }
+      const laneStep = compact ? 12 : 13;
+      const tallest = sorted.reduce((max, entry) => Math.max(max, entry.__depth), 0);
+      const baseline = compact ? 16 : (tallest + 1) * laneStep + 12;
+      const height = compact ? baseline + 8 : baseline + 28;
+      const laneY = (depth) => baseline - Number(depth) * laneStep;
+
+      const star = (entry) => {
+        const vitality = vitalityOf(entry, R);
+        const standing = entry.applies === 'always' || entry.pinned === true;
+        const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
+        // The whole scale moved up: a star needs enough pixels to show a spike, a glow and a core.
+        const size = compact ? 15 : 9 + importance * 1.8;
+        const since = entry.sinceRecall;
+        const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
+        return h(
+          'span',
+          {
+            key: entry.id,
+            className: 'loci-sym' + (pulse ? ' loci-sym-pulse' : ''),
+            title:
+              (entry.title ?? entry.id) +
+              ' — ' + Math.round(Number(entry.p)) + ' μ' +
+              (standing ? ' · always' : ' · topical') +
+              ' · vitality ' + vitality.toFixed(2),
+            style: {
+              left: at(entry.p) + '%',
+              top: laneY(entry.__depth) + 'px',
+              width: size + 'px',
+              height: size + 'px',
+              color: standing ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-brand-primary)',
+              '--vital': vitality.toFixed(3),
+            },
+          },
+          // Three layers, in paint order: the circular halo, the star-shaped glow, the crisp star.
+          h('i', { className: 'loci-halo' }),
+          h('i', { className: 'loci-glow' }),
+          h('i', { className: 'loci-star' }),
+        );
+      };
+
+      const tick = (key, p, label) =>
+        h('span', { key, className: 'loci-axis-tick', style: { left: at(p) + '%' } }, label);
+
+      return h(
+        'div',
+        { className: compact ? 'loci-axis loci-axis-compact' : 'loci-axis', style: { height: height + 'px' } },
+        h('div', { className: 'loci-axis-track', style: { top: baseline + 'px' } }),
+        ...sorted.map(star),
+        compact
+          ? []
+          : [
+              tick('far', -0.6 * R, t('panel.axisForgotten')),
+              tick('mid', 0, t('panel.axisHabitat')),
+              tick('near', 0.6 * R, t('panel.axisEntrance')),
+            ],
+      );
     }
 
     /**
@@ -382,7 +495,7 @@ window.__ModuleLoader__.load({
 .loci-card-dot.is-error { background: var(--dsw-alias-state-error-primary); }
 .loci-card-meta { flex: 1 1 auto; min-width: 0; font-size: 8.5px; color: var(--dsw-alias-label-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .loci-card-mark { display: flex; align-items: center; color: var(--dsw-alias-brand-primary); flex: 0 0 auto; }
-.loci-card-barline { display: flex; align-items: center; gap: 6px; width: 100%; }
+.loci-card-barline { display: flex; align-items: center; flex: 1 1 24px; min-width: 16px; margin-left: auto; }
 .loci-card-bar { position: relative; flex: 1 1 auto; min-width: 20px; height: 5px; border-radius: 999px; background: var(--dsw-alias-border-l1); box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l1); overflow: hidden; }
 .loci-card-bar-fill { position: relative; height: 100%; border-radius: 999px; background: var(--dsw-alias-brand-primary); min-width: 2px; }
 .loci-card-bar-fill.is-warn { background: var(--dsw-alias-state-warn-primary); }
@@ -395,7 +508,8 @@ window.__ModuleLoader__.load({
 .loci-card-foot-grow { flex: 1 1 auto; }
 .loci-card-empty { font-size: 9.5px; color: var(--dsw-alias-label-secondary); }
 .loci-card-hint { font-size: 9px; color: var(--dsw-alias-label-secondary); }
-.loci-card-known { display: flex; gap: 5px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
+.loci-card-empty-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.loci-card-known { display: flex; gap: 5px; align-items: center; min-width: 0; flex-wrap: wrap; row-gap: 3px; }
 .loci-card-known-tag { flex: 0 0 auto; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; color: var(--dsw-alias-label-secondary); }
 /* No line clamp: a memory title that is cut off cannot be recognised, and recognising it is the whole point of
    showing it. The card grows instead. */
@@ -411,69 +525,65 @@ window.__ModuleLoader__.load({
 
 /* ---------------------------------------------------------------- the memory axis
  *
- * One horizontal track; one symbol per entry, positioned by p and stacked into columns.
+ * One track, one four-point star per entry, stacked into columns.
  *
- * Three lifecycle symbols, because there are three things a memory can be doing:
+ * '--vital' (0..1) is the only input. Every optical property below is derived from it, so the picture has a
+ * single gradient to read instead of several encodings to decode:
  *
- *  - .loci-sym-new    an eight-point star — still arriving, not yet digested;
- *  - .loci-sym-awake  a four-point star    — woken within living memory of the store's clock;
- *  - .loci-sym-idle   a dim core inside a breathing halo — settled, and now drifting.
+ *   vital 1.0   bright core, long sharp spikes, wide circular halo
+ *   vital 0.55  the circular halo is gone; what remains of the glow follows the spike, so it is star-shaped
+ *   vital 0.2   the spikes have retracted; a dim, small star
+ *   vital 0.0   a dull mote — the memory is still there, but only just
  *
- * Colour carries a different fact: green is a standing rule, blue is a topical note. Colour must not also
- * carry lifecycle or the two become one unreadable axis.
+ * The parameter names come from the standard sparkle vocabulary (flare intensity, spike length, glow
+ * radius), which is why the thing reads as a flare rather than as a shape nobody has seen before.
  */
-.loci-axis { position: relative; margin: 2px 0 0; }
-.loci-axis-track { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px;
-  background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 22%,
-  var(--dsw-alias-state-success-primary) 50%, var(--dsw-alias-brand-primary) 100%); opacity: .18; }
+.loci-axis { position: relative; margin: 4px 0 0; }
+/* The track is the baseline of the picture and is deliberately substantial: it is the axis, not a decoration. */
+.loci-axis-track { position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 24%,
+  var(--dsw-alias-state-success-primary) 52%, var(--dsw-alias-brand-primary) 100%); opacity: .3; }
 
-/* The core every symbol shares. currentColor comes from the inline style, which is what makes
-   "standing green / topical blue" independent of lifecycle. */
 .loci-sym { position: absolute; transform: translate(-50%, -50%);
-  transition: left .7s cubic-bezier(.22,.61,.36,1), opacity .7s ease, width .4s ease, height .4s ease; }
-.loci-sym::before, .loci-sym::after { content: ''; position: absolute; }
+  transition: left .7s cubic-bezier(.22,.61,.36,1), opacity .7s ease, width .5s ease, height .5s ease; }
+.loci-sym > i { position: absolute; display: block; pointer-events: none; }
 
-/* 1. Still arriving: eight points, bright, energised. */
-.loci-sym-new::before { inset: 0; background: currentColor;
-  clip-path: polygon(50% 0%, 58% 31%, 85% 15%, 69% 42%, 100% 50%, 69% 58%, 85% 85%, 58% 69%, 50% 100%, 42% 69%, 15% 85%, 31% 58%, 0% 50%, 31% 42%, 15% 15%, 42% 31%);
-  animation: loci-arrive 2.4s ease-in-out infinite; }
-.loci-sym-new::after { inset: -55%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 62%); opacity: calc(var(--halo) * .45); }
+/* 1. The circular halo. Gone by vitality 0.55 — this is the first thing a fading memory loses. */
+.loci-halo { inset: -52%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 66%);
+  opacity: clamp(0, calc((var(--vital) - 0.55) * 2.8), .5); }
 
-/* 2. Woken recently: four points, breathing. The arms retract as --vital falls, which is the star
-   degrading back into a halo instead of switching off. */
-.loci-sym-awake::before { inset: 0; background: currentColor;
+/* 2. The star-shaped glow. It is the spike shape, blurred, so a dying memory's glow keeps the star's form
+      instead of collapsing into a circle — the halo above is what makes it round, and the halo goes first. */
+.loci-glow { inset: 0; background: currentColor;
+  clip-path: polygon(50% 0%, 57% 43%, 100% 50%, 57% 57%, 50% 100%, 43% 57%, 0% 50%, 43% 43%);
+  filter: blur(2px);
+  transform: scale(calc(1.05 + var(--vital) * 0.55));
+  opacity: clamp(0, calc(var(--vital) * 1.15), .8); }
+
+/* 3. The star itself. Spike length and brightness both fall with vitality, so the last stage of a memory's
+      life is the spikes retracting into a small dull core rather than the symbol switching off. */
+.loci-star { inset: 0; background: currentColor;
   clip-path: polygon(50% 0%, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0% 50%, 44% 44%);
-  transform: scale(calc(.55 + var(--vital) * .55));
-  animation: loci-breathe 2.8s ease-in-out infinite; }
-.loci-sym-awake::after { inset: -45%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 66%); opacity: calc(var(--halo) * .34); }
+  transform: scale(calc(0.42 + var(--vital) * 0.58));
+  opacity: clamp(.3, calc(0.3 + var(--vital) * 0.7), 1);
+  filter: brightness(calc(0.55 + var(--vital) * 0.95)) saturate(calc(0.6 + var(--vital) * 0.7)); }
 
-/* 3. Settled: a dim core that still reads brighter than its own halo, inside a breathing ring.
-   As --halo falls the ring disappears and only the core is left. */
-.loci-sym-idle::before { inset: 32%; border-radius: 50%; background: currentColor; opacity: .92; }
-.loci-sym-idle::after { inset: -60%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 68%);
-  opacity: calc(var(--halo) * .3); animation: loci-breathe 4.2s ease-in-out infinite; }
-
-/* A recall that actually happened, in the last few μ of the store's clock. This is a separate marker from
-   the lifecycle state: it says "woken just now" on top of whatever the symbol already means, rather than
-   replacing the symbol. */
-.loci-sym-pulse { animation: loci-recall 1.5s ease-out 2; }
-@keyframes loci-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
-@keyframes loci-arrive { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.1) rotate(22.5deg); } }
+/* A recall that actually happened within the last few μ. Layered on top of whatever the star already shows,
+   never instead of it. */
+.loci-sym-pulse .loci-star { animation: loci-recall 1.4s ease-out 2; }
 @keyframes loci-recall {
-  0%   { filter: drop-shadow(0 0 0 currentColor); }
-  45%  { filter: drop-shadow(0 0 6px currentColor) brightness(1.5); }
-  100% { filter: drop-shadow(0 0 0 currentColor); }
+  0%   { filter: brightness(calc(0.55 + var(--vital) * 0.95)); }
+  45%  { filter: brightness(2.1) drop-shadow(0 0 5px currentColor); }
+  100% { filter: brightness(calc(0.55 + var(--vital) * 0.95)); }
 }
 
-.loci-axis-tick { position: absolute; bottom: 2px; font-size: 8.5px; color: var(--dsw-alias-label-secondary);
+.loci-axis-tick { position: absolute; bottom: 0; font-size: 10px; color: var(--dsw-alias-label-secondary);
   transform: translateX(-50%); pointer-events: none; white-space: nowrap; }
 
-/* The card miniature shows one entry — the latest — so the track exists only to place it. */
+/* The card miniature shows one entry — the latest — on a track as substantial as the budget bar beside it. */
 .loci-axis-compact { margin: 0; }
-.loci-axis-compact .loci-axis-track { height: 1px; opacity: .12; }
+.loci-axis-compact .loci-axis-track { height: 3px; opacity: .34; }
 
 .loci-bar { display: flex; align-items: center; gap: 12px; padding: 18px max(24px, calc((100% - 960px) / 2)) 10px; }
 .loci-title { font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: -0.01em; }
@@ -717,6 +827,30 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------------ sidebar card
 
+    /**
+     * The prompt-budget gauge.
+     *
+     * Shared by the `Latest` line and the "nothing saved yet" line so there is exactly one definition of what
+     * the bar looks like and when it appears. It returns null when no prompt has been assembled since the store
+     * was reset: an empty gauge labelled `0 / 3584 B` reads as a measurement when it is really an absence.
+     */
+    function budgetBar({ injection, budget, indexBytes, t }) {
+      if (injection === null || !(budget > 0)) return null;
+      const percent = Math.max(indexBytes > 0 ? 2 : 0, Math.min(100, Math.round((indexBytes / budget) * 100)));
+      return h(
+        'div',
+        { className: 'loci-card-barline', title: t('card.budgetTip') },
+        h(
+          'div',
+          { className: 'loci-card-bar', role: 'presentation' },
+          h('div', {
+            className: `loci-card-bar-fill${indexBytes / budget > 0.85 ? ' is-warn' : ''}`,
+            style: { width: `${percent}%` },
+          }),
+        ),
+      );
+    }
+
     function MemoryCard(props) {
       const t = props?.t ?? ((key) => key);
       const wide = props?.wide !== false;
@@ -810,10 +944,24 @@ window.__ModuleLoader__.load({
               ? h(
                   'div',
                   null,
-                  h('div', { className: 'loci-card-empty' }, t('card.empty')),
+                  // No latest memory, so the gauge keeps the "nothing saved yet" line company rather than
+                  // floating on a row of its own.
+                  h(
+                    'div',
+                    { className: 'loci-card-empty-row' },
+                    h('span', { className: 'loci-card-empty' }, t('card.empty')),
+                    budgetBar({ injection, budget, indexBytes, t }),
+                  ),
                   h('div', { className: 'loci-card-hint' }, t('card.emptyHint')),
                 )
               : null,
+        // Only when a prompt has actually been assembled since the store was last reset: an empty gauge
+        // labelled `0 / 3584 B` reads as a measurement when it is really an absence of one.
+        //
+        // **The gauge lives on the same line as the memory it describes.** It used to sit on a row of its own,
+        // which spent a whole line on a two-word label and a bar; beside `Latest` it costs nothing and puts
+        // "what is in the prompt" next to "what the prompt is worth". When there is no latest memory it shares
+        // the "nothing saved yet" line instead, so it never appears alone.
         data !== undefined && latest !== null
           ? h(
               'div',
@@ -828,24 +976,9 @@ window.__ModuleLoader__.load({
                   ? h('span', { className: 'loci-card-chip' }, t('card.topical'))
                   : null,
               top?.kind ? h('span', { className: 'loci-card-chip is-quiet' }, top.kind) : null,
+              // The gauge takes whatever room is left and sits hard right.
+              budgetBar({ injection, budget, indexBytes, t }),
               h('span', { className: 'loci-card-known-text' }, latest),
-            )
-          : null,
-        // Only when a prompt has actually been assembled since the store was last reset: an empty
-        // gauge labelled `0 / 3584 B` reads as a measurement when it is really an absence of one.
-        data !== undefined && injection !== null && budget > 0
-          ? h(
-              'div',
-              { className: 'loci-card-barline', title: t('card.budgetTip') },
-              h(
-                'div',
-                { className: 'loci-card-bar', role: 'presentation' },
-                h('div', {
-                  className: `loci-card-bar-fill${indexBytes / budget > 0.85 ? ' is-warn' : ''}`,
-                  style: { width: `${Math.max(indexBytes > 0 ? 2 : 0, Math.min(100, Math.round((indexBytes / budget) * 100)))}%` },
-                }),
-              ),
-              h('span', { className: 'loci-card-bar-label' }, `${t('card.budget')} ${indexBytes} / ${budget} B`),
             )
           : null,
         // The miniature shows **one** entry — the latest, the same memory named above — not the whole store.

@@ -104,7 +104,7 @@ test('criterion 3 through the store: injecting an entry pulls it right once it h
   const now = store.muNow();
   store.db
     .prepare('UPDATE memory_usage SET p_base = ?, mu_base = ? WHERE id = ?')
-    .run(-300, now, written.entry.id);
+    .run(-20, now, written.entry.id);
   const drifted = positionOfId(store, scopes, written.entry.id);
   assert.ok(drifted < 0, 'the entry starts left of the habitat');
 
@@ -119,7 +119,7 @@ test('reading also pulls right, by the same rule as injection', (t) => {
   const now = store.muNow();
   store.db
     .prepare('UPDATE memory_usage SET p_base = ?, mu_base = ? WHERE id = ?')
-    .run(-300, now, written.entry.id);
+    .run(-20, now, written.entry.id);
   const drifted = positionOfId(store, scopes, written.entry.id);
   store.recordRead(written.entry.id);
   assert.ok(positionOfId(store, scopes, written.entry.id) > drifted, 'a read is use');

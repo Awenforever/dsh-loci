@@ -16,32 +16,36 @@ import { Store } from '../../src/host/store/store.js';
 
 const out = process.argv[2] ?? join(process.env.TEMP ?? '.', 'loci-axis-preview.html');
 const root = resolveMemoryRoot(resolveDshHome());
-const store = new Store({ memoryRoot: root, paths: layout(root), config: effectiveConfig({}), pluginVersion: '6.1.1' });
+const store = new Store({ memoryRoot: root, paths: layout(root), config: effectiveConfig({}), pluginVersion: '6.2.0' });
 const positions = store.muPositions({});
-const R = Number(positions.parameters?.entranceDepth) || 2000;
+const R = Number(positions.parameters?.entranceDepth) || 120;
 const knowledge = store.db
   .prepare(
-    `SELECT id, kind, title, applies FROM memory
-      WHERE status = 'verified' AND valid_to IS NULL ORDER BY pinned DESC, COALESCE(verified_at, updated_at) DESC LIMIT 1`,
+    `SELECT m.id, m.kind, m.title, m.applies FROM memory m
+      WHERE m.status = 'verified' AND m.valid_to IS NULL
+      ORDER BY m.pinned DESC, COALESCE(m.verified_at, m.updated_at) DESC LIMIT 1`,
   )
   .get();
 store.close();
 
 const PULSE_WINDOW = 40;
 const VITALITY_WINDOW = 150;
-const axisState = (entry) => {
+
+/** Mirrors `vitalityOf` in client.js: one number for how alive an entry is. */
+function vitalityOf(entry) {
   const p = Number(entry.p);
-  if (Number.isFinite(p) && p >= 0.6 * R) return 'new';
+  const newness = Number.isFinite(p) ? Math.max(0, Math.min(1, p / R)) : 0;
   const since = entry.sinceRecall;
-  if (since !== null && since !== undefined && Number(since) <= VITALITY_WINDOW) return 'awake';
-  return 'idle';
-};
+  const recency = since === null || since === undefined ? 0 : Math.max(0, 1 - Number(since) / VITALITY_WINDOW);
+  const sunk = Number.isFinite(p) ? Math.max(0, Math.min(1, -p / (0.6 * R))) : 0;
+  return Math.max(0, Math.min(1, Math.max(newness, recency) * (1 - sunk * 0.85)));
+}
 
 const placed = positions.entries.filter((entry) => entry.p !== null && Number.isFinite(Number(entry.p)));
 const furthestLeft = placed.reduce((low, entry) => Math.min(low, Number(entry.p)), 0);
 const left = Math.min(-0.6 * R, furthestLeft * 1.05);
 const span = Math.max(1e-6, R - left);
-const at = (p, compact) => (compact ? 6 + ((Number(p) - left) / span) * 88 : ((Number(p) - left) / span) * 100);
+const at = (p, compact) => (compact ? 8 + ((Number(p) - left) / span) * 84 : ((Number(p) - left) / span) * 100);
 
 function renderAxis(list, compact) {
   const columnWidth = compact ? 20 : 2.6;
@@ -53,33 +57,27 @@ function renderAxis(list, compact) {
     seen.set(bin, depth + 1);
     entry.__depth = depth;
   }
-  const laneStep = compact ? 8 : 12;
+  const laneStep = compact ? 12 : 13;
   const tallest = sorted.reduce((max, entry) => Math.max(max, entry.__depth), 0);
-  const baseline = compact ? 14 : (tallest + 1) * laneStep + 8;
-  const height = compact ? baseline + 6 : baseline + 26;
+  const baseline = compact ? 16 : (tallest + 1) * laneStep + 12;
+  const height = compact ? baseline + 8 : baseline + 28;
   const laneY = (depth) => baseline - Number(depth) * laneStep;
 
-  const syms = sorted
+  const stars = sorted
     .map((entry) => {
-      const p = Number(entry.p);
-      const state = axisState(entry);
+      const v = vitalityOf(entry);
       const standing = entry.applies === 'always' || entry.pinned === true;
       const importance = Math.min(5, Math.max(1, Number(entry.importance) || 3));
-      const size = compact ? 10 : 8 + importance * 1.7;
+      const size = compact ? 15 : 9 + importance * 1.8;
       const since = entry.sinceRecall;
-      const age = since === null || since === undefined ? VITALITY_WINDOW * 1.5 : Number(since);
-      const halo = Math.max(0, Math.min(1, 1 - age / (VITALITY_WINDOW * 1.5)));
       const pulse = since !== null && since !== undefined && Number(since) <= PULSE_WINDOW;
-      const cls = ['loci-sym', `loci-sym-${state}`];
-      if (standing) cls.push('loci-sym-standing');
-      if (pulse) cls.push('loci-sym-pulse');
-      const title = `${entry.title ?? entry.id} — ${Math.round(p)} μ${standing ? ' · always' : ' · topical'}`;
+      const title = `${entry.title ?? entry.id} — ${Math.round(Number(entry.p))} μ · vitality ${v.toFixed(2)}`;
       return (
-        `<span class="${cls.join(' ')}" title="${title.replace(/"/g, '&quot;')}" style="` +
-        `left:${at(p).toFixed(2)}%;top:${laneY(entry.__depth)}px;width:${size}px;height:${size}px;` +
+        `<span class="loci-sym${pulse ? ' loci-sym-pulse' : ''}" title="${title.replace(/"/g, '&quot;')}" ` +
+        `style="left:${at(entry.p, compact).toFixed(2)}%;top:${laneY(entry.__depth)}px;width:${size}px;height:${size}px;` +
         `color:${standing ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-brand-primary)'};` +
-        `--halo:${halo.toFixed(3)};--vital:${halo.toFixed(3)};opacity:${(0.4 + halo * 0.6).toFixed(3)};` +
-        `z-index:${entry.injections > 0 ? 3 : 2}"></span>`
+        `--vital:${v.toFixed(3)}">` +
+        `<i class="loci-halo"></i><i class="loci-glow"></i><i class="loci-star"></i></span>`
       );
     })
     .join('\n    ');
@@ -91,18 +89,19 @@ function renderAxis(list, compact) {
         [0, 'habitat'],
         [0.6 * R, 'entrance'],
       ]
-        .map(([p, label]) => `<span class="loci-axis-tick" style="left:${at(p).toFixed(2)}%">${label}</span>`)
+        .map(([p, label]) => `<span class="loci-axis-tick" style="left:${at(p, compact).toFixed(2)}%">${label}</span>`)
         .join('\n    ');
 
   return `<div class="loci-axis${compact ? ' loci-axis-compact' : ''}" style="height:${height}px">
     <div class="loci-axis-track" style="top:${baseline}px"></div>
-    ${syms}
+    ${stars}
     ${ticks}
   </div>`;
 }
 
 const regions = positions.regions ?? {};
 const latestEntry = placed.find((entry) => entry.id === knowledge?.id);
+const vitals = placed.map(vitalityOf);
 
 const page = `<!doctype html>
 <html lang="zh"><head><meta charset="utf-8"><title>Loci — 记忆空间</title>
@@ -124,9 +123,9 @@ const page = `<!doctype html>
     border-radius:8px; padding:8px 10px; }
   .loci-label { display:block; font-size:11px; color:var(--dsw-alias-label-secondary); }
   .loci-cell b { font-size:17px; }
-  .loci-meta { font-size:11.5px; color:var(--dsw-alias-label-secondary); line-height:1.5; }
+  .loci-meta { font-size:11.5px; color:var(--dsw-alias-label-secondary); line-height:1.6; }
 
-  .loci-card-known { display:flex; gap:5px; align-items:baseline; min-width:0; flex-wrap:wrap; }
+  .loci-card-known { display:flex; gap:5px; align-items:center; min-width:0; flex-wrap:wrap; row-gap:3px; }
   .loci-card-known-tag { flex:0 0 auto; font-size:8px; letter-spacing:.05em; text-transform:uppercase;
     color:var(--dsw-alias-label-secondary); }
   .loci-card-known-text { min-width:0; flex:1 1 100%; font-size:11.5px; line-height:1.5;
@@ -137,43 +136,49 @@ const page = `<!doctype html>
   .loci-card-chip.is-standing { border-color:var(--dsw-alias-state-success-primary);
     color:var(--dsw-alias-state-success-primary); }
   .loci-card-chip.is-quiet { border-color:transparent; padding:0 2px; }
+  .loci-card-barline { display:flex; align-items:center; flex:1 1 24px; min-width:16px; margin-left:auto; }
+  .loci-card-bar { height:3px; border-radius:2px; background:var(--dsw-alias-bg-layer-2); width:100%; overflow:hidden; }
+  .loci-card-bar-fill { height:100%; border-radius:2px; background:var(--dsw-alias-brand-primary); }
 
-.loci-axis { position: relative; margin: 2px 0 0; }
-.loci-axis-track { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px;
-  background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 22%,
-  var(--dsw-alias-state-success-primary) 50%, var(--dsw-alias-brand-primary) 100%); opacity: .18; }
+.loci-axis { position: relative; margin: 4px 0 0; }
+.loci-axis-track { position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary) 24%,
+  var(--dsw-alias-state-success-primary) 52%, var(--dsw-alias-brand-primary) 100%); opacity: .3; }
 .loci-sym { position: absolute; transform: translate(-50%, -50%);
-  transition: left .7s cubic-bezier(.22,.61,.36,1), opacity .7s ease, width .4s ease, height .4s ease; }
-.loci-sym::before, .loci-sym::after { content: ''; position: absolute; }
-.loci-sym-new::before { inset: 0; background: currentColor;
-  clip-path: polygon(50% 0%, 58% 31%, 85% 15%, 69% 42%, 100% 50%, 69% 58%, 85% 85%, 58% 69%, 50% 100%, 42% 69%, 15% 85%, 31% 58%, 0% 50%, 31% 42%, 15% 15%, 42% 31%);
-  animation: loci-arrive 2.4s ease-in-out infinite; }
-.loci-sym-new::after { inset: -55%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 62%); opacity: calc(var(--halo) * .45); }
-.loci-sym-awake::before { inset: 0; background: currentColor;
+  transition: left .7s cubic-bezier(.22,.61,.36,1), opacity .7s ease, width .5s ease, height .5s ease; }
+.loci-sym > i { position: absolute; display: block; pointer-events: none; }
+.loci-halo { inset: -52%; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 66%);
+  opacity: clamp(0, calc((var(--vital) - 0.55) * 2.8), .5); }
+.loci-glow { inset: 0; background: currentColor;
+  clip-path: polygon(50% 0%, 57% 43%, 100% 50%, 57% 57%, 50% 100%, 43% 57%, 0% 50%, 43% 43%);
+  filter: blur(2px);
+  transform: scale(calc(1.05 + var(--vital) * 0.55));
+  opacity: clamp(0, calc(var(--vital) * 1.15), .8); }
+.loci-star { inset: 0; background: currentColor;
   clip-path: polygon(50% 0%, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0% 50%, 44% 44%);
-  transform: scale(calc(.55 + var(--vital) * .55));
-  animation: loci-breathe 2.8s ease-in-out infinite; }
-.loci-sym-awake::after { inset: -45%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 66%); opacity: calc(var(--halo) * .34); }
-.loci-sym-idle::before { inset: 32%; border-radius: 50%; background: currentColor; opacity: .92; }
-.loci-sym-idle::after { inset: -60%; border-radius: 50%;
-  background: radial-gradient(circle, currentColor 0%, transparent 68%);
-  opacity: calc(var(--halo) * .3); animation: loci-breathe 4.2s ease-in-out infinite; }
-@keyframes loci-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
-@keyframes loci-arrive { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.1) rotate(22.5deg); } }
-.loci-axis-tick { position: absolute; bottom: 2px; font-size: 8.5px; color: var(--dsw-alias-label-secondary);
+  transform: scale(calc(0.42 + var(--vital) * 0.58));
+  opacity: clamp(.3, calc(0.3 + var(--vital) * 0.7), 1);
+  filter: brightness(calc(0.55 + var(--vital) * 0.95)) saturate(calc(0.6 + var(--vital) * 0.7)); }
+.loci-sym-pulse .loci-star { animation: loci-recall 1.4s ease-out 2; }
+@keyframes loci-recall {
+  0%   { filter: brightness(calc(0.55 + var(--vital) * 0.95)); }
+  45%  { filter: brightness(2.1) drop-shadow(0 0 5px currentColor); }
+  100% { filter: brightness(calc(0.55 + var(--vital) * 0.95)); }
+}
+.loci-axis-tick { position: absolute; bottom: 0; font-size: 10px; color: var(--dsw-alias-label-secondary);
   transform: translateX(-50%); pointer-events: none; white-space: nowrap; }
 .loci-axis-compact { margin: 0; }
-.loci-axis-compact .loci-axis-track { height: 1px; opacity: .12; }
+.loci-axis-compact .loci-axis-track { height: 3px; opacity: .34; }
 </style></head>
 <body><div class="wrap">
 
-  <div class="loci-section">Sidebar card — latest</div>
+  <div class="loci-section">Sidebar card</div>
   <div class="loci-card-known">
     <span class="loci-card-known-tag">Latest</span>
     ${knowledge?.applies === 'always' ? '<span class="loci-card-chip is-standing">always</span>' : '<span class="loci-card-chip">topic</span>'}
     ${knowledge?.kind ? `<span class="loci-card-chip is-quiet">${knowledge.kind}</span>` : ''}
+    <span class="loci-card-barline"><span class="loci-card-bar"><span class="loci-card-bar-fill" style="width:38%"></span></span></span>
     <span class="loci-card-known-text">${(knowledge?.title ?? '').replace(/</g, '&lt;')}</span>
   </div>
   ${latestEntry === undefined ? '<div class="loci-meta">（latest 条目没有锚点，迷你轴不画）</div>' : renderAxis([latestEntry], true)}
@@ -181,7 +186,7 @@ const page = `<!doctype html>
   <div class="loci-section">Position on the axis</div>
   ${renderAxis(placed, false)}
 
-  <div class="loci-grid" style="margin-top:26px">
+  <div class="loci-grid" style="margin-top:22px">
     <div class="loci-cell"><span class="loci-label">entrance</span><b>${regions.entrance ?? 0}</b></div>
     <div class="loci-cell"><span class="loci-label">digesting</span><b>${regions.digesting ?? 0}</b></div>
     <div class="loci-cell"><span class="loci-label">habitat</span><b>${regions.habitat ?? 0}</b></div>
@@ -190,21 +195,16 @@ const page = `<!doctype html>
   </div>
 
   <div class="loci-meta" style="margin-top:8px">
-    ${placed.length} entries · μ ${positions.now.toFixed(0)} · R ${R}<br>
-    <b>八芒星</b> = 新进入（还没消化完） · <b>四芒星</b> = 近期被唤醒 · <b>暗核+呼吸光晕</b> = 已沉静、正在老化<br>
-    <b style="color:#3fb950">绿</b> = 常驻 · <b style="color:#5b8cff">蓝</b> = 话题性 · 大小 = importance · 亮度与光晕 = 年龄
+    ${placed.length} entries · μ ${positions.now.toFixed(1)} · R ${R} ·
+    vitality ${Math.min(...vitals).toFixed(2)} – ${Math.max(...vitals).toFixed(2)}<br>
+    一个符号，一条梯度：<b>亮核 + 长星芒 + 圆形光晕</b> → 圆形光晕先消失，剩下星形光晕 → 星芒回收、变暗 → 黯淡光点
   </div>
 
 </div></body></html>`;
 
 writeFileSync(out, page, 'utf8');
 console.log(`wrote ${out}`);
-console.log(`entries ${placed.length} · now ${positions.now.toFixed(0)} · R ${R}`);
+console.log(`entries ${placed.length} · now ${positions.now.toFixed(2)} · R ${R}`);
 console.log(`regions ${JSON.stringify(regions)}`);
+console.log(`vitality min ${Math.min(...vitals).toFixed(2)} max ${Math.max(...vitals).toFixed(2)}`);
 console.log(`latest: ${knowledge?.kind}/${knowledge?.applies} ${JSON.stringify(String(knowledge?.title ?? '').slice(0, 30))}`);
-const states = placed.reduce((acc, entry) => {
-  const s = axisState(entry);
-  acc[s] = (acc[s] ?? 0) + 1;
-  return acc;
-}, {});
-console.log(`symbols ${JSON.stringify(states)}`);

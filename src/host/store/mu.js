@@ -37,17 +37,75 @@ import { readMeta, writeMeta, META_KEYS } from './schema.js';
 const TRAIL_LIMIT = 5000;
 
 /**
+ * How much a single use counts towards the clock.
+ *
+ * Small on purpose. An injection means the prompt was assembled with this entry in it — the machinery ran.
+ * That is a *weak* signal that the agent is working, not evidence that anything was learned. Measured against
+ * a real store, the old weight of 1 let 1007 injections drive 99.9% of the clock.
+ */
+export const MU_USE_WEIGHT = 0.002;
+
+/**
+ * How much one conversation step counts towards the clock when nothing was learned.
+ *
+ * A background drift so that long read-only stretches do not freeze ageing entirely: 200 turns ≈ 1.4 μ, against
+ * roughly 24 μ for 50 real writes. It counts *work transitions*, not seconds — with no conversation there is no
+ * increment at all.
+ */
+export const MU_TURN_WEIGHT = 0.01;
+
+/**
+ * The migration divisor from the old driver to this one.
+ *
+ * Not chosen for looks. It is the ratio the **new** formula would have produced over the same history: the live
+ * store held 1425 μ under the old driver, and replaying its 48 writes, 1007 injections and turn count through
+ * the equations above yields ≈29 μ. Stored values are divided by this so old anchors keep a meaningful distance
+ * to the new clock. See `docs/MU-DRIVER.md` §4.
+ */
+export const MU_RESCALE = 49;
+
+/**
  * The distance formula.
+ *
+ * ```
+ * Δμ = log(1 + accretion)              what was learned, weighted by how new it was
+ *    + log(2) · superseded             what was invalidated — the world moved, not merely grew
+ *    + wTurn · log(2)                  the conversation advanced (tiny; see docs/MU-DRIVER.md §2)
+ *    + wUse · log(1 + use)             usage — a deliberately weak signal
+ * ```
+ *
+ * **The old formula was `log(add + use + 1)`, and it measured the wrong thing.** Measured on a live store:
+ * 1007 injections drove 99.9% of the clock while 48 writes drove 0.1%, which made one μ about one minute of
+ * wall clock. Injections count how many times the prompt was assembled — the machinery running — not whether
+ * the agent's understanding moved.
+ *
+ * The judgement each term encodes: **a clock should not advance because the camera took another photo.**
+ *
  * @param add - new memories in this step.
  * @param use - entries injected or looked up in this step.
  * @param wAdd - weight of the growth component.
- * @param wUse - weight of the activity component.
+ * @param wUse - weight of the activity component; kept tiny on purpose.
+ * @param options - `accretion` (sum of novelty, replaces `add` when given), `superseded`, `turn`.
  * @returns the μ increment, `>= 0`.
  */
-export function muDelta(add, use, wAdd = 1, wUse = 1) {
-  const growth = Math.max(0, Number(add) || 0) * (Number(wAdd) || 0);
+export function muDelta(add, use, wAdd = 1, wUse = MU_USE_WEIGHT, options = {}) {
+  const weight = Number(wAdd) || 0;
+  const growth = Math.max(0, Number(add) || 0) * weight;
   const activity = Math.max(0, Number(use) || 0) * (Number(wUse) || 0);
-  return Math.log(growth + activity + 1);
+  // `accretion` is the novelty-weighted version of `add`. A write that repeats something already stored adds
+  // nothing — remembering the same fact twice must not age every other memory. The configured growth weight
+  // still applies, so `muAddWeight` keeps meaning what it always meant.
+  const accretion = Number.isFinite(Number(options.accretion))
+    ? Math.max(0, Number(options.accretion)) * weight
+    : growth;
+  const superseded = Math.max(0, Number(options.superseded) || 0);
+  const turn = Math.max(0, Math.min(1, Number(options.turn) || 0));
+  return (
+    Math.log(accretion + 1) +
+    Math.LN2 * superseded +
+    MU_TURN_WEIGHT * Math.LN2 * turn +
+    Math.log(activity + 1)
+  );
 }
 
 /**
@@ -73,7 +131,11 @@ export function muNow(db) {
  */
 export function muAdvance(db, options = {}) {
   const from = muNow(db);
-  const delta = muDelta(options.add, options.use, options.wAdd, options.wUse);
+  const delta = muDelta(options.add, options.use, options.wAdd, options.wUse, {
+    accretion: options.accretion,
+    superseded: options.superseded,
+    turn: options.turn,
+  });
   if (delta === 0) return { from, to: from, delta: 0 };
   const to = from + delta;
   writeMeta(db, META_KEYS.muNow, String(to));

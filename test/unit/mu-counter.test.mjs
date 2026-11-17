@@ -23,19 +23,38 @@ test('the counter does not move when nothing happens', (t) => {
   assert.deepEqual(store.muTrail(), [], 'and the trail is empty, so there is no story to tell');
 });
 
-test('a write advances the clock by exactly the growth component', (t) => {
+test('a write advances the clock by how novel it was, not by one', (t) => {
+  // v10 moved the driver from counts to change. The first write into an empty store is maximally novel, so it
+  // contributes the full `log(2)`; a second write of the same content contributes almost nothing.
   const { store, scopes } = openTestStore(t);
   store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
   const after = store.muNow();
   assert.ok(Math.abs(after - muDelta(1, 0)) < 1e-9, `expected log(2), got ${after}`);
+
+  const beforeRepeat = store.muNow();
+  store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
+  const repeatCost = store.muNow() - beforeRepeat;
+  assert.ok(repeatCost < 0.05, `remembering the same fact twice must cost almost nothing, got ${repeatCost}`);
+
+  // A near-zero delta records no event at all: the trail explains why the clock moved, and it did not move.
   const trail = store.muTrail(5);
-  assert.equal(trail.length, 1);
+  assert.equal(trail.length, 1, 'only the write that actually advanced the clock appears in the trail');
   assert.equal(trail[0].reason, 'write');
   assert.equal(trail[0].add, 1);
   assert.equal(trail[0].use, 0);
 });
 
-test('use advances it too, and the two weights are honoured', (t) => {
+test('a supersede advances the clock in full, because the world moved rather than grew', (t) => {
+  // Adding a fact and invalidating one are different events: the second requires forgetting, not remembering.
+  const { store, scopes } = openTestStore(t);
+  const first = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: '规则甲', body: '原内容。' });
+  const before = store.muNow();
+  store.update(first.entry.id, { ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: '规则甲', body: '改后的内容。' });
+  const cost = store.muNow() - before;
+  assert.ok(cost >= Math.log(1), `a correction should advance at least a full unit, got ${cost}`);
+});
+
+test('use barely advances it, and the two weights are honoured', (t) => {
   const { store, scopes } = openTestStore(t, { muAddWeight: 2, muUseWeight: 3 });
   store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
   const afterWrite = store.muNow();

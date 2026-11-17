@@ -22,6 +22,7 @@ import {
   writeMeta,
 } from './schema.js';
 import { AXIS_DEFAULTS, anchorFromLegacy } from './axis.js';
+import { MU_RESCALE } from './mu.js';
 
 /**
  * Migrations shipped by this build. Empty at 1.0.0: the first real step lands
@@ -197,6 +198,48 @@ export const SHIPPED_MIGRATIONS = [
         .get(AXIS_DEFAULTS.entranceDepth * 0.05).n;
       writeMeta(db, 'axis_migrated_from_legacy', String(pending.length));
       writeMeta(db, 'axis_migrated_near_habitat', String(nearZero));
+    },
+  },
+  {
+    from: 9,
+    to: 10,
+    /**
+     * Re-express every stored μ in the new unit.
+     *
+     * v10 changed what drives the clock (`docs/MU-DRIVER.md`): accretion weighted by novelty, supersedes in
+     * full, injections nearly nothing. The old driver let 1007 injections move the counter 99.9% of the way,
+     * which made one μ about one minute of wall clock.
+     *
+     * `MU_RESCALE` is not a cosmetic divisor. It is the ratio the **new** formula would have produced over the
+     * same history: 1425 μ under the old driver, ≈29 μ when its 48 writes, 1007 injections and turn count are
+     * replayed through the new equations. Dividing stored values by it keeps every anchor's distance to the
+     * clock meaning what it meant before, in the unit the clock now uses.
+     *
+     * **What this changes**: nothing about where an entry sits *relative to the axis it was measured against*
+     * — every μ quantity including `p_base` is divided by the same number. What does change is the axis
+     * parameters (`R`, `δ`), which were re-tuned separately and lengthen memory life deliberately.
+     */
+    up(db) {
+      // `meta` is key-value, not a row of columns — the counter lives in `key = 'mu_now'`.
+      db.prepare("UPDATE meta SET value = CAST(value AS REAL) / ? WHERE key = 'mu_now'").run(MU_RESCALE);
+      const columns = [
+        ['memory', 'mu_born'],
+        ['memory_usage', 'mu_touched'],
+        ['memory_usage', 'mu_base'],
+        ['memory_usage', 'p_base'],
+      ];
+      const present = (table, column) =>
+        db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+      for (const [table, column] of columns) {
+        // A column may not exist yet on a database rewound far enough; skipping is correct because a value
+        // that was never written cannot be in the old unit.
+        if (!present(table, column)) continue;
+        db.prepare(`UPDATE ${table} SET ${column} = ${column} / ? WHERE ${column} IS NOT NULL`).run(MU_RESCALE);
+      }
+      // The trail is diagnostic, not state — but leaving it in old units would make every "why did the clock
+      // move" answer a lie by exactly the rescale factor.
+      db.prepare('UPDATE mu_event SET mu = mu / ?').run(MU_RESCALE);
+      writeMeta(db, 'mu_rescaled_from_legacy', String(MU_RESCALE));
     },
   },
 ];

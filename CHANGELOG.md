@@ -4,6 +4,97 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [7.0.0] — 2026-11-17
+
+The clock was counting the wrong thing. Schema v10.
+
+### What was wrong
+
+```
+μ += log(add + use + 1)
+```
+
+Measured on the live store, 25.4 hours of work:
+
+| event | times | share of the clock |
+|---|---|---|
+| injections | **1007** | **99.9%** |
+| writes | 48 | 0.1% |
+
+One μ came out at **1.07 minutes of wall clock**, 1349 μ per day.
+
+The number is not the problem; the driver is. `use` counts how many entries went into a prompt, which is the
+machinery running. A clock should not advance because the camera took another photo.
+
+### The new driver
+
+`docs/MU-DRIVER.md` states the principle and derives the equation:
+
+```
+Δμ = log(1 + accretion)      what was learned, weighted by how new it was
+   + log(2) · superseded     what was invalidated — the world moved, not merely grew
+   + 0.01 · log(2) · turn    the conversation advanced (about 1.4 μ per 200 turns)
+   + 0.002 · log(1 + use)    usage — deliberately weak, and not zero
+```
+
+- **A write advances the clock by its novelty**, measured as `1 − max Jaccard` against the 200 most recent
+  entries. Remembering something already known costs almost nothing — repeating a fact must not age every
+  other memory.
+- **A supersede advances it in full.** Adding a fact and invalidating one are different events: the second
+  requires *forgetting*, not remembering.
+- **An injection barely moves it.** 1007 of them now contribute ≈6 μ rather than 1425.
+- **A step with nothing at all freezes it.**
+
+Result on the same history: **1425 μ → 29 μ**, which is ≈30 μ per working day.
+
+The rescale factor is not a cosmetic divisor: **49 is what the new formula would have produced over the same
+history**. That the migration landed on 29.1 μ when the design predicted ≈29 is the one real validation this
+redesign has.
+
+### The axis was re-ranged, and now it can be argued with
+
+`R` was a guess. With the driver fixed it became computable from two bounds — an ingestion shock must not
+disturb the working set, and an unused memory should disappear within a season rather than a year:
+
+| | `R = 120` | **`R = 400`** | `R = 1200` |
+|---|---|---|---|
+| habitat | 4.0 d | **13.3 d** | 40 d |
+| forgotten | 6.4 d | **26.7 d** | 80 d |
+
+A 50-document bulk ingest advances 34.7 μ — 9% of `R = 400`, 29% of `R = 120`. The former leaves the working
+set alone, which is what `MEMORY-UNITS.md` §3.3 asks for. `δ_base = 30`, `scale = 100` keep the rescue depth at
+~6% of `R`: **23 μ ≈ 18 hours of heavy work**, so a memory used within a day comes back in one call and one
+left for a week does not.
+
+**Honest state**: the rate is measured, the per-write cost is derived, but "two weeks / four weeks" is a design
+judgement. And with the store only 29 μ old, **nothing can reach the habitat for another ~370 μ** — a one-day-old
+store has no settled memories, and the axis now says so instead of pretending.
+
+### One symbol, one gradient
+
+The lifecycle symbols are gone. Every entry is a **four-point star**, and a single `vitality` number drives
+every optical property:
+
+| vitality | what is drawn |
+|---|---|
+| 1.0 | bright core, long sharp spikes, wide circular halo |
+| 0.55 | the circular halo is gone; what remains of the glow follows the spike, so it is **star-shaped** |
+| 0.2 | the spikes have retracted; a small dim star |
+| 0.0 | a dull mote |
+
+Colour stays a separate axis (green standing, blue topical) so shape does not have to carry two meanings.
+The vocabulary is the standard sparkle one — flare intensity, spike length, glow radius, exactly the knobs
+[GIMP's sparkle filter](https://docs.gimp.org/2.8/pt_BR/plug-in-sparkle.html) exposes — so the picture reads as
+a lens flare rather than as a shape nobody has met before.
+
+### Layout
+
+- The budget gauge moved onto the `Latest` line, filling whatever room is left and sitting hard right. With no
+  latest memory it shares the "nothing saved yet" line instead of floating alone.
+- The axis track is 3px and the miniature matches it; stars are large enough to show a spike, a glow and a core.
+
+379 tests, coverage lines 91.3 / branches 72.1 / functions 86.3, READY 11/11.
+
 ## [6.1.2] — 2026-11-17
 
 ### A class name did two jobs, and the later rule won

@@ -20,7 +20,8 @@ import { backupTo, closeDatabase, integrityCheck, openDatabase, quickCheck, tabl
 import { newEntityId, newMemoryId } from './ids.js';
 import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
-import { deriveBandEdges, muAdvance, muBand, muNow, muTrail } from './mu.js';
+import { MU_TURN_WEIGHT, MU_USE_WEIGHT, deriveBandEdges, muAdvance, muBand, muNow, muTrail } from './mu.js';
+import { bigramJaccard } from './tokenize.js';
 import { AXIS_DEFAULTS, anchorAfterRecall, anchorForCreation, axisRegion, positionOf } from './axis.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
@@ -333,7 +334,13 @@ export class Store {
       this.#linkRelations(id, 1, input.relations, now);
       // A new memory is growth, and growth is one of the two things that move the clock. It also
       // stamps the entry's own birth so its distance can be computed later without guessing.
-      const mu = this.#advanceMu({ add: 1, reason: 'write', now });
+      // **A write advances the clock by how novel it was, not by one.**
+      //
+      // Remembering something already known does not move the agent's understanding, so it must not age every
+      // other memory. `#noveltyOf` compares against what is already stored; a near-duplicate scores close to 1
+      // and contributes almost nothing.
+      const accretion = this.#noveltyOf(input.title, input.body, id);
+      const mu = this.#advanceMu({ add: 1, accretion, reason: 'write', now });
       this.db.prepare('UPDATE memory SET mu_born = ? WHERE id = ?').run(mu, id);
       // **A new entry lands at the entrance, not at the habitat.**
       //
@@ -1503,15 +1510,66 @@ export class Store {
     }
   }
 
-  /** Advance the memory-unit clock, with the weights the configuration chose. */
-  #advanceMu({ add = 0, use = 0, reason, now }) {
+  /**
+   * How new a piece of content is, relative to what is already stored.
+   *
+   * Returns 1 for something unlike anything in the store and near 0 for a near-duplicate. The clock advances by
+   * `log(1 + novelty)`, so remembering the same fact twice costs almost nothing — which is the point: repeating
+   * a known fact must not age every other memory.
+   *
+   * The measure is character-bigram Jaccard over title + body, not cosine similarity. Cosine would need
+   * embeddings, which need a model call and may not be configured; Jaccard is free, always available, and
+   * sensitive enough for the one distinction that matters here — "the same thing" versus "another thing". Its
+   * known failure is that a paraphrase scores as novel, which errs towards **more** accretion, i.e. slightly
+   * faster ageing, which is the safe direction. See `docs/MU-DRIVER.md` §2 D1.
+   *
+   * @param title - candidate title.
+   * @param body - candidate body.
+   * @returns 0..1.
+   */
+  #noveltyOf(title, body, excludeId = null) {
+    const text = `${title ?? ''} ${body ?? ''}`.trim();
+    if (text.length === 0) return 1;
+    // Only the most recent slice: at a few hundred entries the whole scan is cheap, and beyond that the
+    // long tail is not what a new write is usually a near-copy of.
+    //
+    // `excludeId` matters: this runs after the row is inserted (the caller needs the id), so without it the
+    // entry would be compared against itself, score similarity 1, and contribute no accretion at all — the
+    // clock would silently stop advancing on writes.
+    const rows = this.db
+      .prepare(
+        `SELECT id, title, body FROM memory
+          WHERE valid_to IS NULL AND (? IS NULL OR id <> ?)
+          ORDER BY created_at DESC LIMIT 200`,
+      )
+      .all(excludeId, excludeId);
+    let mostSimilar = 0;
+    for (const row of rows) {
+      const similarity = bigramJaccard(text, `${row.title ?? ''} ${row.body ?? ''}`);
+      if (similarity > mostSimilar) mostSimilar = similarity;
+      if (mostSimilar >= 0.99) break;
+    }
+    return Math.max(0, Math.min(1, 1 - mostSimilar));
+  }
+
+  /**
+   * Advance the memory-unit clock.
+   *
+   * The clock is driven by **what changed in the agent's understanding**, not by how often the machinery ran —
+   * see `docs/MU-DRIVER.md`. A write advances it by how novel it was; a supersede advances it fully; a plain
+   * injection barely moves it; and a step with nothing at all leaves it frozen.
+   */
+  #advanceMu({ add = 0, use = 0, reason, now, accretion, superseded, turn }) {
     const result = muAdvance(this.db, {
       add,
       use,
       reason,
       now: now ?? this.now(),
+      accretion,
+      superseded,
+      turn,
       wAdd: Number(this.live('muAddWeight') ?? 1),
-      wUse: Number(this.live('muUseWeight') ?? 1),
+      wUse: Number(this.live('muUseWeight') ?? MU_USE_WEIGHT),
     });
     return result.to;
   }
