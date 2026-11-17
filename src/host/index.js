@@ -29,7 +29,7 @@ import { rescueMiss } from './recall/rescue.js';
 import { composeSliceMessage } from './recall/compose.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '5.1.0';
+export const VERSION = '5.1.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];

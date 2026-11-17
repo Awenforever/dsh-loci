@@ -89,3 +89,35 @@ test('without a route the tool says so instead of reporting a zero score', async
   const report = await runAnswerEval({ store, scopes, complete: undefined });
   assert.equal(report.error, 'no model route');
 });
+
+test('a slow model produces a partial report instead of hanging', async (t) => {
+  // The original bug: the tool framework's timeout stops *waiting*, it does not cancel the request, so a
+  // five-question fixture with twelve unbounded calls became a thirty-minute hang. The fix bounds every
+  // call and the run as a whole, and reports what never completed rather than scoring it as wrong.
+  const { store, scopes } = openTestStore(t);
+  let calls = 0;
+  const started = Date.now();
+  const report = await runAnswerEval({
+    store,
+    scopes,
+    complete: ({ signal }) =>
+      new Promise((resolve, reject) => {
+        calls += 1;
+        const timer = setTimeout(() => resolve('late'), 30_000);
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new Error('aborted'));
+        });
+      }),
+    limit: 1,
+    perCallTimeoutMs: 120,
+    // Comfortably above the "budget exhausted" floor of one second, or the call is skipped entirely.
+    totalBudgetMs: 5_000,
+  });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 5_000, `should finish quickly, took ${elapsed}ms`);
+  assert.ok(calls >= 1, 'the model was actually asked, so the timeout is what ended it');
+  assert.equal(report.questions, 0, 'nothing could be scored');
+  assert.ok(report.incomplete >= 1, 'the unfinished call is reported, not counted as wrong');
+  assert.equal(report.withoutMemory.wrong, 0, 'a timeout is not a wrong answer');
+});

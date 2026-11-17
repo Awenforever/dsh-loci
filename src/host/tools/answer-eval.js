@@ -83,7 +83,16 @@ function memoryBlockFor(store, scopes, entry) {
  * @param options - `store`, `scopes`, `complete` (the model route), `limit`, `dryRun`, `log`.
  * @returns a report object.
  */
-export async function runAnswerEval({ store, scopes, complete, limit = ANSWER_FIXTURE.length, dryRun = false, log }) {
+export async function runAnswerEval({
+  store,
+  scopes,
+  complete,
+  limit = ANSWER_FIXTURE.length,
+  dryRun = false,
+  log,
+  perCallTimeoutMs = 60_000,
+  totalBudgetMs = 150_000,
+}) {
   if (typeof complete !== 'function') return { error: 'no model route' };
   const rows = [];
   const seeded = [];
@@ -107,6 +116,26 @@ export async function runAnswerEval({ store, scopes, complete, limit = ANSWER_FI
 
   if (dryRun) return { dryRun: true, seeded, questions: rows.length };
 
+  // Every call is bounded, and the whole run is bounded.
+  //
+  // The tool framework's `timeoutMs` stops *waiting* for the handler; it does not cancel an in-flight
+  // model request. Without these two budgets a fixture of five questions became a thirty-minute hang with
+  // the work still running behind it. Bounded calls mean a slow model produces a partial report instead
+  // of an unbounded one.
+  const deadline = Date.now() + totalBudgetMs;
+  const ask = async (prompt) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 1000) return { error: 'budget exhausted' };
+    const timeout = Math.min(perCallTimeoutMs, remaining);
+    try {
+      const text = await complete({ prompt, signal: AbortSignal.timeout(timeout) });
+      return { text: String(text ?? '') };
+    } catch (error) {
+      const message = String(error?.message ?? error);
+      return { error: /abort|timeout/i.test(message) ? `timed out after ${Math.round(timeout / 1000)}s` : message };
+    }
+  };
+
   const score = (answer, accepts) =>
     accepts.length === 0
       ? // A control: the right behaviour is to say it does not know.
@@ -118,21 +147,26 @@ export async function runAnswerEval({ store, scopes, complete, limit = ANSWER_FI
         : 'wrong';
 
   const results = [];
+  let incomplete = 0;
   for (const row of rows) {
     const memory = memoryBlockFor(store, scopes, { id: row.entryId, title: row.fact.title });
-    let without;
-    let withMemory;
-    try {
-      without = await complete({ prompt: row.fact.question });
-      withMemory = await complete({ prompt: `${memory}\n\n${row.fact.question}` });
-    } catch (error) {
-      return { error: `model call failed: ${String(error?.message ?? error)}`, done: results.length };
+    const without = await ask(row.fact.question);
+    const withMemory = await ask(`${memory}\n\n${row.fact.question}`);
+    if (without.error !== undefined || withMemory.error !== undefined) {
+      // A call that never completed is not a wrong answer, and counting it as one would make a slow
+      // model look like a bad one. It is reported separately and excluded from the score.
+      incomplete += 1;
+      results.push({
+        question: row.fact.question,
+        incomplete: without.error ?? withMemory.error,
+      });
+      continue;
     }
     results.push({
       question: row.fact.question,
       answerToken: row.fact.accepts[0].source,
-      without: { verdict: score(without, row.fact.accepts), answerBytes: bytes(without), answer: String(without).slice(0, 200) },
-      withMemory: { verdict: score(withMemory, row.fact.accepts), answerBytes: bytes(withMemory), answer: String(withMemory).slice(0, 200) },
+      without: { verdict: score(without.text, row.fact.accepts), answerBytes: bytes(without.text), answer: without.text.slice(0, 200) },
+      withMemory: { verdict: score(withMemory.text, row.fact.accepts), answerBytes: bytes(withMemory.text), answer: withMemory.text.slice(0, 200) },
       promptBytes: { without: bytes(row.fact.question), withMemory: bytes(memory) + bytes(row.fact.question) },
       memoryBytes: bytes(memory),
     });
@@ -140,14 +174,15 @@ export async function runAnswerEval({ store, scopes, complete, limit = ANSWER_FI
 
   const controls = [];
   for (const control of ANSWER_CONTROLS) {
-    try {
-      const answer = await complete({ prompt: control.question });
-      controls.push({ question: control.question, verdict: score(answer, control.accepts), answer: String(answer).slice(0, 200) });
-    } catch (error) {
-      controls.push({ question: control.question, verdict: `error: ${String(error?.message ?? error)}` });
-    }
+    const answer = await ask(control.question);
+    controls.push(
+      answer.error === undefined
+        ? { question: control.question, verdict: score(answer.text, control.accepts), answer: answer.text.slice(0, 200) }
+        : { question: control.question, verdict: 'incomplete', error: answer.error },
+    );
   }
 
+  const completeResults = results.filter((item) => item.incomplete === undefined);
   const tally = (list, pick) => {
     const out = { correct: 0, wrong: 0, abstained: 0, invented: 0 };
     for (const item of list) {
@@ -160,22 +195,23 @@ export async function runAnswerEval({ store, scopes, complete, limit = ANSWER_FI
 
   const report = {
     at: Date.now(),
-    questions: results.length,
-    withoutMemory: tally(results, (item) => item.without.verdict),
-    withMemory: tally(results, (item) => item.withMemory.verdict),
-    controls: tally(controls, (item) => item.verdict),
+    questions: completeResults.length,
+    incomplete,
+    withoutMemory: tally(completeResults, (item) => item.without.verdict),
+    withMemory: tally(completeResults, (item) => item.withMemory.verdict),
+    controls: tally(controls.filter((item) => item.verdict !== 'incomplete'), (item) => item.verdict),
     cost: {
-      promptBytesWithout: sum(results, (item) => item.promptBytes.without),
-      promptBytesWith: sum(results, (item) => item.promptBytes.withMemory),
-      answerBytesWithout: sum(results, (item) => item.without.answerBytes),
-      answerBytesWith: sum(results, (item) => item.withMemory.answerBytes),
+      promptBytesWithout: sum(completeResults, (item) => item.promptBytes.without),
+      promptBytesWith: sum(completeResults, (item) => item.promptBytes.withMemory),
+      answerBytesWithout: sum(completeResults, (item) => item.without.answerBytes),
+      answerBytesWith: sum(completeResults, (item) => item.withMemory.answerBytes),
       // Reported because the stream carries text frames only: this is an estimate, labelled as one.
-      estimatedTokensWith: Math.round(sum(results, (item) => item.promptBytes.withMemory) / 4),
-      estimatedTokensWithout: Math.round(sum(results, (item) => item.promptBytes.without) / 4),
+      estimatedTokensWith: Math.round(sum(completeResults, (item) => item.promptBytes.withMemory) / 4),
+      estimatedTokensWithout: Math.round(sum(completeResults, (item) => item.promptBytes.without) / 4),
     },
     results,
     controlResults: controls,
   };
-  log?.info?.(`loci: answer eval done — ${JSON.stringify(report.withMemory)} with memory`);
+  log?.info?.(`loci: answer eval done — ${completeResults.length} scored, ${incomplete} incomplete`);
   return report;
 }

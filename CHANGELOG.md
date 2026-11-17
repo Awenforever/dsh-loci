@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.1] — 2026-11-17
+
+The tool ran for thirty minutes because a timeout did not cancel anything.
+
+### What happened
+
+`loci_answer_eval` was called for the first time. The tool framework reported a timeout after 180 seconds;
+the work kept going for half an hour afterwards, and the person watching the UI saw a step that never ended.
+
+### Why
+
+Two independent mistakes, and only the second was mine to notice:
+
+1. **`timeoutMs` on a tool stops waiting for the handler — it does not cancel an in-flight model request.**
+   Nothing in the framework promises otherwise, but I had written the tool as though it did.
+2. **Every `complete()` call was unbounded.** Twelve calls, each able to take as long as the model wished,
+   with no signal to abort them. `createCompleter` accepted a `signal` at construction, which is useless for
+   a fan-out: the tool needs a bound per call.
+
+### Fixed
+
+- **`complete({ ..., signal })`** now takes a per-call signal. The construction-time signal still works; a
+  call-level one overrides it.
+- **Every call is bounded** by `AbortSignal.timeout(perCallTimeoutMs)`, default 60 s.
+- **The whole run is bounded** by a deadline, default 150 s, and stops asking once it is reached.
+- **An unfinished call is reported as `incomplete`, not scored as wrong.** Counting a timeout as a wrong
+  answer would make a slow model look like a bad one, which is exactly the confusion this tool exists to
+  avoid.
+- **Three questions by default**, not five: eight bounded calls fit inside the budget where twelve did not.
+
+### A test that failed for a real reason
+
+The first version of the regression test passed `totalBudgetMs: 400` against an internal floor of one
+second, so `complete` was never called and the test proved nothing. It now asserts the model *was* asked,
+so that the timeout is demonstrably what ended it.
+
+324 tests, coverage lines 90.5 / branches 71.1 / functions 85.7.
+
 ## [5.1.0] — 2026-11-17
 
 The product claim, measured. And the clock's first real-world proof.

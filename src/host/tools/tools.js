@@ -506,7 +506,10 @@ export function createTools(deps) {
     parameters: {
       type: 'object',
       properties: {
-        questions: { type: 'number', description: 'How many fixture questions, 1-5. Defaults to 5.' },
+        questions: {
+          type: 'number',
+          description: 'How many fixture questions, 1-5. Defaults to 3; more means more model calls and a higher chance of exhausting the budget.',
+        },
         dryRun: { type: 'boolean', description: 'Seed the fixture and stop before calling the model.' },
       },
       additionalProperties: false,
@@ -515,7 +518,9 @@ export function createTools(deps) {
       schema: OUTPUT_SCHEMA,
       render: (_args, value) => [{ type: 'text', text: renderAnswerEval(value) }],
     },
-    // Twelve model calls in the worst case; the default cap is far below that.
+    // Three questions by default: eight bounded model calls fit inside the budget, where five took
+    // twelve and overran it. The framework timeout only stops waiting — it does not cancel the request —
+    // so the work itself has to be sized to finish.
     timeoutMs: 180_000,
     isConcurrencySafe: () => false,
     execute: async (args, exec) => {
@@ -526,7 +531,7 @@ export function createTools(deps) {
         store,
         scopes: context.scopes,
         complete,
-        limit: Number.isFinite(args?.questions) ? Number(args.questions) : 5,
+        limit: Number.isFinite(args?.questions) ? Number(args.questions) : 3,
         dryRun: args?.dryRun === true,
         log,
       });
@@ -689,7 +694,7 @@ function renderAnswerEval(value) {
   const line = (label, tally, bytesValue) =>
     `${label}: correct ${tally.correct ?? 0} · wrong ${tally.wrong ?? 0}${tally.invented ? ` · invented ${tally.invented}` : ''}${tally.abstained ? ` · abstained ${tally.abstained}` : ''} · ${bytesValue} B`;
   const lines = [
-    `questions ${value.questions}`,
+    `questions ${value.questions}${value.incomplete > 0 ? ` · ${value.incomplete} incomplete (bounded by the per-call timeout, excluded from the score)` : ''}`,
     line('without memory', value.withoutMemory, value.cost.promptBytesWithout),
     line('with memory   ', value.withMemory, value.cost.promptBytesWith),
     `cost: +${value.cost.promptBytesWith - value.cost.promptBytesWithout} B of prompt for the memory block ` +
@@ -697,10 +702,17 @@ function renderAnswerEval(value) {
     `controls (no stored fact): invented ${value.controls.invented ?? 0} · abstained ${value.controls.abstained ?? 0}`,
   ];
   for (const row of value.results ?? []) {
+    if (row.incomplete !== undefined) {
+      lines.push(`  —  incomplete: ${row.incomplete}  ${row.question}`);
+      continue;
+    }
     lines.push(`  ${row.without.verdict} → ${row.withMemory.verdict}  ${row.question}`);
   }
   for (const control of value.controlResults ?? []) {
     lines.push(`  control ${control.verdict}  ${control.question}`);
+  }
+  if (value.questions === 0) {
+    lines.push('note: nothing was scored — every call hit its timeout. The model route may be saturated; retry with fewer questions.');
   }
   if ((value.controls.invented ?? 0) > 0) {
     lines.push('note: the model answered a question with no stored fact — check the control answers above before trusting the score');

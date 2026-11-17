@@ -62,7 +62,13 @@ export function createCompleter({ llm, provider, model, record, signal }) {
   }
   note('llm.stream', 'ok');
 
-  const complete = async ({ system, prompt }) => {
+  // `signal` may be supplied per call as well as at construction.
+  //
+  // It has to be per call: a tool that fans out a dozen requests needs each one bounded, and the
+  // framework's `timeoutMs` on the tool does not cancel an in-flight `await` — it only stops waiting for
+  // it, which leaves the request running and the tool looking hung. That was a real 30-minute hang.
+  const complete = async ({ system, prompt, signal: callSignal }) => {
+    const effectiveSignal = callSignal ?? signal;
     const request = {
       provider,
       model,
@@ -72,7 +78,7 @@ export function createCompleter({ llm, provider, model, record, signal }) {
           : []),
         { role: 'user', content: [{ type: 'text', text: prompt }] },
       ],
-      ...(signal === undefined ? {} : { signal }),
+      ...(effectiveSignal === undefined ? {} : { signal: effectiveSignal }),
     };
     let text = '';
     let frames = 0;
