@@ -4,6 +4,54 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.0] — 2026-11-17
+
+The product claim, measured. And the clock's first real-world proof.
+
+### `loci_answer_eval` — does memory make answers better?
+
+Every release so far measured whether the right line *reached the prompt*. That is not the claim. The
+claim is that a person gets a better answer, and it had never been tested.
+
+A script cannot test it: the model route lives inside the Host and no API key is visible to a child
+process. So it is a tool.
+
+- A fixed fixture of **invented facts** — `Zephyr-7 的回滚窗口是四十七分钟`, `Nimbus 的负责人是
+  Halvorsen 团队` — that no model could know, so a correct answer can only come from the injected block.
+- Each question asked twice, identical wording: alone, then with the exact block the plugin would inject.
+- Grading is **mechanical** (does the answer contain the fact's token) because a model graded by a model
+  measures the grader.
+- **Two control questions have no stored fact.** A confident answer there is an invention, not a win, and
+  the report says so above the score.
+- Cost is reported in **bytes plus a labelled estimate** — the stream carries text frames only, so there
+  is no usage field to read and a "measured" token count would be fabricated.
+
+The render puts the with/without difference first, cost beside it so a gain can never be reported without
+its price, and the controls below.
+
+### 冻结性：第一个真实世界的证据
+
+The design says the counter may only move when something happens. Measured against the live trail:
+
+```
+silence 04:24 → 09:00   276 min   counter moved 1.39
+silence 09:02 → 09:51    49 min   counter moved 1.39
+silence 01:37 → 01:48    11 min   counter moved 0.69
+```
+
+Four and a half hours of nothing moved the clock **not at all**; the 1.39 at the endpoint is `log(4)` from
+the injection that ended the silence. A wall clock would have aged every memory by 4.6 hours while the
+person slept. That is the entire argument for the memory unit, confirmed on real data rather than in a
+test.
+
+### 四带边界第一次由分布推导
+
+With 22 samples the derived edges became `13 / 268 / 414 MU` — much wider than the fixed `5 / 50 / 500`
+hypothesis, and the bands read `fresh 6 · active 5 · cool 7 · cold 4`. The fixed numbers were not merely
+unproven; they were wrong in shape, putting most entries in one band.
+
+323 tests, coverage lines 90.5 / branches 70.9 / functions 85.6.
+
 ## [5.0.5] — 2026-11-17
 
 Band edges come from the distribution; retirement is refused by rule.

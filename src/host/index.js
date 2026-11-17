@@ -29,7 +29,7 @@ import { rescueMiss } from './recall/rescue.js';
 import { composeSliceMessage } from './recall/compose.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '5.0.5';
+export const VERSION = '5.1.0';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -271,7 +271,14 @@ export function apply(ctx, rawConfig = {}) {
   );
 
   disposers.push(ctx.effect(() => ctx.systemPrompt.section(indexSection), 'loci: index section'));
-  disposers.push(ctx.effect(() => registerTools(ctx, { store, config: read, log, capture }), 'loci: tools'));
+  // `modelComplete` is a getter, not the function: the route is built inside the injection scope, which
+  // may resolve after the tools register. Passing a closure keeps the tool honest about "no route yet".
+  disposers.push(
+    ctx.effect(
+      () => registerTools(ctx, { store, config: read, log, capture, modelComplete: () => modelRoute.complete }),
+      'loci: tools',
+    ),
+  );
   disposers.push(ctx.effect(() => capture.attach(ctx), 'loci: capture'));
   // Optional collaborators come and go with the composition: acquire them
   // through `ctx.inject` so the panel API and `/loci` mount whenever the

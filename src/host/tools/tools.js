@@ -12,6 +12,7 @@ import { search } from '../store/search.js';
 import { indexTitle, renderSafe } from '../inject/sanitize.js';
 import { MemoryNotFoundError, MemoryRejectedError, RevisionConflictError } from '../store/store.js';
 import { formatDate } from '../inject/index-section.js';
+import { runAnswerEval } from './answer-eval.js';
 
 const KINDS = ['working', 'episodic', 'semantic', 'procedural', 'rule'];
 const SCOPES = ['session', 'workspace', 'project', 'global'];
@@ -492,7 +493,47 @@ export function createTools(deps) {
     },
   };
 
-  return [write, searchTool, get, forget, stats];
+  // The one measurement the product claim rests on: does memory make an answer better, and what does it
+  // cost. It lives here rather than in a script because the model route is only reachable from inside the
+  // Host — no API key is visible to a child process.
+  const answerEval = {
+    name: 'loci_answer_eval',
+    description:
+      'Measure whether memory improves answers. Runs a fixed fixture of invented facts that no model could know, ' +
+      'asks each question twice — once alone, once with the block the plugin would inject — then grades the ' +
+      'answers automatically and reports the byte cost of each condition. Two control questions have no stored ' +
+      'fact: a confident answer there is an invention, not a win.',
+    parameters: {
+      type: 'object',
+      properties: {
+        questions: { type: 'number', description: 'How many fixture questions, 1-5. Defaults to 5.' },
+        dryRun: { type: 'boolean', description: 'Seed the fixture and stop before calling the model.' },
+      },
+      additionalProperties: false,
+    },
+    output: {
+      schema: OUTPUT_SCHEMA,
+      render: (_args, value) => [{ type: 'text', text: renderAnswerEval(value) }],
+    },
+    // Twelve model calls in the worst case; the default cap is far below that.
+    timeoutMs: 180_000,
+    isConcurrencySafe: () => false,
+    execute: async (args, exec) => {
+      const context = execContext(exec);
+      const complete = deps.modelComplete?.();
+      if (complete === undefined) return { error: 'no model route available' };
+      return runAnswerEval({
+        store,
+        scopes: context.scopes,
+        complete,
+        limit: Number.isFinite(args?.questions) ? Number(args.questions) : 5,
+        dryRun: args?.dryRun === true,
+        log,
+      });
+    },
+  };
+
+  return [write, searchTool, get, forget, stats, answerEval];
 }
 
 /**
@@ -631,6 +672,38 @@ function renderGet(value) {
         `- r${revision.revision} ${revision.status} ${formatDate(revision.validFrom)}→${revision.validTo === null ? 'now' : formatDate(revision.validTo)}${revision.supersededBy ? ` → ${revision.supersededBy}` : ''}`,
       );
     }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Render the answer-quality comparison.
+ *
+ * The headline is the with/without difference, because that is the product claim. Cost sits beside it so
+ * a gain can never be reported without its price, and the controls sit below because a model that scores
+ * well by inventing answers is worse than one that abstains.
+ */
+function renderAnswerEval(value) {
+  if (value?.error !== undefined) return `answer eval unavailable: ${value.error}`;
+  if (value?.dryRun === true) return `answer eval dry run: seeded ${value.questions} fixture entr${value.questions === 1 ? 'y' : 'ies'}, no model calls made`;
+  const line = (label, tally, bytesValue) =>
+    `${label}: correct ${tally.correct ?? 0} · wrong ${tally.wrong ?? 0}${tally.invented ? ` · invented ${tally.invented}` : ''}${tally.abstained ? ` · abstained ${tally.abstained}` : ''} · ${bytesValue} B`;
+  const lines = [
+    `questions ${value.questions}`,
+    line('without memory', value.withoutMemory, value.cost.promptBytesWithout),
+    line('with memory   ', value.withMemory, value.cost.promptBytesWith),
+    `cost: +${value.cost.promptBytesWith - value.cost.promptBytesWithout} B of prompt for the memory block ` +
+      `(~${value.cost.estimatedTokensWith} vs ${value.cost.estimatedTokensWithout} estimated tokens; the stream reports no usage, so this is an estimate)`,
+    `controls (no stored fact): invented ${value.controls.invented ?? 0} · abstained ${value.controls.abstained ?? 0}`,
+  ];
+  for (const row of value.results ?? []) {
+    lines.push(`  ${row.without.verdict} → ${row.withMemory.verdict}  ${row.question}`);
+  }
+  for (const control of value.controlResults ?? []) {
+    lines.push(`  control ${control.verdict}  ${control.question}`);
+  }
+  if ((value.controls.invented ?? 0) > 0) {
+    lines.push('note: the model answered a question with no stored fact — check the control answers above before trusting the score');
   }
   return lines.join('\n');
 }

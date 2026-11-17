@@ -22,6 +22,10 @@ const PATTERN_DATA = new Set([
   // and the whole point of that transcript is that it is the phrasing the rule extractor misses
   // — which, for this product's actual users, is Chinese.
   join('src', 'host', 'record', 'probe.js'),
+  // The answer-quality fixture is the same kind of thing: invented facts and questions that stand in for
+  // what a user would write. Making them English to satisfy this gate would dodge the case that matters —
+  // this product's retrieval is CJK-heavy, and a fixture that never exercises CJK proves nothing about it.
+  join('src', 'host', 'tools', 'answer-eval.js'),
 ]);
 
 function walk(dir) {
