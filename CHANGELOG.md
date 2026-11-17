@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.3.1] — 2026-11-17
+
+A view for the person who has to live with this thing.
+
+### `dsh-loci journal`
+
+The existing surfaces answer different questions: `stats` gives counts, the panel's Index shows what is in
+scope right now. Neither answers **"what did it remember this week, and is any of it doing anything"** — the
+question someone actually has.
+
+```
+最近 7 天记了什么  ·  共 36 条
+  16:52  相关时才出现   插件坞先来后到用 arrived-at 毫秒时间戳判定…
+  11:48  常驻          AGENTS.md 只留指针，不写案例细节或事故经过
+
+一直在用的  ·  被放进提示词的次数
+    442 次  相关时才出现   位置切换图标不要用简单的左右箭头…
+
+沉底的  ·  写入并 verified 超过 3 天，却一次都没进过提示词
+
+需要你处理的  ·  待审 0 条 · 隔离 1 条
+```
+
+### Two design decisions worth stating
+
+**"Forgotten" means never shown, not never read.** `read_count` is 0 for every entry in this store, because
+when the title is the whole rule there is nothing to expand — normal working state, not disuse. A journal
+that reported "0 uses" for everything would be worse than none, so it reports the one hard fact instead:
+*written, verified, and never once placed in front of a model*.
+
+**A three-day floor.** Freshly written entries have not had a turn to appear in yet. Without the floor the
+"forgotten" list was simply everything just remembered, which made the only honest signal here useless.
+
+### Why it went into the CLI
+
+Only `scripts/cli.mjs` ships in the published package. The diagnostic scripts under `scripts/diag/` are
+useful to whoever has the checkout and invisible to everyone who installed the plugin — and a view nobody can
+reach is not a feature. The first version of this was a standalone script; it was deleted.
+
+### Also
+
+The answer-eval fixture writes invented facts (`Tessera 的保留期是九个季度`) into a scope of its own. They
+appeared in the journal because the query did not exclude that scope. Test data is not memory, and it has no
+business in a view a person reads.
+
+`docs/HOW-TO-LOOK.md` explains what every column means, which signals are trustworthy, and — explicitly —
+which ones are not.
+
+361 tests unchanged.
+
 ## [5.3.0] — 2026-11-17
 
 Production readiness, as ten checks rather than an opinion. And the last unknown is closed.

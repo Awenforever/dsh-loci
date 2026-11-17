@@ -55,6 +55,7 @@ const rawArgv = process.argv.slice(2);
  */
 const COMMANDS = new Set([
   'doctor',
+  'journal',
   'stats',
   'search',
   'review',
@@ -163,6 +164,91 @@ switch (command) {
         `injection   ${result.lastInjection === null ? 'none yet' : `${result.lastInjection.bytes} bytes (${result.lastInjection.listed} listed, ${result.lastInjection.hidden} hidden)`}`,
       );
     }
+    break;
+  }
+  case 'journal': {
+    // The human-facing view: what was remembered lately, what keeps appearing, what has sunk.
+    //
+    // It lives in the CLI rather than in a standalone script because only `scripts/cli.mjs` ships in the
+    // published package — a script in `scripts/diag/` is useful to whoever has the checkout and invisible to
+    // everyone who installed the plugin. A view nobody can reach is not a feature.
+    const daysFlag = argv.find((item) => item.startsWith('--days='));
+    const days = daysFlag === undefined ? 7 : Math.max(1, Number(daysFlag.slice('--days='.length)));
+    const report = await withStore((store) => {
+      const { scopeKeys } = diagnosticScope();
+      const rows = store.db
+        .prepare(
+          `SELECT m.id, m.kind, m.title, m.applies, m.created_at,
+                  COALESCE(u.inject_count, 0) AS injections,
+                  COALESCE(u.mu_touched, 0)    AS touched,
+                  h.status
+             FROM memory m JOIN memory_head h ON h.ord = m.ord
+             LEFT JOIN memory_usage u ON u.id = m.id
+            WHERE m.valid_to IS NULL AND h.status <> 'deleted'
+              -- The answer-eval fixture writes invented facts into a scope of its own. They are test data,
+              -- not memories, and must never appear in a view a person reads.
+              AND m.scope_key NOT LIKE 'session:answer-eval%'
+            ORDER BY m.created_at DESC`,
+        )
+        .all();
+      return {
+        rows: rows.map((row) => ({ ...row })),
+        muNow: store.muNow(),
+        pending: store.db.prepare("SELECT COUNT(*) AS n FROM memory_head WHERE status = 'candidate'").get().n,
+        disputed: store.db.prepare("SELECT COUNT(*) AS n FROM memory_head WHERE status = 'disputed'").get().n,
+        scopeKeys,
+      };
+    });
+
+    if (json) {
+      console.log(JSON.stringify(report, null, 2));
+      break;
+    }
+
+    const since = Date.now() - days * 86_400_000;
+    const mark = (row) => (row.applies === 'always' ? '常驻' : '相关时才出现');
+    const cut = (text, n) => {
+      const value = String(text ?? '');
+      return value.length > n ? `${value.slice(0, n)}…` : value;
+    };
+    const clock = (ms) => new Date(Number(ms)).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const day = (ms) => new Date(Number(ms)).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+
+    const fresh = report.rows.filter((row) => Number(row.created_at) >= since && row.status !== 'disputed');
+    console.log(`\n最近 ${days} 天记了什么  ·  共 ${fresh.length} 条（隔离中的不计入）`);
+    for (const row of fresh.slice(0, 15)) {
+      const badge = row.status === 'verified' ? '' : `  [${row.status === 'candidate' ? '待审' : row.status}]`;
+      console.log(`  ${clock(row.created_at)}  ${mark(row).padEnd(9)}  ${cut(row.title, 56)}${badge}`);
+    }
+    if (fresh.length === 0) console.log('  （这段时间没有新记忆）');
+    if (fresh.length > 15) console.log(`  …还有 ${fresh.length - 15} 条`);
+
+    const shown = report.rows.filter((row) => Number(row.injections) > 0).sort((a, b) => Number(b.injections) - Number(a.injections));
+    console.log('\n一直在用的  ·  被放进提示词的次数');
+    for (const row of shown.slice(0, 8)) {
+      console.log(`  ${String(row.injections).padStart(5)} 次  ${mark(row).padEnd(9)}  ${cut(row.title, 52)}`);
+    }
+    if (shown.length === 0) console.log('  （还没有任何条目被注入过）');
+
+    const SINK_AFTER_MS = 3 * 86_400_000;
+    const sunk = report.rows.filter(
+      (row) => Number(row.injections) === 0 && row.status === 'verified' && Date.now() - Number(row.created_at) >= SINK_AFTER_MS,
+    );
+    console.log('\n沉底的  ·  写入并 verified 超过 3 天，却一次都没进过提示词');
+    for (const row of sunk.slice(0, 10)) {
+      const flag = row.applies === 'always' ? '  ← 标了常驻却从未出现，scope 可能标错了' : '';
+      console.log(`  ${day(row.created_at)}  ${mark(row).padEnd(9)}  ${cut(row.title, 46)}${flag}`);
+    }
+    if (sunk.length === 0) console.log('  （没有沉底的条目）');
+
+    console.log('\n需要你处理的  ·  这些永远不会进入提示词，直到有人处理');
+    console.log(`  待审 ${report.pending} 条 · 隔离 ${report.disputed} 条`);
+
+    console.log('\n怎么读');
+    console.log('  · 常驻 = 每轮都在提示词里；相关时才出现 = 只在问题匹配时被检索到。两种都正常。');
+    console.log('  · 次数为 0 不等于没用；只有「从未被注入」是硬事实。');
+    console.log('  · 这个库不记录「模型是否照做了」——那要观测任务结果，系统看不到。');
+    console.log('  · 详细说明：docs/HOW-TO-LOOK.md');
     break;
   }
   case 'search': {
@@ -397,6 +483,7 @@ switch (command) {
   default: {
     console.log(`dsh-loci <command> [options]
 
+  journal [--days=N]   人类的视图：最近记了什么 / 什么在反复出现 / 什么沉了
   doctor | stats | review | export | export-import | reindex | maintenance | snapshots
   search <query>
   import --dir <path> [--from auto-memory|claude] [--scope-key <key>] [--dry-run]
