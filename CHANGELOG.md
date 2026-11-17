@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.2.3] — 2026-11-17
+
+A deployment that cannot be reverted is not ready. The rollback was never tested, and it was wrong.
+
+### What testing it found
+
+`scripts/diag/rollback-check.mjs` runs on a **copy** of the live database and asks two questions: can an
+older client still read a v8 store, and is the v7→v8 migration reversible.
+
+The first answer is good: SQLite ignores columns it does not know, so 5.1.x reads a v8 database fine. The
+cost of that route is behavioural — the old core admits every `rule` again — but **no data is lost**.
+
+The second answer was **wrong in the runbook before it was written**. The obvious sequence:
+
+```sql
+ALTER TABLE memory DROP COLUMN applies;   -- fails: index ix_memory_applies references it
+```
+
+fails, and the failure **leaves the column in place**, so the next attempt reports `duplicate column name`
+and the database is stranded between two shapes. Index first, then column:
+
+```sql
+DROP INDEX IF EXISTS ix_memory_applies;
+ALTER TABLE memory DROP COLUMN applies;
+```
+
+### And a cost that has to be stated, not discovered later
+
+Re-applying the migration afterwards restores the column and fills it with `topic` — **the four standing
+verdicts are gone**, because rollback dropped the column that held them. Content is lossless; judgement is
+not.
+
+Both paths are now in `docs/PRODUCTION.md` §6.1 with that trade written down, because the failure mode of a
+runbook is that the dangerous step is the one nobody rehearsed.
+
+### The other thing this round established
+
+**No write has yet passed through the `supplied` signal.** 115 writes exist, all from before 5.2.2 shipped,
+so nothing in the store describes whether a model actually answers `applies`. A diagnostic script of mine
+inferred model behaviour from that absence and printed a conclusion; it now says it cannot answer. That is
+the third time this pattern appeared in two releases, and the correction is the same each time: **say what
+the data shows, and say what it does not.**
+
+359 tests unchanged; this release is documentation and the verification script.
+
 ## [5.2.2] — 2026-11-17
 
 A field nobody can audit is a field nobody can trust.
