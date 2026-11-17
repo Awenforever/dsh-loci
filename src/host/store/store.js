@@ -21,6 +21,7 @@ import { newEntityId, newMemoryId } from './ids.js';
 import { migrate } from './migrate.js';
 import { EmbeddingChannel, vectorToBlob } from './embedding.js';
 import { deriveBandEdges, muAdvance, muBand, muNow, muTrail } from './mu.js';
+import { AXIS_DEFAULTS, anchorAfterRecall, anchorForCreation, axisRegion, positionOf } from './axis.js';
 import { META_KEYS, SCHEMA_VERSION, databaseVersion, readMeta, writeMeta } from './schema.js';
 import { normalizeText, tokenStream, tokenize, buildQueryPlan } from './tokenize.js';
 import { cleanText, normalizeTitle, prepareForStorage } from '../inject/sanitize.js';
@@ -334,13 +335,22 @@ export class Store {
       // stamps the entry's own birth so its distance can be computed later without guessing.
       const mu = this.#advanceMu({ add: 1, reason: 'write', now });
       this.db.prepare('UPDATE memory SET mu_born = ? WHERE id = ?').run(mu, id);
+      // **A new entry lands at the entrance, not at the habitat.**
+      //
+      // The old code set `mu_touched = mu`, which under `p = now - touched` put a fresh write at distance
+      // zero — the same place as an entry that had just been used. Those are different situations: one has
+      // never been needed, the other has just proved it was. `anchorForCreation` puts it at `+R`, and the
+      // clock carries it left from there without any further writes.
+      const born = anchorForCreation(mu, this.#axisParameters().entranceDepth);
       this.db
         .prepare(
-          `INSERT INTO memory_usage (id, inject_count, read_count, mu_touched)
-           VALUES (?, 0, 0, ?)
-           ON CONFLICT(id) DO UPDATE SET mu_touched = excluded.mu_touched`,
+          `INSERT INTO memory_usage (id, inject_count, read_count, mu_touched, p_base, mu_base)
+           VALUES (?, 0, 0, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET mu_touched = excluded.mu_touched,
+                                         p_base = excluded.p_base,
+                                         mu_base = excluded.mu_base`,
         )
-        .run(id, mu);
+        .run(id, mu, born.pBase, born.muBase);
       this.bumpIndexRev();
       return inserted;
     });
@@ -1415,19 +1425,29 @@ export class Store {
     // weight this product exists to find.
     if (Array.isArray(row.ids) && row.ids.length > 0) {
       const bump = this.db.prepare(
-        `INSERT INTO memory_usage (id, inject_count, read_count, last_injected_at, mu_touched)
-         VALUES (?, 1, 0, ?, ?)
+        `INSERT INTO memory_usage (id, inject_count, read_count, last_injected_at, mu_touched, p_base, mu_base)
+         VALUES (?, 1, 0, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET inject_count = inject_count + 1,
                                        last_injected_at = excluded.last_injected_at,
-                                       mu_touched = excluded.mu_touched`,
+                                       p_base = excluded.p_base,
+                                       mu_base = excluded.mu_base`,
       );
       const now = this.now();
       withTransaction(this.db, () => {
-        // Being injected is what makes an entry *relevant now*, so the injection is the event that
-        // resets its distance from the working set. Time advances by the same event: activity is one
-        // of the two things that move the clock, and this is where activity happens.
+        // The clock advances because activity happened; that part is unchanged.
         const mu = this.#advanceMu({ use: row.ids.length, reason: 'inject', now });
-        for (const id of row.ids) bump.run(id, now, mu);
+        for (const id of row.ids) {
+          // **Recall moves the entry right along the axis; it does not reset it to zero.**
+          //
+          // The old code set `mu_touched = now`, which in a `p = now - touched` model meant "distance 0".
+          // On the signed axis the equivalent shortcut would be wrong twice over: it would erase how far
+          // the entry had travelled, and it would make a heavily used old memory indistinguishable from
+          // one written this minute. `anchorAfterRecall` applies δ(p) instead — large near the habitat,
+          // small far away, floored so nothing becomes unreachable.
+          const current = this.#anchorOf(id);
+          const next = anchorAfterRecall(current, mu, this.#axisParameters());
+          bump.run(id, now, mu, next.pBase, next.muBase);
+        }
       });
     }
     this.db.prepare('DELETE FROM request_stat WHERE ts < ?').run(this.now() - 90 * 86_400_000);
@@ -1459,18 +1479,24 @@ export class Store {
     if (typeof id !== 'string' || id.length === 0) return;
     try {
       withTransaction(this.db, () => {
-        // Looking an entry up is use, and use moves the clock and pulls the entry back toward the
-        // working set. It is the strongest signal available that a memory did something for someone.
+        // Looking an entry up is use. It advances the clock and pulls the entry right along the axis by
+        // δ(p) — the same rule as an injection, because both mean "this was needed". The strongest signal
+        // available that a memory did something for someone, and it still cannot outweigh time forever:
+        // the leftward drift is unconditional, so a read-only flurry slows ageing without freezing it.
         const mu = this.#advanceMu({ use: 1, reason: 'read', now: this.now() });
+        const current = this.#anchorOf(id);
+        const next = anchorAfterRecall(current, mu, this.#axisParameters());
         this.db
           .prepare(
-            `INSERT INTO memory_usage (id, inject_count, read_count, last_read_at, mu_touched)
-             VALUES (?, 0, 1, ?, ?)
+            `INSERT INTO memory_usage (id, inject_count, read_count, last_read_at, mu_touched, p_base, mu_base)
+             VALUES (?, 0, 1, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET read_count = read_count + 1,
                                            last_read_at = excluded.last_read_at,
-                                           mu_touched = excluded.mu_touched`,
+                                           mu_touched = excluded.mu_touched,
+                                           p_base = excluded.p_base,
+                                           mu_base = excluded.mu_base`,
           )
-          .run(id, this.now(), mu);
+          .run(id, this.now(), mu, next.pBase, next.muBase);
       });
     } catch {
       // A counter must never fail a read.
@@ -1531,46 +1557,45 @@ export class Store {
     const marks = Array.isArray(keys) && keys.length > 0 ? ` AND m.scope_key IN (${keys.map(() => '?').join(', ')})` : '';
     const rows = this.db
       .prepare(
-        `SELECT m.id, m.title, COALESCE(u.mu_touched, 0) AS touched, m.mu_born
+        `SELECT m.id, m.title, u.p_base, u.mu_base, m.mu_born
            FROM memory m
            JOIN memory_head h ON h.ord = m.ord
            LEFT JOIN memory_usage u ON u.id = m.id
-          WHERE h.status = 'verified' AND m.valid_to IS NULL${marks}
-          ORDER BY touched DESC`,
+          WHERE h.status = 'verified' AND m.valid_to IS NULL${marks}`,
       )
       .all(...(Array.isArray(keys) ? keys : []));
 
+    const parameters = this.#axisParameters();
     const entries = rows.map((row) => {
-      const touched = Number(row.touched ?? 0);
+      // Position is evaluated, never stored: `p = p_base − (muNow − mu_base)`. A row without an anchor has
+      // no place on the axis — reporting one would be inventing a history, so it is marked `tracked: false`
+      // and kept out of every summary that would otherwise treat it as data.
+      const p = positionOf({ pBase: row.p_base, muBase: row.mu_base }, now);
       return {
         id: row.id,
         title: row.title,
-        p: Math.max(0, now - touched),
-        tracked: touched > 0,
+        p,
+        region: p === null ? 'unknown' : axisRegion(p, parameters.entranceDepth),
+        tracked: p !== null,
       };
     });
+    // The entrance is the largest position and the forgotten end the smallest, so ordering by p descending
+    // walks the axis from new to old — the opposite of the old `ORDER BY touched DESC`, which happened to
+    // sort by *distance*.
+    entries.sort((a, b) => (b.p ?? -Infinity) - (a.p ?? -Infinity));
 
-    // Edges come from the observed distribution when it is large enough to describe itself, otherwise
-    // from the fixed hypotheses. `deriveBandEdges` owns that fallback so it cannot differ between the
-    // panel, doctor and the evaluation.
-    const known = entries.filter((entry) => entry.tracked).map((entry) => entry.p);
-    const mode = options.bandEdges ?? this.live('muBandEdges') ?? 'auto';
-    let edges = options.edges;
-    if (edges === undefined) {
-      edges = mode === 'fixed' ? { fresh: 5, active: 50, cool: 500, derived: false } : deriveBandEdges(known);
-    }
-
-    const bands = { fresh: 0, active: 0, cool: 0, cold: 0 };
+    // The regions are the model's own; the four distance bands belonged to the axis that no longer exists.
+    const regions = { entrance: 0, digesting: 0, habitat: 0, compressing: 0, forgotten: 0, unknown: 0 };
     for (const entry of entries) {
-      if (!entry.tracked) continue;
-      bands[muBand(entry.p, edges)] += 1;
+      regions[entry.region] = (regions[entry.region] ?? 0) + 1;
     }
     return {
       now,
       entries,
-      bands,
+      regions,
       untracked: entries.filter((entry) => !entry.tracked).length,
-      edges,
+      parameters,
+      // Kept so an older caller does not crash; it carries no information on the signed axis.
       retireAfter: Number(this.live('muRetireAfter') ?? 0),
     };
   }
@@ -2026,6 +2051,54 @@ export class Store {
    * @param input - caller input.
    * @returns the four fields, all nullable.
    */
+  /**
+   * The axis parameters in force.
+   *
+   * Read from config so a calibration can change them without a code change, falling back to the
+   * rate-derived defaults in `axis.js`. Every one of them is uncalibrated — see `docs/AXIS.md` §3.
+   * @returns the parameter set expected by `anchorAfterRecall` / `recallBoost`.
+   */
+  #axisParameters() {
+    const read = (key, fallback) => {
+      const value = Number(this.live?.(key) ?? this.config?.[key]);
+      return Number.isFinite(value) ? value : fallback;
+    };
+    return {
+      entranceDepth: read('axisEntranceDepth', AXIS_DEFAULTS.entranceDepth),
+      recallBase: read('axisRecallBase', AXIS_DEFAULTS.recallBase),
+      recallScale: read('axisRecallScale', AXIS_DEFAULTS.recallScale),
+      recallFloor: read('axisRecallFloor', AXIS_DEFAULTS.recallFloor),
+    };
+  }
+
+  /**
+   * An entry's anchor, creating one at the habitat if the row predates the axis.
+   *
+   * Falling back to the habitat rather than the entrance is deliberate: an unknown row is not new, so
+   * claiming it just landed would be inventing a history. The v9 migration is what gives old rows a real
+   * anchor; this path only catches rows that escaped it.
+   *
+   * @param id - memory id.
+   * @returns `{pBase, muBase}`.
+   */
+  #anchorOf(id) {
+    const row = this.db.prepare('SELECT p_base, mu_base FROM memory_usage WHERE id = ?').get(id);
+    // The null check precedes the numeric one on purpose: `Number(null)` is 0, so a finite-number test alone
+    // accepts a missing anchor and hands back a fabricated position at the habitat.
+    const usable =
+      row !== undefined &&
+      row.p_base !== null &&
+      row.p_base !== undefined &&
+      row.mu_base !== null &&
+      row.mu_base !== undefined &&
+      Number.isFinite(Number(row.p_base)) &&
+      Number.isFinite(Number(row.mu_base));
+    if (usable) {
+      return { pBase: Number(row.p_base), muBase: Number(row.mu_base) };
+    }
+    return { pBase: 0, muBase: muNow(this.db) };
+  }
+
   #lessonFields(input) {
     const clean = (value, maxChars) => {
       const text = cleanText(typeof value === 'string' ? value : '', maxChars);

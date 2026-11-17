@@ -8,7 +8,7 @@
  */
 
 /** Schema version this build writes and expects. */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * DDL for the v2 per-entry usage table.
@@ -40,10 +40,24 @@ CREATE TABLE IF NOT EXISTS memory_usage (
   read_count       INTEGER NOT NULL DEFAULT 0,
   last_injected_at INTEGER,
   last_read_at     INTEGER,
-  mu_touched       REAL
+  -- v7: the clock stamp. Deprecated in v9 — it was written by *three* different events (creation,
+  -- injection, read), so it could not tell "just remembered" from "just used", and the position derived
+  -- from it pointed the wrong way: a fresh write landed at 0 (the habitat) instead of at the entrance.
+  -- Kept so an old client can still read the row, and so the v9 migration has something to convert.
+  mu_touched       REAL,
+  -- v9: the signed axis. Position is lazily evaluated — nothing has to be written per μ:
+  --
+  --     p_now = p_base - (muNow - mu_base)
+  --
+  -- p_base is the last known position and mu_base the clock when it was known. Time moves the entry
+  -- left without a write; only recall writes, and it writes both together. See docs/AXIS.md.
+  p_base           REAL,
+  mu_base          REAL
 );
 CREATE INDEX IF NOT EXISTS ix_memory_usage_inject ON memory_usage (inject_count DESC);
 CREATE INDEX IF NOT EXISTS ix_memory_usage_read ON memory_usage (read_count DESC);
+-- The axis is ordered ascending: the largest positions are the entrance, the smallest the forgotten end.
+CREATE INDEX IF NOT EXISTS ix_memory_usage_position ON memory_usage (p_base DESC);
 `;
 
 /** DDL for a fresh database. Order matters: FTS and the head table follow `memory`. */

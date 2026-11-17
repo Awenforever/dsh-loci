@@ -65,19 +65,32 @@ try {
 // Order matters and the first version of this script got it wrong: dropping a column while an index still
 // references it fails, and the failure leaves the column in place — so the "re-apply" afterwards reports
 // `duplicate column name` and the database is stuck between two shapes. Index first, then column.
-console.log('\nrolling back the migration on the copy:');
+//
+// v9 added two columns at once (`p_base`, `mu_base`) plus a position index, so the reversal has to drop all
+// three. The anchors are lost, which is stated in `docs/PRODUCTION.md` §6.1: reverting the schema discards
+// classification, and it now also discards position.
+console.log('\nrolling back the latest migration on the copy:');
 try {
   const indexes = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'memory' AND sql LIKE '%applies%'")
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('memory','memory_usage') AND (sql LIKE '%applies%' OR sql LIKE '%p_base%')",
+    )
     .all()
     .map((row) => row.name);
-  console.log(`  indexes referencing applies: ${indexes.length === 0 ? '(none)' : indexes.join(', ')}`);
+  console.log(`  indexes to drop: ${indexes.length === 0 ? '(none)' : indexes.join(', ')}`);
   for (const name of indexes) db.exec(`DROP INDEX IF EXISTS ${name}`);
-  db.exec('ALTER TABLE memory DROP COLUMN applies');
+
+  const usageColumns = db.prepare('PRAGMA table_info(memory_usage)').all().map((column) => column.name);
+  for (const column of ['p_base', 'mu_base']) {
+    if (usageColumns.includes(column)) db.exec(`ALTER TABLE memory_usage DROP COLUMN ${column}`);
+  }
+  if (before.applies) db.exec('ALTER TABLE memory DROP COLUMN applies');
+
   db.prepare("UPDATE meta SET value = '7' WHERE key = 'schema_version'").run();
   db.exec('PRAGMA user_version = 7');
   const after = inspect('after rollback (v7 shape)', db);
-  console.log(`  column gone: ${before.applies && !after.applies}`);
+  console.log(`  applies gone: ${before.applies && !after.applies}`);
+  console.log(`  anchors gone: ${!db.prepare('PRAGMA table_info(memory_usage)').all().some((column) => column.name === 'p_base')}`);
   console.log(`  version back to 7: ${after.version === 7}`);
 } catch (error) {
   console.log(`  rollback failed: ${String(error?.message ?? error)}`);

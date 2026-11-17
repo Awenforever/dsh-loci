@@ -95,7 +95,11 @@ const report = {
   },
   clock: {
     now: Number(positions.now.toFixed(2)),
-    bands: positions.bands,
+    // The regions of the signed axis, not the four distance bands: the axis replaced them when the model
+    // was rebuilt, and a report that kept printing "fresh/active/cool/cold" would describe a store that no
+    // longer exists.
+    regions: positions.regions ?? {},
+    axis: positions.parameters === undefined ? undefined : describeAxis(positions.parameters),
     retireAfter: positions.retireAfter,
     advances: recent.filter((event) => event.event === 'inject').length,
   },
@@ -133,8 +137,10 @@ function verdict(entry) {
     return 'silent: no injection in the window — is the plugin loaded, or is the store empty for this scope?';
   }
   if (entry.record.curateStarted === 0) return 'record half idle: curation has not been triggered in the window';
-  if (entry.clock.bands.cold > 0 && entry.clock.retireAfter === 0) {
-    return `growing: ${entry.clock.bands.cold} entries past the cool band and retirement is off (threshold not calibrated)`;
+  // Entries reaching the forgotten end is the axis working, not a fault. What would be a fault is nothing
+  // ever getting there — that would mean the leftward drift is not running.
+  if ((entry.clock.regions?.forgotten ?? 0) > 0 && entry.clock.retireAfter === 0) {
+    return `${entry.clock.regions.forgotten} entries have reached the forgotten end of the axis; nothing compresses them yet`;
   }
   if (entry.recall.rewriteFound === 0 && entry.recall.rewriteFired > 0) {
     return 'rewriter is firing but never finding anything — the hints or the alternative count may need work';
@@ -151,8 +157,15 @@ if (json) {
   console.log(`window            last ${w.hours}h (wall clock, for grouping only)`);
   console.log(`store             ${report.store.byStatus.verified ?? 0} verified · ${report.store.byStatus.candidate ?? 0} candidate · ${(report.store.bytes / 1024).toFixed(0)} KB`);
   console.log(`by source         ${JSON.stringify(report.store.bySource)}`);
-  console.log(`clock             ${report.clock.now} MU · fresh ${report.clock.bands.fresh} / active ${report.clock.bands.active} / cool ${report.clock.bands.cool} / cold ${report.clock.bands.cold}`);
-  console.log(`                  retirement ${report.clock.retireAfter > 0 ? `after ${report.clock.retireAfter} MU` : 'off (threshold not calibrated)'}`);
+  const regions = report.clock.regions ?? {};
+  console.log(
+    `clock             ${report.clock.now} μ · entrance ${regions.entrance ?? 0} / digesting ${regions.digesting ?? 0} / ` +
+      `habitat ${regions.habitat ?? 0} / compressing ${regions.compressing ?? 0} / forgotten ${regions.forgotten ?? 0}`,
+  );
+  if (report.clock.axis !== undefined) console.log(`                  ${report.clock.axis}`);
+  console.log(
+    `                  retirement ${report.clock.retireAfter > 0 ? `after ${report.clock.retireAfter} μ` : 'off (threshold not calibrated)'}`,
+  );
   console.log('');
   console.log(`忆 · injections  ${report.recall.injections} (${report.recall.injectedEntries} entries listed)`);
   console.log(`     slice hits  ${report.recall.sliceHits}`);

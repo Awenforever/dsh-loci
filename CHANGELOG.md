@@ -4,6 +4,99 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [6.0.0] — 2026-11-17
+
+The axis the document described was never built. This builds it. Schema v9.
+
+### What was wrong
+
+`p = max(0, muNow − mu_touched)` — non-negative, no entrance, no compression region, and pointing the wrong
+way: a freshly written memory sat at **0** (the habitat) while older entries drifted **right**. The document
+it was meant to implement describes a signed axis where new memories land at `+R` and time pushes everything
+left.
+
+Worse, `mu_touched` was written by **three different events** — creation, injection, read — so `p` could not
+tell "just remembered" from "just used". Measured: among entries never once injected, `p` ranged from 1.61 to
+366.56. A dimension where the newest member of a class and an average member differ by two orders of
+magnitude is not measuring that class.
+
+### The axis
+
+```
+遗忘 ←———— − ————← 0 ←———— 修剪 ————← + ←———— 新记忆在这里落下 (+R)
+```
+
+Three moves, kept distinct:
+
+| | |
+|---|---|
+| **写入** | lands at `+R`, not at the habitat |
+| **时间** | −1 per μ, unconditional — this is what guarantees termination |
+| **召回** | `δ(p) = max(δ_min, δ_base·e^(−|p|/scale))` — large near 0, small far away, floored so nothing becomes unreachable |
+
+Position is **evaluated, never stored as a live value**: `p = p_base − (muNow − mu_base)`. Time costs no
+writes; only a recall writes, and it writes both halves of the anchor.
+
+### Parameters: rate-derived, and labelled as such
+
+`R = 2000 μ · δ_base = 130 · scale = 500 · δ_min = 1`.
+
+The first attempt used `R = 100`. At this store's measured rate of ~580 μ/day that gives a memory a working
+life of **0.3 days** — shorter than the session that created it. The numbers are now derived from the rate
+the store measures about itself, multiplied by lifespans a person would recognise, and `describeAxis()`
+prints the implication so it can be argued with:
+
+```
+R 2000 μ (habitat in 3.4 d, forgotten in 6.9 d) · one recall rescues 105 μ (~4.3 h) · parameters rate-derived, NOT measured
+```
+
+That last clause is the point. `docs/AXIS.md` §4 says how each parameter is meant to be measured and why the
+data to do it does not exist yet. Every surface that shows the axis shows this sentence with it.
+
+### The migration needed two rules, not one
+
+Old rows had to be given a starting position, and where they started depends on whether they were ever used —
+which the old schema happened to record in `inject_count`:
+
+| | |
+|---|---|
+| never injected | `p = R − distance` — it fell in at the entrance and has been drifting |
+| injected ≥ 1 | `p = −distance` — its last touch was the moment it sat at the habitat |
+
+The first version used the entrance rule for everything, and the live store came out **35 of 45 entries at the
+entrance, including one injected 442 times**. A memory used hundreds of times is the most settled thing in the
+store; putting it at the entrance inverted the one distinction the axis exists to make. After the correction:
+entrance 21 / digesting 3 / habitat 6 / compressing 15.
+
+**What the migration cannot recover**: how many times an entry was recalled before its last one. Only the
+final stamp was kept, so the shape of the journey is gone. The new dynamics rebuild it — a needed entry climbs
+back toward the habitat the next time it is recalled.
+
+### Everything that read `p` had to change
+
+`muPositions` now returns signed positions and **regions** (entrance / digesting / habitat / compressing /
+forgotten) instead of four distance bands, and an entry with no anchor is reported as having **no position**
+rather than position zero. Core selection, the doctor line, the panel, `report-production` and `journal` all
+follow.
+
+`journal`'s "sunk" list lost its wall-clock floor. That threshold was a mistake: it filtered by
+`Date.now() - created_at` in a product whose entire premise is that a predetermined by calendar does not
+decide anything. "Sunk" is now a position — left of the habitat, never once recalled — which is the same fact
+expressed in the store's own units.
+
+### Two bugs the rebuild exposed
+
+- **`Number(null)` is 0**, so a naive finiteness check on the anchor accepted a missing value and placed an
+  unanchored row exactly at the habitat. The presence check now comes first.
+- `positionOf` returned **`-0`** for an entry exactly at the habitat, which is `Object.is`-unequal to `0` and
+  made region boundaries depend on which branch produced the zero. Normalised.
+
+### Tests
+
+16 new tests covering the five criteria in `docs/AXIS.md` §8 — direction, entrance, recall, no abyss, and the
+one that matters most: **writing and using are different places**. 377 tests, coverage lines 91.1 / branches
+72.1 / functions 86.2. Readiness is now 11 checks, including that every live entry has an evaluable position.
+
 ## [5.3.1] — 2026-11-17
 
 A view for the person who has to live with this thing.

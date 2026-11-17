@@ -4,7 +4,14 @@
     "description": "Layered long-term memory: the prompt holds a stable index, full text is one lookup away, and only verified facts are injected."
   },
   "panel": {
-    "title": "Memory"
+    "title": "Memory",
+    "axis": "Position on the axis",
+    "axisHint": "New memories land at the entrance and drift left as the clock advances. A recall moves them back right. The habitat near zero is where settled, useful memories live.",
+    "regionEntrance": "entrance",
+    "regionDigesting": "digesting",
+    "regionHabitat": "habitat",
+    "regionCompressing": "compressing",
+    "regionForgotten": "forgotten"
   },
   "settings": {
     "title": "Loci"

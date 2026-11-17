@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { effectiveConfig } from '../../src/host/config.js';
 import { layout, resolveDshHome, resolveMemoryRoot } from '../../src/host/paths.js';
 import { SCHEMA_VERSION } from '../../src/host/store/schema.js';
+import { describeAxis } from '../../src/host/store/axis.js';
 import { Store } from '../../src/host/store/store.js';
 
 // The version lives in `index.js` beside the plugin definition, and importing that file wires up Cordis —
@@ -102,6 +103,24 @@ record(
   `${standingInCore} standing · ${pinned} pinned`,
 );
 
+// 6b. The axis places every live entry, and its parameters are declared.
+//
+// An entry without a position is not merely unlisted — it is invisible to every view that walks the axis,
+// which is all of them now. And the parameters have to be *shown* with the implication, because a number
+// nobody can interpret is how `CORE_BUDGET_BYTES = 500` decided product behaviour for eleven releases.
+{
+  const positions = store.muPositions({});
+  const placed = positions.entries.length - positions.untracked;
+  const regions = positions.regions ?? {};
+  record(
+    'axis',
+    'every verified entry has an evaluable position, and the axis states what its parameters imply',
+    positions.untracked === 0 && typeof describeAxis === 'function',
+    `${placed} placed · entrance ${regions.entrance ?? 0} / digesting ${regions.digesting ?? 0} / habitat ${regions.habitat ?? 0} / ` +
+      `compressing ${regions.compressing ?? 0} / forgotten ${regions.forgotten ?? 0}`,
+  );
+}
+
 // 7. The audit is readable end to end — a corrupt audit means the observability claim is empty.
 let auditLines = 0;
 let unreadable = 0;
@@ -142,11 +161,11 @@ try {
     encoding: 'utf8',
     timeout: 120_000,
   });
-  rollback = { ok: /column gone: true/.test(output) && /version back to 7: true/.test(output), detail: 'v8 → v7 and back, on a copy' };
+  rollback = { ok: /applies gone: true/.test(output) && /anchors gone: true/.test(output) && /version back to 7: true/.test(output), detail: 'v9 → v7 and back, on a copy' };
 } catch (error) {
   rollback = { ok: false, detail: String(error?.message ?? error).slice(0, 120) };
 }
-record('rollback', 'v8 can be reverted to v7 and re-applied, verified on a copy', rollback.ok, rollback.detail);
+record('rollback', 'v9 can be reverted to v7 and re-applied, verified on a copy', rollback.ok, rollback.detail);
 
 // 10. The test suite passes (run by the caller; this only reports whether it was run recently).
 const hasCoverageScript = existsSync('scripts/check-coverage.mjs');

@@ -29,6 +29,7 @@ import { formatDoctor, runDoctor } from '../src/host/doctor.js';
 import { ensureMemoryRoot, layout, resolveDshHome, resolveMemoryRoot } from '../src/host/paths.js';
 import { resolveScopes, readScopeKeys } from '../src/host/scope.js';
 import { closeDatabase, openDatabase } from '../src/host/store/db.js';
+import { positionOf } from '../src/host/store/axis.js';
 import { exportMarkdown, importMarkdown } from '../src/host/store/export.js';
 import { importPeer } from '../src/host/store/importers.js';
 import { migrate, newestBackup, restoreDatabaseFile } from '../src/host/store/migrate.js';
@@ -180,7 +181,7 @@ switch (command) {
         .prepare(
           `SELECT m.id, m.kind, m.title, m.applies, m.created_at,
                   COALESCE(u.inject_count, 0) AS injections,
-                  COALESCE(u.mu_touched, 0)    AS touched,
+                  u.p_base, u.mu_base,
                   h.status
              FROM memory m JOIN memory_head h ON h.ord = m.ord
              LEFT JOIN memory_usage u ON u.id = m.id
@@ -230,16 +231,39 @@ switch (command) {
     }
     if (shown.length === 0) console.log('  （还没有任何条目被注入过）');
 
-    const SINK_AFTER_MS = 3 * 86_400_000;
-    const sunk = report.rows.filter(
-      (row) => Number(row.injections) === 0 && row.status === 'verified' && Date.now() - Number(row.created_at) >= SINK_AFTER_MS,
-    );
-    console.log('\n沉底的  ·  写入并 verified 超过 3 天，却一次都没进过提示词');
+    // **"Sunk" is a position, not an age.**
+    //
+    // The first version used a three-day wall-clock floor, which contradicted the whole design: time here is
+    // μ, and a predetermined by calendar has no business deciding what to show. On the signed axis the
+    // notion exists on its own — an entry is sinking when it has drifted into the compression region and has
+    // never once been recalled. That is the same fact as before, expressed in the store's own units, and it
+    // needs no threshold that grows stale as the store's activity changes.
+    const positionOfRow = (row) => positionOf({ pBase: row.p_base, muBase: row.mu_base }, report.muNow);
+    const sunk = report.rows
+      .filter((row) => {
+        if (row.status !== 'verified') return false;
+        const p = positionOfRow(row);
+        if (p === null) return false;
+        // Left of the habitat and never recalled: it has travelled without ever being needed.
+        return p < 0 && Number(row.injections) === 0;
+      })
+      .sort((a, b) => positionOfRow(a) - positionOfRow(b));
+    console.log('\n沉底的  ·  已漂到栖息地左边，且一次都没被召回');
     for (const row of sunk.slice(0, 10)) {
       const flag = row.applies === 'always' ? '  ← 标了常驻却从未出现，scope 可能标错了' : '';
-      console.log(`  ${day(row.created_at)}  ${mark(row).padEnd(9)}  ${cut(row.title, 46)}${flag}`);
+      const p = positionOfRow(row);
+      console.log(`  ${String(Math.round(p)).padStart(6)} μ  ${mark(row).padEnd(9)}  ${cut(row.title, 44)}${flag}`);
     }
-    if (sunk.length === 0) console.log('  （没有沉底的条目）');
+    if (sunk.length === 0) {
+      // An empty list needs a reason, or it reads as "the feature is broken". A never-recalled entry has to
+      // cross the whole entrance and the digestion zone before it is left of the habitat — that is `R` + a
+      // little, and a young store simply has not advanced that far yet.
+      const stillFresh = report.rows.filter(
+        (row) => row.status === 'verified' && Number(row.injections) === 0 && (positionOfRow(row) ?? 0) >= 0,
+      ).length;
+      console.log(`  （还没有条目沉底。从未被召回的 ${stillFresh} 条仍在入口与消化区——`);
+      console.log(`   要穿过整段 R 才会出现在这里，本库目前只走了 ${Math.round(report.muNow)} μ）`);
+    }
 
     console.log('\n需要你处理的  ·  这些永远不会进入提示词，直到有人处理');
     console.log(`  待审 ${report.pending} 条 · 隔离 ${report.disputed} 条`);

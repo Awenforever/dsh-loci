@@ -12,6 +12,7 @@ import { findDuplicateGroups } from './store/duplicates.js';
 import { REVIEWABLE_KINDS } from './store/store.js';
 import { detectInstructionLike, renderSafe } from './inject/sanitize.js';
 import { compareVersions } from './update.js';
+import { describeAxis } from './store/axis.js';
 
 /** One check result. */
 /**
@@ -101,19 +102,20 @@ export function runDoctor(options) {
   // means a store that grows forever is expected behaviour right now and should be visible as such.
   try {
     const positions = store.muPositions({});
-    const bands = positions.bands;
+    const regions = positions.regions ?? {};
     const tracked = positions.entries.length - positions.untracked;
-    const history = positions.untracked > 0 ? ` · ${positions.untracked} without μ history` : '';
-    const edges = positions.edges?.derived
-      ? `bands from ${tracked} observed (${positions.edges.fresh.toFixed(0)}/${positions.edges.active.toFixed(0)}/${positions.edges.cool.toFixed(0)} μ)`
-      : 'bands fixed 5/50/500 (too few samples to derive)';
+    const history = positions.untracked > 0 ? ` · ${positions.untracked} with no anchor` : '';
+    // The axis in one line, including what the parameters imply. An uncalibrated setting is only honest if
+    // the person reading it can see its consequence — "habitat in 3.4 days" can be argued with; "R = 2000"
+    // cannot.
+    const shape = describeAxis(positions.parameters ?? {});
     checks.push(
       check(
         'memory unit',
         'ok',
-        `${positions.now.toFixed(1)} μ · ${tracked} tracked${history} · fresh ${bands.fresh} / active ${bands.active} / cool ${bands.cool} / cold ${bands.cold} · ${edges} · retirement ${
-          positions.retireAfter > 0 ? `after ${positions.retireAfter} μ` : 'off (not derived from distance)'
-        }`,
+        `${positions.now.toFixed(1)} μ · ${tracked} on the axis${history} · ` +
+          `entrance ${regions.entrance ?? 0} / digesting ${regions.digesting ?? 0} / habitat ${regions.habitat ?? 0} / ` +
+          `compressing ${regions.compressing ?? 0} / forgotten ${regions.forgotten ?? 0} · ${shape}`,
       ),
     );
   } catch (error) {

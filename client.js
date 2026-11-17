@@ -182,6 +182,17 @@ window.__ModuleLoader__.load({
       'panel.injected': 'injected',
       'panel.opened': 'opened',
       'panel.store': 'Store',
+      // The signed axis replaced the four distance bands. "fresh" stopped meaning anything once the
+      // entrance became a place rather than a small distance, so the labels describe regions of the axis.
+      'panel.axis': 'Position on the axis',
+      'panel.axisHint':
+        'New memories land at the entrance and drift left as the clock advances; a recall moves them back right. ' +
+        'The habitat near zero is where settled, useful memories live. Everything here is in memory units, not dates.',
+      'panel.regionEntrance': 'entrance',
+      'panel.regionDigesting': 'digesting',
+      'panel.regionHabitat': 'habitat',
+      'panel.regionCompressing': 'compressing',
+      'panel.regionForgotten': 'forgotten',
       'panel.distance': 'Distance from the working set',
       'panel.distanceHint':
         'Measured in memory units — units of work, not dates. Retirement is off until a threshold is calibrated, so this is where growth shows up first.',
@@ -1207,19 +1218,23 @@ window.__ModuleLoader__.load({
                 ? h(
                     'div',
                     null,
-                    h('div', { className: 'loci-section' }, t('panel.distance')),
+                    h('div', { className: 'loci-section' }, t('panel.axis')),
                     h(
                       'div',
                       { className: 'loci-grid' },
-                      cell('fresh', data.mu.bands?.fresh ?? 0),
-                      cell('active', data.mu.bands?.active ?? 0),
-                      cell('cool', data.mu.bands?.cool ?? 0),
-                      cell('cold', data.mu.bands?.cold ?? 0),
+                      // The regions of the signed axis, in order from the entrance to the forgotten end.
+                      // These replaced the four distance bands when the axis was rebuilt: "fresh" stopped
+                      // meaning anything once the entrance became a place rather than a small distance.
+                      cell(t('panel.regionEntrance'), data.mu.regions?.entrance ?? 0),
+                      cell(t('panel.regionDigesting'), data.mu.regions?.digesting ?? 0),
+                      cell(t('panel.regionHabitat'), data.mu.regions?.habitat ?? 0),
+                      cell(t('panel.regionCompressing'), data.mu.regions?.compressing ?? 0),
+                      cell(t('panel.regionForgotten'), data.mu.regions?.forgotten ?? 0),
                     ),
                     h(
                       'div',
                       { className: 'loci-meta', style: { marginTop: '6px' } },
-                      t('panel.distanceHint'),
+                      t('panel.axisHint'),
                     ),
                     (data.muTrail ?? []).length > 0
                       ? h(

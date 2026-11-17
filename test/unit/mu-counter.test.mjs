@@ -84,8 +84,12 @@ test('C2: ordering prefers the used entry over the newer one', (t) => {
   store.recordRead(used.entry.id);
   const p = store.muPositions({ scopeKeys: [scopes.workspace] });
   const of = (id) => p.entries.find((entry) => entry.id === id).p;
-  assert.ok(of(used.entry.id) <= of(fresh.entry.id), 'the read entry is no further away than the untouched one');
-  assert.deepEqual(Object.keys(p.bands).sort(), ['active', 'cold', 'cool', 'fresh']);
+  // **The comparison flipped with the axis, the property did not.** Old model: a smaller number meant
+  // closer, so "used" satisfied `used <= fresh`. On the signed axis a larger number means closer to the
+  // entrance, so the same property reads `used >= fresh`: the entry that was read is not further left
+  // than the one that was merely written.
+  assert.ok(of(used.entry.id) >= of(fresh.entry.id), 'the read entry is no further left than the untouched one');
+  assert.deepEqual(Object.keys(p.regions).sort(), ['compressing', 'digesting', 'entrance', 'forgotten', 'habitat', 'unknown']);
 });
 
 test('C3: the prompt states μ distances and never a calendar date', (t) => {
@@ -177,18 +181,25 @@ test('too few samples fall back to the fixed edges rather than describing the sa
   assert.deepEqual([edges.fresh, edges.active, edges.cool], [5, 50, 500]);
 });
 
-test('entries with no μ history are counted apart and kept out of the bands', (t) => {
+test('an entry with no anchor is counted apart and kept out of every region', (t) => {
+  // "Untracked" changed meaning with the axis. Before, it was `mu_touched = 0` (never stamped). Now it is
+  // "no anchor pair" — a row that cannot be placed. Both must stay out of the summaries: putting a row with
+  // no position into a region count would be reporting a place it does not have.
   const { store, scopes } = openTestStore(t);
-  const touched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
-  const untouched = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'c', body: 'd' });
+  const placed = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'a', body: 'b' });
+  const unanchored = store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'semantic', title: 'c', body: 'd' });
   for (let i = 0; i < 5; i += 1) store.recordInjection({ bytes: 1, listed: 0, hidden: 0, ids: [] });
-  store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [touched.entry.id] });
-  store.db.prepare('UPDATE memory_usage SET mu_touched = 0 WHERE id = ?').run(untouched.entry.id);
+  store.recordInjection({ bytes: 1, listed: 1, hidden: 0, ids: [placed.entry.id] });
+  store.db.prepare('UPDATE memory_usage SET p_base = NULL, mu_base = NULL WHERE id = ?').run(unanchored.entry.id);
 
   const positions = store.muPositions({ scopeKeys: [scopes.workspace] });
-  assert.equal(positions.untracked, 1, 'the untouched entry is reported apart');
-  const counted = positions.bands.fresh + positions.bands.active + positions.bands.cool + positions.bands.cold;
-  assert.equal(counted, 1, 'bands describe only entries that were observed');
+  assert.equal(positions.untracked, 1, 'the unplaceable entry is reported apart');
+  const byId = (id) => positions.entries.find((entry) => entry.id === id);
+  assert.equal(byId(unanchored.entry.id).p, null, 'and it has no position at all');
+  assert.equal(byId(unanchored.entry.id).region, 'unknown');
+  const entered = positions.regions.entrance + positions.regions.digesting + positions.regions.habitat;
+  const left = positions.regions.compressing + positions.regions.forgotten;
+  assert.equal(entered + left, 1, 'the region counts describe only the entry that can be placed');
 });
 
 test('retirement is not derived from the band edges', () => {

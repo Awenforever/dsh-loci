@@ -21,6 +21,7 @@ import {
   readMeta,
   writeMeta,
 } from './schema.js';
+import { AXIS_DEFAULTS, anchorFromLegacy } from './axis.js';
 
 /**
  * Migrations shipped by this build. Empty at 1.0.0: the first real step lands
@@ -151,6 +152,51 @@ export const SHIPPED_MIGRATIONS = [
       // Rows added by the ALTER carry the default; make it explicit so a later default change cannot
       // silently reinterpret existing data.
       db.prepare("UPDATE memory SET applies = 'topic' WHERE applies IS NULL OR applies = ''").run();
+    },
+  },
+  {
+    from: 8,
+    to: 9,
+    why:
+      'The position was p = max(0, muNow - mu_touched): non-negative, so it had no entrance and no ' +
+      'compression region, and it moved the wrong way — the newest entry sat at 0 (the habitat) while older ' +
+      'entries drifted right. The document it was meant to implement describes a signed axis where new ' +
+      'memories land at +R and time pushes everything left. Worse, mu_touched was written by three different ' +
+      'events (creation, injection, read), so p could not distinguish "just remembered" from "just used": ' +
+      'among entries never once injected, p ranged from 1.61 to 366.56. This replaces the column with an ' +
+      'anchor pair so position is evaluated instead of stored.',
+    up(db) {
+      addColumnIfMissing(db, 'memory_usage', 'p_base', 'REAL');
+      addColumnIfMissing(db, 'memory_usage', 'mu_base', 'REAL');
+      db.exec('CREATE INDEX IF NOT EXISTS ix_memory_usage_position ON memory_usage (p_base DESC)');
+
+      const current = Number(readMeta(db, META_KEYS.muNow) ?? 0);
+      // Every live entry needs a row: an entry written before usage tracking existed may have none, and
+      // leaving it without an anchor would silently drop it from every position-based view.
+      db.prepare(
+        `INSERT INTO memory_usage (id, inject_count, read_count)
+         SELECT m.id, 0, 0 FROM memory m WHERE m.valid_to IS NULL
+           AND NOT EXISTS (SELECT 1 FROM memory_usage u WHERE u.id = m.id)`,
+      ).run();
+
+      const pending = db.prepare('SELECT id, mu_touched, inject_count FROM memory_usage WHERE p_base IS NULL').all();
+      const update = db.prepare('UPDATE memory_usage SET p_base = ?, mu_base = ? WHERE id = ?');
+      for (const row of pending) {
+        // `inject_count` decides where the entry started. Never injected: it fell in at the entrance and has
+        // been drifting. Injected at least once: its last touch was the moment it sat at the habitat, so its
+        // current position is the drift since then. Using the entrance rule for both put an entry injected
+        // 442 times into the "brand new, never digested" region.
+        const anchor = anchorFromLegacy(row.mu_touched, current, AXIS_DEFAULTS.entranceDepth, {
+          injected: Number(row.inject_count ?? 0) > 0,
+        });
+        update.run(anchor.pBase, anchor.muBase, row.id);
+      }
+
+      const nearZero = db
+        .prepare('SELECT COUNT(*) AS n FROM memory_usage WHERE p_base IS NOT NULL AND ABS(p_base) < ?')
+        .get(AXIS_DEFAULTS.entranceDepth * 0.05).n;
+      writeMeta(db, 'axis_migrated_from_legacy', String(pending.length));
+      writeMeta(db, 'axis_migrated_near_habitat', String(nearZero));
     },
   },
 ];
