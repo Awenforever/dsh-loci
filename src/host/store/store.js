@@ -358,6 +358,18 @@ export class Store {
         bytes: Buffer.byteLength(prepared.title) + Buffer.byteLength(prepared.body),
         redactions: prepared.redactions.length,
         flags: prepared.flags,
+        // Whether the caller supplied these, not just what they ended up as.
+        //
+        // `applies` defaults to 'topic' and `importance` to 3, which is right for the data but makes the
+        // column unreadable as evidence: a deliberate topical verdict and a write that never mentioned the
+        // field produce identical rows. After 5.2.0 shipped, three curator writes came back all-topic and
+        // there was no way to tell whether the new prompt was working or being ignored — the first
+        // question anyone would ask of a field that exists to be filled in.
+        supplied: {
+          applies: input.applies !== undefined,
+          importance: input.importance !== undefined,
+          whenCondition: input.whenCondition !== undefined,
+        },
       },
       { sync: true },
     );
@@ -477,6 +489,11 @@ export class Store {
         bytes: Buffer.byteLength(prepared.title) + Buffer.byteLength(prepared.body),
         redactions: prepared.redactions.length,
         flags: prepared.flags,
+        supplied: {
+          applies: input.applies !== undefined,
+          importance: input.importance !== undefined,
+          whenCondition: input.whenCondition !== undefined,
+        },
       },
       { sync: true },
     );

@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.2.2] — 2026-11-17
+
+A field nobody can audit is a field nobody can trust.
+
+### The gap
+
+Three curator writes landed after 5.2.0, all `topic`, all `importance 3`. Reading the store, that is
+indistinguishable from two opposite situations:
+
+- the curator judged them topical and was right (they *are* specific UI details), or
+- the curator never mentioned the field and the default applied.
+
+`applies` exists precisely to be filled in, so "is anyone filling it" is the first question to ask of it —
+and the store could not answer. This is the same shape as `importance` sitting at 3 for eleven releases
+while looking like a working sort key.
+
+### Fixed
+
+Both write paths now record **whether the caller supplied the field**, not only what it resolved to:
+
+```json
+"supplied": { "applies": true, "importance": false, "whenCondition": false }
+```
+
+The distinction costs three booleans and makes the column auditable. It also makes silence visible: a run
+where nothing is ever supplied now says so plainly instead of looking like a considered verdict on every
+entry.
+
+### A diagnosis that had to correct itself
+
+`scripts/diag/curate-raw.mjs` first read the absence of `supplied` as `false` and printed "at least one write
+supplied a verdict" — the exact opposite of the truth. The three writes predate the signal; their field is
+absent, not false. **Reading a gap as a fact is the failure mode this whole release is about**, so the
+script now distinguishes the three cases explicitly and says when it cannot answer.
+
+### The arity question, restated
+
+`applies` has two values because `scope` already supplies the third: all 22 topical entries sit in a narrow
+scope and none is global, so `scope=workspace` + `applies=always` **is** "every task in this project". That
+conclusion is conditional, and the condition is stated in `docs/MEMORY-CONTRACT.md` §6 — a third value
+becomes necessary the day an entry must be project-wide while living in `global` scope.
+
+359 tests, coverage lines 90.7 / branches 71.8 / functions 85.9.
+
 ## [5.2.1] — 2026-11-17
 
 Feedback rides on the write, because a model does not go looking for the health of its own memory.

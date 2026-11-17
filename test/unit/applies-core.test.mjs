@@ -173,3 +173,20 @@ test('the condition reaches the slice too, not only the core', (t) => {
   });
   assert.match(slice.text, /when: 不在 tailnet 内时/);
 });
+
+test('the audit records whether the caller supplied the verdicts, not just the resulting values', (t) => {
+  // Without this, a deliberate `topic` and a write that never mentioned the field produce identical rows.
+  // After 5.2.0 shipped, three curator writes came back all-topic and there was no way to tell whether the
+  // new prompt was working or being ignored.
+  const { store, scopes } = openTestStore(t);
+  store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'rule', title: '声明了', body: '正文。', applies: 'always', importance: 4 });
+  store.write({ ...workspaceFields(scopes), status: 'verified', trustSource: 'user', kind: 'rule', title: '没声明', body: '正文。' });
+
+  const writes = store.auditTail(20).filter((event) => event.event === 'write');
+  const declared = writes.find((event) => event.supplied?.applies === true);
+  const silent = writes.find((event) => event.supplied?.applies === false);
+  assert.ok(declared !== undefined, 'a stated verdict is recorded as supplied');
+  assert.equal(declared.supplied.importance, true);
+  assert.ok(silent !== undefined, 'a defaulted verdict is recorded as unsupplied');
+  assert.equal(silent.supplied.importance, false);
+});
