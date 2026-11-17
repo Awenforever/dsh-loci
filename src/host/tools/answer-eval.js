@@ -118,21 +118,45 @@ export async function runAnswerEval({
 
   // Every call is bounded, and the whole run is bounded.
   //
-  // The tool framework's `timeoutMs` stops *waiting* for the handler; it does not cancel an in-flight
-  // model request. Without these two budgets a fixture of five questions became a thirty-minute hang with
-  // the work still running behind it. Bounded calls mean a slow model produces a partial report instead
-  // of an unbounded one.
+  // Two lessons went into this. First, a tool's `timeoutMs` stops *waiting* for the handler; it does not
+  // cancel the model request, so a fixture of five questions became a thirty-minute hang. Second — and
+  // this is why the first fix did not work either — passing `signal` to `llm.stream` is not enough: the
+  // service turns cancellation into a terminal `aborted` chunk rather than a rejection, and an adapter
+  // that ignores the signal leaves `for await` waiting forever.
+  //
+  // So the deadline is enforced by racing the call, not by trusting cancellation. The abandoned request
+  // may keep running to completion inside the Host — that is a real cost, and stated rather than hidden.
   const deadline = Date.now() + totalBudgetMs;
+  const racers = new Map();
   const ask = async (prompt) => {
     const remaining = deadline - Date.now();
     if (remaining <= 1000) return { error: 'budget exhausted' };
     const timeout = Math.min(perCallTimeoutMs, remaining);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    let usage;
     try {
-      const text = await complete({ prompt, signal: AbortSignal.timeout(timeout) });
-      return { text: String(text ?? '') };
+      const timeoutPromise = new Promise((resolve) => {
+        const handle = setTimeout(() => resolve({ error: `timed out after ${Math.round(timeout / 1000)}s` }), timeout + 50);
+        racers.set(resolve, handle);
+      });
+      const call = complete({ prompt, signal: controller.signal, onUsage: (value) => { usage = value; } }).then((text) => ({
+        text: String(text ?? ''),
+        usage,
+      }));
+      const result = await Promise.race([call, timeoutPromise]);
+      // The call may still settle later; keep its rejection from becoming an unhandled one.
+      call.catch(() => {});
+      return result;
     } catch (error) {
       const message = String(error?.message ?? error);
       return { error: /abort|timeout/i.test(message) ? `timed out after ${Math.round(timeout / 1000)}s` : message };
+    } finally {
+      clearTimeout(timer);
+      for (const [resolve, handle] of racers) {
+        clearTimeout(handle);
+        racers.delete(resolve);
+      }
     }
   };
 
@@ -165,8 +189,18 @@ export async function runAnswerEval({
     results.push({
       question: row.fact.question,
       answerToken: row.fact.accepts[0].source,
-      without: { verdict: score(without.text, row.fact.accepts), answerBytes: bytes(without.text), answer: without.text.slice(0, 200) },
-      withMemory: { verdict: score(withMemory.text, row.fact.accepts), answerBytes: bytes(withMemory.text), answer: withMemory.text.slice(0, 200) },
+      without: {
+        verdict: score(without.text, row.fact.accepts),
+        answerBytes: bytes(without.text),
+        answer: without.text.slice(0, 200),
+        usage: without.usage,
+      },
+      withMemory: {
+        verdict: score(withMemory.text, row.fact.accepts),
+        answerBytes: bytes(withMemory.text),
+        answer: withMemory.text.slice(0, 200),
+        usage: withMemory.usage,
+      },
       promptBytes: { without: bytes(row.fact.question), withMemory: bytes(memory) + bytes(row.fact.question) },
       memoryBytes: bytes(memory),
     });
@@ -205,7 +239,15 @@ export async function runAnswerEval({
       promptBytesWith: sum(completeResults, (item) => item.promptBytes.withMemory),
       answerBytesWithout: sum(completeResults, (item) => item.without.answerBytes),
       answerBytesWith: sum(completeResults, (item) => item.withMemory.answerBytes),
-      // Reported because the stream carries text frames only: this is an estimate, labelled as one.
+      // Real numbers when the adapter sends a usage chunk, an estimate otherwise — and the report says
+      // which one it is, because "estimated tokens" presented as measured is a fabricated number.
+      measured: {
+        inputWithout: sum(completeResults, (item) => item.without.usage?.inputTokens ?? 0),
+        outputWithout: sum(completeResults, (item) => item.without.usage?.outputTokens ?? 0),
+        inputWith: sum(completeResults, (item) => item.withMemory.usage?.inputTokens ?? 0),
+        outputWith: sum(completeResults, (item) => item.withMemory.usage?.outputTokens ?? 0),
+        answered: completeResults.filter((item) => item.without.usage !== undefined || item.withMemory.usage !== undefined).length,
+      },
       estimatedTokensWith: Math.round(sum(completeResults, (item) => item.promptBytes.withMemory) / 4),
       estimatedTokensWithout: Math.round(sum(completeResults, (item) => item.promptBytes.without) / 4),
     },

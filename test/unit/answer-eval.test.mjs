@@ -121,3 +121,39 @@ test('a slow model produces a partial report instead of hanging', async (t) => {
   assert.ok(report.incomplete >= 1, 'the unfinished call is reported, not counted as wrong');
   assert.equal(report.withoutMemory.wrong, 0, 'a timeout is not a wrong answer');
 });
+
+test('a usage chunk becomes a measured token count, not an estimate', async (t) => {
+  // The stream type declares `{type:"usage"}` and the route used to drop it, so the tool could only
+  // estimate. This pins the plumbing: the callback fires and the report separates measured from estimated.
+  const { store, scopes } = openTestStore(t);
+  const report = await runAnswerEval({
+    store,
+    scopes,
+    complete: async ({ prompt, onUsage }) => {
+      onUsage?.({ inputTokens: 100, outputTokens: 7, totalTokens: 107 });
+      const fact = ANSWER_FIXTURE.find((item) => prompt.endsWith(item.question));
+      if (fact === undefined) return 'I have no record of that.';
+      return prompt.includes('<loci-context') ? fact.title : 'I do not know.';
+    },
+    limit: 2,
+  });
+  assert.equal(report.cost.measured.answered, 2, 'both questions reported usage');
+  assert.ok(report.cost.measured.inputWith > 0, 'input tokens were captured for the memory condition');
+  assert.equal(report.withMemory.correct, 2);
+});
+
+test('no usage chunk falls back to an estimate and says so', async (t) => {
+  const { store, scopes } = openTestStore(t);
+  const report = await runAnswerEval({
+    store,
+    scopes,
+    complete: async ({ prompt }) => {
+      const fact = ANSWER_FIXTURE.find((item) => prompt.endsWith(item.question));
+      if (fact === undefined) return 'I have no record of that.';
+      return prompt.includes('<loci-context') ? fact.title : 'I do not know.';
+    },
+    limit: 1,
+  });
+  assert.equal(report.cost.measured.answered, 0, 'nothing was measured');
+  assert.ok(report.cost.estimatedTokensWith > 0, 'so an estimate is offered instead');
+});

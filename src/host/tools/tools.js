@@ -693,12 +693,19 @@ function renderAnswerEval(value) {
   if (value?.dryRun === true) return `answer eval dry run: seeded ${value.questions} fixture entr${value.questions === 1 ? 'y' : 'ies'}, no model calls made`;
   const line = (label, tally, bytesValue) =>
     `${label}: correct ${tally.correct ?? 0} · wrong ${tally.wrong ?? 0}${tally.invented ? ` · invented ${tally.invented}` : ''}${tally.abstained ? ` · abstained ${tally.abstained}` : ''} · ${bytesValue} B`;
+  // Measured tokens when the adapter sent a usage chunk; an estimate when it did not — and the line says
+  // which, because an estimate presented as a measurement is a fabricated number.
+  const measured = value.cost.measured ?? {};
+  const costLine =
+    (measured.answered ?? 0) > 0
+      ? `tokens (measured): ${measured.inputWith ?? 0} in / ${measured.outputWith ?? 0} out with memory · ${measured.inputWithout ?? 0} in / ${measured.outputWithout ?? 0} out without`
+      : `tokens (estimated, no usage chunk from the adapter): ~${value.cost.estimatedTokensWith} with · ~${value.cost.estimatedTokensWithout} without`;
   const lines = [
     `questions ${value.questions}${value.incomplete > 0 ? ` · ${value.incomplete} incomplete (bounded by the per-call timeout, excluded from the score)` : ''}`,
     line('without memory', value.withoutMemory, value.cost.promptBytesWithout),
     line('with memory   ', value.withMemory, value.cost.promptBytesWith),
-    `cost: +${value.cost.promptBytesWith - value.cost.promptBytesWithout} B of prompt for the memory block ` +
-      `(~${value.cost.estimatedTokensWith} vs ${value.cost.estimatedTokensWithout} estimated tokens; the stream reports no usage, so this is an estimate)`,
+    `cost: +${value.cost.promptBytesWith - value.cost.promptBytesWithout} B of prompt for the memory block`,
+    costLine,
     `controls (no stored fact): invented ${value.controls.invented ?? 0} · abstained ${value.controls.abstained ?? 0}`,
   ];
   for (const row of value.results ?? []) {

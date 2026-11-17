@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [5.1.2] — 2026-11-17
+
+The timeout was still not real, and the token cost was available all along.
+
+### 5.1.1 did not fix it
+
+`AbortSignal.timeout` was passed to `llm.stream` and the tool still hung for another half hour. Reading the
+service contract explains why: `GenerateOptions` does declare `signal`, but cancellation surfaces as a
+terminal `aborted` **chunk**, not a rejection — and an adapter that ignores the signal leaves `for await`
+waiting forever. A bound that depends on the other side cooperating is not a bound.
+
+Fixed by **racing** the call against its own deadline. The abandoned request may still run to completion
+inside the Host; that cost is real and is stated in the source rather than hidden.
+
+### The usage chunk was being dropped
+
+The same contract shows `StreamChunk` includes `{ type: 'usage', usage: TokenUsage }` with `inputTokens`,
+`outputTokens`, `cacheReadTokens` and more. The streaming loop read text and discarded it, which is why cost
+could only ever be *estimated* when a real number was going past unread.
+
+- `complete({ ..., onUsage })` now reports the usage chunk when an adapter sends one.
+- The report separates **measured** from **estimated** tokens and says which it is. An estimate presented as
+  a measurement is a fabricated number, and this project has been careful about that distinction everywhere
+  except here.
+
+### Deployment note
+
+`remove_bundle` failed three times this round for reasons unrelated to the plugin — first a
+`minimumReleaseAge` violation from a version another session had bumped, then repeated GitHub tarball
+failures — and each time it had already removed the registration. The package was synced into
+`node_modules` by hand and verified file-by-file against the published tarball (`deploy-integrity.mjs`:
+identical). This is a known limitation of a shared profile, now recorded in the runbook.
+
+326 tests, coverage lines 90.5 / branches 71.1 / functions 85.6.
+
 ## [5.1.1] — 2026-11-17
 
 The tool ran for thirty minutes because a timeout did not cancel anything.

@@ -67,7 +67,11 @@ export function createCompleter({ llm, provider, model, record, signal }) {
   // It has to be per call: a tool that fans out a dozen requests needs each one bounded, and the
   // framework's `timeoutMs` on the tool does not cancel an in-flight `await` — it only stops waiting for
   // it, which leaves the request running and the tool looking hung. That was a real 30-minute hang.
-  const complete = async ({ system, prompt, signal: callSignal }) => {
+  //
+  // `onUsage` receives the `usage` chunk when the adapter sends one. The stream type declares it, this
+  // loop previously ignored it, and the result was a tool that could only *estimate* token cost while a
+  // real number went past unread.
+  const complete = async ({ system, prompt, signal: callSignal, onUsage }) => {
     const effectiveSignal = callSignal ?? signal;
     const request = {
       provider,
@@ -95,6 +99,16 @@ export function createCompleter({ llm, provider, model, record, signal }) {
         } catch {
           shapes.add('unreadable');
         }
+      }
+      // The declared chunk type includes `{type:'usage'}`; this loop used to read only text and drop it,
+      // which is why token cost could only ever be estimated.
+      if (frame?.type === 'usage' && frame.usage !== undefined) {
+        try {
+          onUsage?.(frame.usage);
+        } catch {
+          /* a diagnostic must never be the reason a call fails */
+        }
+        continue;
       }
       text += frameText(frame);
     }
