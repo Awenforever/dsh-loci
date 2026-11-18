@@ -7,7 +7,6 @@
  * removes all of it and leaves the database intact.
  * @module dsh-loci/host
  */
-import { randomUUID } from 'node:crypto';
 import { cfg, effectiveConfig } from './config.js';
 import { ensureMemoryRoot, layout, resolveDshHome, resolveMemoryRoot } from './paths.js';
 import { readScopeKeys, resolveScopes } from './scope.js';
@@ -15,6 +14,7 @@ import { Store } from './store/store.js';
 import { writeMeta } from './store/schema.js';
 import { Capture } from './capture/capture.js';
 import { createIndexSection, renderAssistBlock } from './inject/index-section.js';
+import { injectedMessage, withMessage } from './inject/message.js';
 import { createCurationTrigger } from './record/trigger.js';import { CURATOR_SYSTEM } from './record/curator.js';
 import { runCuratorProbe } from './record/probe.js';
 import { createCompleter } from './record/model-route.js';
@@ -30,7 +30,7 @@ import { composeSliceMessage } from './recall/compose.js';
 import { stripInjected } from './inject/fence.js';
 
 /** Version stamped into the database and diagnostics. */
-export const VERSION = '7.2.0';
+export const VERSION = '7.2.1';
 
 /** Optional collaborators; without them the plugin still serves tools. */
 export const inject = ['systemPrompt', 'tools'];
@@ -68,18 +68,17 @@ function makeLogger(ctx) {
  * waterfall runs — and because a memory that arrives as conversation content is auditable in the
  * transcript, which a silently altered system prompt is not.
  *
+ * **The message must satisfy the Host's `user/message` contract or the conversation will not reopen.**
+ * 7.2.0 shipped this function without an `id`; the message worked for the rest of the session and the Host
+ * refused it on the next load, which cost six conversations and 108 hand-repaired events. The shape now comes
+ * from `inject/message.js`, so a call site cannot build an invalid one.
+ *
  * @param decision - the waterfall's decision object.
  * @param text - the recall block.
  * @returns a new decision with one more message.
  */
 function withRecallMessage(decision, text) {
-  return {
-    ...decision,
-    messages: [
-      ...decision.messages,
-      { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] },
-    ],
-  };
+  return withMessage(decision, injectedMessage({ text }));
 }
 
 /**
@@ -685,18 +684,10 @@ export function apply(ctx, rawConfig = {}) {
               // Recording must never break the turn it is recording.
               log.warn(`loci: could not record the recall injection: ${String(error?.message ?? error)}`);
             }
-            return {
-              ...decision,
-              messages: [
-                ...decision.messages,
-                {
-                  id: `loci-recall-${randomUUID()}`,
-                  role: 'user',
-                  content: [{ type: 'text', text: assist.text }],
-                  source: { kind: 'plugin:loci', form: 'block', summary: 'memory recall' },
-                },
-              ],
-            };
+            return withMessage(
+              decision,
+              injectedMessage({ text: assist.text, summary: 'memory recall' }),
+            );
           } catch (error) {
             log.warn(`loci: recall assist failed: ${String(error?.message ?? error)}`);
             return decision;

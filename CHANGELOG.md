@@ -4,6 +4,75 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0.
 
+## [7.2.1] — 2026-11-18
+
+**Sessions written by 7.1.0–7.2.0 could not be reopened.** This is a data-integrity fix; upgrade even if nothing
+else in this file matters to you.
+
+### What happened
+
+`withRecallMessage` in `src/host/index.js` injected a recall block into the turn as
+
+```js
+{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] }
+```
+
+with **no `id`**. The Host appends that object verbatim as a `user/message` event. Writing does not validate;
+**loading does**. Its `assertMessageEventShape`, read out of the shipped bundle:
+
+```js
+const message = type === 'user/message' ? data : data?.message;
+if (typeof message !== 'object' || message === null || typeof message.id !== 'string' || message.id === '')
+  throw new Error(`${subject} lacks an identified message`);
+```
+
+So the turn worked, the block reached the model, and the conversation became unopenable the next time it was
+loaded. Measured on one machine: **six conversations, 108 events**, all `<loci-recall …>` user messages, written
+between 2026-11-16 15:22 and 2026-11-18 12:26.
+
+The assist path in the same file already carried `id: loci-recall-${randomUUID()}`; only the slice/rescue path
+(both call sites of `withRecallMessage`) was missing it.
+
+### The fix, and why it is shaped this way
+
+A missing `id` on one function is a one-line repair. It is also the **third** time this plugin has broken a
+session log — first a missing protected head, then a missing id on the assist path, now this. Each fix repaired
+the call site that was known broken and left the next one free to repeat it.
+
+So the message shape now has exactly one home, `src/host/inject/message.js`:
+
+- `injectedMessage()` builds it — id, role, source, content, validated before it is returned;
+- `assertInjectedMessage()` mirrors the Host's assertions, with each defect named separately;
+- `withMessage()` appends, and refuses anything that did not come out of the factory.
+
+Both recall paths and the assist path now go through it.
+
+### Guarantees
+
+- **A message that would be refused on load cannot be constructed.** The validation runs at build time, not at
+  review time.
+- **The shape is tested against the Host's own text.** `scripts/diag/host-message-contract.mjs` extracts
+  `assertMessageEventShape` from `app.asar`, so when the Host changes, the mirror can be compared rather than
+  remembered.
+- **A fourth recurrence fails the suite.** `test/unit/injection-invariant.test.mjs` sweeps `src/host` and fails if
+  any file other than `inject/message.js` appends to `decision.messages` or writes a raw `role: 'user', source:`
+  literal. `scripts/diag/guard-selfcheck.mjs` proves the guard's patterns match the exact 7.2.0 snippet and do
+  not match the fixed one — an untested guard is decoration.
+
+### Compatibility
+
+`source.kind` stays `'user'` for the recall block rather than switching to `'plugin:loci'`. The Host accepts
+either, and changing what the transcript calls this message is a rendering change that does not belong in a
+data-integrity patch.
+
+### Repairing existing sessions
+
+This release stops new corruption; it does not repair logs already written. Sessions damaged by 7.1.0–7.2.0 need
+their `<loci-recall …>` user events given an `id`. On the affected machine that was done by backfilling 108
+events across six logs and validating all 217 with the Host's own v4 loader.
+
+398 tests, coverage lines 91.5 / branches 72.2 / functions 86.5.
+
 ## [7.2.0] — 2026-11-18
 
 Found by running the real application, not by running tests.
